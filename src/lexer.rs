@@ -1,0 +1,181 @@
+#[derive(Debug, Clone, PartialEq)]
+pub enum Token {
+    //literals
+    Integer(i64),
+    Identifier(String),
+    StringLiteral(String),
+
+    //Keywords
+    Let, 
+    Fn, 
+    Return, 
+    If,
+    Else,
+    True,
+    False,
+    While,
+    And,
+    Or,
+    
+    //Types
+    I32,
+    I64,
+    Bool,
+    Void,
+
+    //Operators
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Equals,
+    EqualsEquals,
+    Bang,
+    BangEquals,
+    Less,
+    Greater,
+
+    //Delimiter,
+    Semicolon,
+    Colon,
+    Comma,
+    Arrow, // ->
+    LeftParen,
+    RightParen,
+    LeftBrace,
+    RightBrace,
+
+    //Special
+    Eof,
+}
+
+pub struct Lexer {
+    input: Vec<char>,
+    pos: usize,
+}
+
+
+impl Lexer {
+    pub fn new(source: &str) -> Self {
+        Lexer{
+            input: source.chars().collect(),
+            pos: 0,
+        }
+    }
+    fn current(&self) -> char {
+        if self.pos < self.input.len() {
+            self.input[self.pos]
+        } else {
+            '\0'
+        }
+    }
+    fn peek(&self) -> char {
+        if self.pos + 1 < self.input.len() {
+            self.input[self.pos + 1]
+        }  else {
+            '\0'
+        }
+    }
+    fn advance(&mut self){
+        self.pos += 1;
+    }
+    pub fn next_token(&mut self) -> Token {
+        //whitespace atla
+        while self.current().is_whitespace() {
+            self.advance();
+        }
+        let ch = self.current();
+
+        match ch {
+            '\0' => Token::Eof,
+            '+' => { self.advance(); Token::Plus }
+            '-' => {
+                if self.peek() == '>' {
+                    self.advance();
+                    self.advance();
+                    Token::Arrow
+                } else {
+                    self.advance();
+                    Token::Minus
+                }
+            }
+            '*' => { self.advance(); Token::Star }
+            '/' => { self.advance(); Token::Slash }
+            ';' => { self.advance(); Token::Semicolon }
+            ':' => { self.advance(); Token::Colon }
+            ',' => { self.advance(); Token::Comma }
+            '(' => { self.advance(); Token::LeftParen}
+            ')' => { self.advance(); Token::RightParen}
+            '{' => { self.advance(); Token::LeftBrace}
+            '}' => { self.advance(); Token::RightBrace}
+            '<' => { self.advance(); Token::Less}
+            '>' => { self.advance(); Token::Greater}
+            '=' => {
+                if self.peek() == '=' {
+                    self.advance();
+                    self.advance();
+                    Token::EqualsEquals
+                } else {
+                    self.advance();
+                    Token::Equals
+                }
+            }
+            '!' => {
+                if self.peek() == '=' {
+                    self.advance();
+                    self.advance();
+                    Token::BangEquals
+                } else {
+                    self.advance();
+                    Token::Bang
+                }
+            }
+            '0'..='9' => self.read_integer(),
+            '"' => {
+                self.advance();
+                let mut s = String::new();
+                while self.current() != '"' && self.current() != '\0' {
+                    s.push(self.current());
+                    self.advance();
+                }
+                if self.current() == '"' { self.advance();}
+                Token::StringLiteral(s)
+            }
+            'a'..='z' | 'A'..='Z' | '_' => self.read_identifier(),
+            _ => panic!("Unexpected character: {}", ch),
+        }
+    }
+    fn read_integer(&mut self) -> Token {
+        let mut number = String::new();
+        while self.current().is_ascii_digit() {
+            number.push(self.current());
+            self.advance();
+        }
+        let value: i64 = number.parse().unwrap();
+        Token::Integer(value)
+    }
+    fn read_identifier(&mut self) -> Token {
+        let mut ident = String::new();
+         while self.current().is_alphanumeric() || self.current() == '_' {
+            ident.push(self.current());
+            self.advance();
+         }
+        match ident.as_str() {
+            "let" => Token::Let,
+            "fn" => Token::Fn,
+            "return" => Token::Return,
+            "if" => Token::If,
+            "else" => Token::Else,
+            "i32" => Token::I32,
+            "i64" => Token::I64,
+            "bool" => Token::Bool,
+            "void" => Token::Void,
+            "true" => Token::True,
+            "false" => Token::False,
+            "while" => Token::While,
+            "and" => Token::And,
+            "or" => Token::Or,
+            _ => Token::Identifier(ident),
+        }
+    }
+}

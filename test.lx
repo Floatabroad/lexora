@@ -1,0 +1,5 @@
+fn main() -> i32  {
+   let buyuk: i64 = 9000000000;
+   print(buyuk);
+    return 0;
+}
