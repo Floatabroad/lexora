@@ -169,5 +169,5 @@ impl TypeChecker {
 
 fn types_match(a: &Type, b: &Type) -> bool {
     matches!((a, b), (Type::I32, Type::I32) | (Type::Bool, Type::Bool)
-    | (Type::I64, Type::I64) | (Type::I64, Type::I32))
+    | (Type::I64, Type::I64))
 }

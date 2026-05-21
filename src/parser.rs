@@ -191,20 +191,70 @@ impl Parser {
         }
     }
     fn parse_expr(&mut self) -> Expr {
-        let mut left = self.parse_primary();
-
+        let mut left = self.parse_comparison();
         loop {
             let op = match self.current {
-                Token::Plus         => BinaryOperator::Add,
-                Token::Minus        => BinaryOperator::Sub,
-                Token::Star         => BinaryOperator::Mul,
-                Token::Slash        => BinaryOperator::Div,
-                Token::EqualsEquals => BinaryOperator::Eq,
-                Token::BangEquals   => BinaryOperator::NotEq,
-                Token::Less         => BinaryOperator::Less,
-                Token::Greater      => BinaryOperator::Greater,
-                Token::And          => BinaryOperator::And,
-                Token::Or           => BinaryOperator::Or,
+                Token::And => BinaryOperator::And,
+                Token::Or => BinaryOperator::Or,
+                _ => break,
+
+            };
+            self.advance();
+            let right = self.parse_comparison();
+            left = Expr::BinaryOp {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            };
+        }
+        left
+    }
+    fn parse_comparison(&mut self) -> Expr {
+        let mut left = self.parse_additive();
+        loop {
+            let op = match self.current{
+                Token::EqualsEquals  => BinaryOperator::Eq,
+                Token::BangEquals    => BinaryOperator::NotEq,
+                Token::Less          => BinaryOperator::Less,
+                Token::Greater       => BinaryOperator::Greater,
+                _ => break,
+            };
+            self.advance();
+            let right = self.parse_additive();
+            left = Expr::BinaryOp {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            };
+        }
+        left
+    }
+
+    fn parse_additive(&mut self) -> Expr {
+        let mut left = self.parse_multiplicative();
+        loop {
+            let op = match self.current {
+                Token::Plus => BinaryOperator::Add,
+                Token::Minus => BinaryOperator::Sub,
+                _ => break,
+            };
+            self.advance();
+            let right = self.parse_multiplicative();
+            left = Expr::BinaryOp {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            };
+        }
+        left
+    }
+
+    fn parse_multiplicative(&mut self) -> Expr {
+        let mut left = self.parse_primary();
+        loop {
+            let op = match self.current {
+                Token::Star => BinaryOperator::Mul,
+                Token::Slash => BinaryOperator::Div,
                 _ => break,
             };
             self.advance();
@@ -216,6 +266,7 @@ impl Parser {
             };
         }
         left
+
     }
     fn parse_primary(&mut self) -> Expr {
         match self.current.clone() {
@@ -240,6 +291,12 @@ impl Parser {
             Token::True => { self.advance(); Expr::Bool(true) }
             Token::False => { self.advance(); Expr::Bool(false) }
             Token::StringLiteral(s) => { self.advance(); Expr::StringLiteral(s) }
+            Token::LeftParen => {
+                self.advance();
+                let expr = self.parse_expr();
+                self.expect(Token::RightParen);
+                expr
+            }
             _ => panic!("Hata [satır {}]: Beklenmedik token: {:?}", self.current_line, self.current),
         }
     }

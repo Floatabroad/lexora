@@ -9,6 +9,7 @@ pub struct CodeGen {
     next_str: usize,
     locals: HashMap<String, Type>,
     fn_types: HashMap<String, Type>,
+    current_ret_type: Type,
 }
 
 impl CodeGen {
@@ -21,6 +22,7 @@ impl CodeGen {
             next_str: 0,
             locals: HashMap::new(),
             fn_types: HashMap::new(),
+            current_ret_type: Type::I32,
         }
     }
     fn fresh_temp(&mut self) -> String {
@@ -80,6 +82,8 @@ impl CodeGen {
         self.next_temp = 0;
         self.next_block = 0;
         self.locals.clear();
+        self.current_ret_type = func.return_type.clone();
+
 
         let params: Vec<String> = func.params.iter()
             .map(|(name, ty)| format!("{} %{}", Self::ty_to_llvm(ty), name))
@@ -93,6 +97,13 @@ impl CodeGen {
         ).unwrap();
 
         writeln!(self.output, "entry:").unwrap();
+        for (name, ty) in &func.params {
+            let llvm_ty = Self::ty_to_llvm(ty);
+            writeln!(self.output, "  %{}.addr = alloca {}", name, llvm_ty).unwrap();
+            writeln!(self.output, "  store {} %{}, ptr %{}.addr", llvm_ty, name,
+                     name).unwrap();
+            self.locals.insert(name.clone(), ty.clone());
+        }
 
         for stmt in &func.body {
             self.gen_statement(stmt);
@@ -107,7 +118,8 @@ impl CodeGen {
         match stmt {
             Stmt::Return(expr, _) => {
                 let val = self.gen_expr(expr);
-                writeln!(self.output, "  ret i32 {}", val).unwrap();
+                let ret_ty = Self::ty_to_llvm(&self.current_ret_type);
+                writeln!(self.output, "  ret {} {}",ret_ty, val).unwrap();
             }
 
             Stmt::Expr(expr, _) => {
