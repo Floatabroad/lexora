@@ -105,22 +105,22 @@ impl CodeGen {
 
     fn gen_statement(&mut self, stmt: &Stmt) {
         match stmt {
-            Stmt::Return(expr) => {
+            Stmt::Return(expr, _) => {
                 let val = self.gen_expr(expr);
                 writeln!(self.output, "  ret i32 {}", val).unwrap();
             }
 
-            Stmt::Expr(expr) => {
+            Stmt::Expr(expr, _) => {
                 self.gen_expr(expr);
             }
-            Stmt::Let {name , ty, value } => {
+            Stmt::Let {name , ty, value, .. } => {
                 let val = self.gen_expr(value);
                 let llvm_ty = Self::ty_to_llvm(ty);
                 writeln!(self.output, "  %{}.addr = alloca {}", name, llvm_ty).unwrap();
                 writeln!(self.output, "  store {} {}, ptr %{}.addr", llvm_ty, val, name).unwrap();
                 self.locals.insert(name.clone(), ty.clone());
             }
-            Stmt::Assign {name, value} => {
+            Stmt::Assign {name, value, ..} => {
                 let val = self.gen_expr(value);
                 let llvm_ty = match self.locals.get(name) {
                     Some(ty) => Self::ty_to_llvm(ty),
@@ -128,7 +128,7 @@ impl CodeGen {
                 };
                 writeln!(self.output, "  store {} {}, ptr %{}.addr", llvm_ty, val, name).unwrap();
             }
-            Stmt::If { condition, then_body, else_body } => {
+            Stmt::If { condition, then_body, else_body, .. } => {
                 let cond_val = self.gen_expr(condition);
                 let id = self.next_block;
                 self.next_block += 1;
@@ -142,7 +142,7 @@ impl CodeGen {
                     writeln!(self.output, "{}:", then_label).unwrap();
                     for s in then_body { self.gen_statement(s); }
                     if !matches!(then_body.last(),
-  Some(Stmt::Return(_))) {
+  Some(Stmt::Return(_, _))) {
                         writeln!(self.output, "  br label %{}",
                                  merge_label).unwrap();
                     }
@@ -152,7 +152,7 @@ impl CodeGen {
 
                     writeln!(self.output, "{}:", else_label).unwrap();
                     for s in else_stmts { self.gen_statement(s); }
-                    if !matches!(else_stmts.last(), Some(Stmt::Return(_))) {
+                    if !matches!(else_stmts.last(), Some(Stmt::Return(_, _))) {
                         writeln!(self.output, "  br label %{}", merge_label).unwrap();
                     }
 
@@ -162,14 +162,14 @@ impl CodeGen {
 
                     writeln!(self.output, "{}:", then_label).unwrap();
                     for s in then_body { self.gen_statement(s); }
-                    if !matches!(then_body.last(), Some(Stmt::Return(_))) {
+                    if !matches!(then_body.last(), Some(Stmt::Return(_, _))) {
                         writeln!(self.output, "  br label %{}", merge_label).unwrap();
                     }
 
                     writeln!(self.output, "{}:", merge_label).unwrap();
                 }
             }
-            Stmt::While {condition, body} => {
+            Stmt::While {condition, body, ..} => {
                 let id = self.next_block;
                 self.next_block += 1;
                 let cond_label = format!("loop_cond{}", id);
@@ -183,6 +183,42 @@ impl CodeGen {
 
                 writeln!(self.output, "{}:", body_label).unwrap();
                 for s in body { self.gen_statement(s); }
+                writeln!(self.output, "  br label %{}", cond_label).unwrap();
+
+                writeln!(self.output, "{}:", end_label).unwrap();
+            }
+
+            Stmt::For {var, from, to, body, ..} => {
+                let id = self.next_block;
+                self.next_block += 1;
+                let cond_label = format!("for_cond{}", id);
+                let body_label = format!("for_body{}", id);
+                let end_label = format!("for_end{}", id);
+
+                let from_val = self.gen_expr(from);
+                writeln!(self.output, "  %{}.addr = alloca i32", var).unwrap();
+                writeln!(self.output, "  store i32 {}, ptr %{}.addr", from_val, var).unwrap();
+                self.locals.insert(var.clone(), Type::I32);
+
+                writeln!(self.output, "  br label %{}", cond_label).unwrap();
+                writeln!(self.output, "{}:", cond_label).unwrap();
+
+                let cur = self.fresh_temp();
+
+                writeln!(self.output, "  {} = load i32, ptr %{}.addr", cur, var).unwrap();
+                let to_val = self.gen_expr(to);
+                let cond = self.fresh_temp();
+                writeln!(self.output, "  {} = icmp slt i32 {}, {}", cond, cur, to_val).unwrap();
+                writeln!(self.output, "  br i1 {}, label %{}, label %{}", cond, body_label, end_label).unwrap();
+
+                writeln!(self.output, "{}:", body_label).unwrap();
+                for s in body { self.gen_statement(s); }
+
+                let inc_val = self.fresh_temp();
+                let cur2 = self.fresh_temp();
+                writeln!(self.output, "  {} = load i32, ptr %{}.addr", cur2, var).unwrap();
+                writeln!(self.output, "  {} = add i32 {}, 1", inc_val, cur2).unwrap();
+                writeln!(self.output, "  store i32 {}, ptr %{}.addr", inc_val, var).unwrap();
                 writeln!(self.output, "  br label %{}", cond_label).unwrap();
 
                 writeln!(self.output, "{}:", end_label).unwrap();

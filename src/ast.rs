@@ -35,22 +35,33 @@ pub enum Stmt {
         name: String,
         ty: Type,
         value: Expr,
+        line: usize,
     },
-    Return(Expr),
-    Expr(Expr),
+    Return(Expr, usize),
+    Expr(Expr, usize),
     If{
         condition: Expr,
         then_body: Vec<Stmt>,
         else_body: Option<Vec<Stmt>>,
+        line: usize,
     },
     Assign{
         name: String,
         value: Expr,
+        line: usize,
     },
     While{
         condition: Expr,
         body: Vec<Stmt>,
+        line: usize,
     },
+    For {
+        var: String,
+        from: Expr,
+        to: Expr,
+        body: Vec<Stmt>,
+        line: usize,
+    }
 
 }
 #[derive(Debug, Clone)]

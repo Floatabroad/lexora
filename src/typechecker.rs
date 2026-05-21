@@ -40,23 +40,23 @@ impl TypeChecker {
     }
     fn check_statement(&mut self, stmt: &Stmt, return_type: &Type) {
         match stmt {
-            Stmt::Let {name, ty, value } => {
+            Stmt::Let {name, ty, value, line } => {
                 let value_type = self.check_expr(value);
                 if !types_match(ty, &value_type) {
-                    panic!("'{:?}' has type '{:?}' but was expected to have type '{:?}'", name, ty, value_type);
+                    panic!("Hata [satır {}]: '{:?}' has type '{:?}' but was expected to have type '{:?}'",line,  name, ty, value_type);
                 }
                 self.variables.insert(name.clone(), ty.clone());
             }
-            Stmt::Return(expr) => {
+            Stmt::Return(expr, line) => {
                 let expr_type = self.check_expr(expr);
                 if !types_match(return_type, &expr_type) {
-                   panic!("yanlis donus tipi: beklenen {:?}, bulunan{:?}", return_type, expr_type);
+                   panic!("Hata [satır {}] yanlis donus tipi: beklenen {:?}, bulunan{:?}", line, return_type, expr_type);
                 }
             }
-            Stmt::If {condition, then_body, else_body} => {
+            Stmt::If {condition, then_body, else_body, line} => {
                 let cond_type = self.check_expr(condition);
                 if !types_match(&cond_type, &Type::Bool) {
-                    panic!("if kosulu bool olmali : {:?}", cond_type);
+                    panic!("[Hata satır {}]: if kosulu bool olmali : {:?}",line, cond_type);
                 }
                 for stmt in then_body {
                     self.check_statement(stmt, return_type);
@@ -67,27 +67,42 @@ impl TypeChecker {
                     }
                 }
             }
-            Stmt::While {condition, body} => {
+            Stmt::While {condition, body, line} => {
                 let cond_type = self.check_expr(condition);
                 if !types_match(&cond_type, &Type::Bool) {
-                    panic!("while kosulu bool olmali : {:?}", cond_type);
+                    panic!("[Hata satır {}]: while kosulu bool olmali : {:?}",line,  cond_type);
                 }
                 for stmt in body {
                     self.check_statement(stmt, return_type);
                 }
             }
-            Stmt::Assign{name, value} => {
+            Stmt::Assign{name, value, line} => {
                 let var_type = match self.variables.get(name) {
                     Some(t) => t.clone(),
-                    None => panic!("unknown variable '{}'", name),
+                    None => panic!("Hata [satır {}]: unknown variable '{}'", line, name),
                 };
                 let value_type = self.check_expr(value);
                 if !types_match(&var_type, &value_type){
-                    panic!("'{}' has type {:?} but was expected to have type {:?}", name, var_type, value_type);
+                    panic!("Hata [satır {}]'{}' has type {:?} but was expected to have type {:?}",line,  name, var_type, value_type);
                 }
             }
-            Stmt::Expr(expr) => {
+            Stmt::Expr(expr, _) => {
                 self.check_expr(expr);
+            }
+            Stmt::For {var, from, to , body, line } => {
+                let from_type = self.check_expr(from);
+                let to_type = self.check_expr(to);
+                if !types_match(&from_type, &Type::I32) {
+                    panic!("Hata [satır {}]: for dongusu from tipi i32 olmali : {:?}",line,  from_type);
+                }
+                if !types_match(&to_type, &Type::I32) {
+                    panic!("Hata [satır {}]: for dongusu to tipi i32 olmali : {:?}",line,  to_type);
+                }
+                self.variables.insert(var.clone(), Type::I32);
+                for stmt in body {
+                    self.check_statement(stmt, return_type);
+                }
+                self.variables.remove(var);
             }
         }
     }

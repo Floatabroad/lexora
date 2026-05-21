@@ -1,3 +1,5 @@
+use std::thread::sleep;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     //literals
@@ -14,6 +16,9 @@ pub enum Token {
     True,
     False,
     While,
+    For,
+    In,
+    DotDot, // ..
     And,
     Or,
     
@@ -52,6 +57,7 @@ pub enum Token {
 pub struct Lexer {
     input: Vec<char>,
     pos: usize,
+    pub line: usize,
 }
 
 
@@ -60,6 +66,7 @@ impl Lexer {
         Lexer{
             input: source.chars().collect(),
             pos: 0,
+            line: 1,
         }
     }
     fn current(&self) -> char {
@@ -77,6 +84,9 @@ impl Lexer {
         }
     }
     fn advance(&mut self){
+        if self.pos < self.input.len() && self.input[self.pos] == '\n' {
+            self.line += 1;
+        }
         self.pos += 1;
     }
     pub fn next_token(&mut self) -> Token {
@@ -101,6 +111,15 @@ impl Lexer {
             }
             '*' => { self.advance(); Token::Star }
             '/' => { self.advance(); Token::Slash }
+            '.' => {
+                if self.peek() == '.' {
+                    self.advance();
+                    self.advance();
+                    Token::DotDot
+                } else {
+                    panic!("Unexpected character: .");
+                }
+            }
             ';' => { self.advance(); Token::Semicolon }
             ':' => { self.advance(); Token::Colon }
             ',' => { self.advance(); Token::Comma }
@@ -161,6 +180,8 @@ impl Lexer {
             self.advance();
          }
         match ident.as_str() {
+            "for" => Token::For,
+            "in" => Token::In,
             "let" => Token::Let,
             "fn" => Token::Fn,
             "return" => Token::Return,

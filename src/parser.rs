@@ -4,15 +4,17 @@ use crate::ast::*;
 pub struct Parser {
     lexer: Lexer,
     current: Token,
+    current_line: usize,
 }
 
 impl Parser {
     pub fn new(mut lexer: Lexer) -> Self {
         let current = lexer.next_token();
-        Parser { lexer, current }
+        Parser { lexer, current, current_line: 1 }
     }
     fn advance(&mut self) -> Token {
         let prev = self.current.clone();
+        self.current_line = self.lexer.line;
         self.current = self.lexer.next_token();
         prev
     }
@@ -20,7 +22,7 @@ impl Parser {
         if self.current == expected {
             self.advance()
         }else {
-            panic!("Beklenen: {:?}, Bulunan: {:?}", expected, self.current);
+            panic!("Hata [satır {}]: Beklenen: {:?}, Bulunan: {:?}",self.current_line, expected, self.current);
         }
     }
     fn parse_type(&mut self) -> Type {
@@ -87,13 +89,13 @@ impl Parser {
                 self.expect(Token::Equals);
                 let value = self.parse_expr();
                 self.expect(Token::Semicolon);
-                Stmt::Let { name, ty, value }
+                Stmt::Let { name, ty, value, line: self.current_line }
             }
             Token::Return => {
                 self.advance();
                 let value = self.parse_expr();
                 self.expect(Token::Semicolon);
-                Stmt::Return(value)
+                Stmt::Return(value, self.current_line)
             }
             Token::If => {
                 self.advance();
@@ -120,7 +122,7 @@ impl Parser {
                 }else {
                     None
                 };
-                Stmt::If {condition, then_body, else_body}
+                Stmt::If {condition, then_body, else_body, line: self.current_line}
             }
             Token::While => {
                 self.advance();
@@ -131,7 +133,27 @@ impl Parser {
                     body.push(self.parse_statement());
                 }
                 self.expect(Token::RightBrace);
-                Stmt::While {condition, body}
+                Stmt::While {condition, body, line: self.current_line}
+            }
+            Token::For => {
+                let line = self.current_line;
+                self.advance();
+                let var = match self.advance() {
+                    Token::Identifier(n) => n,
+                    _ => panic!("Hata [satır {}]: for döngüsünde değişken ismi bekleniyor", self.current_line),
+                };
+                self.expect(Token::In);
+                let from = self.parse_primary();
+                self.expect(Token::DotDot);
+                let to = self.parse_primary();
+                self.expect(Token::LeftBrace);
+                let mut body = Vec::new();
+                while self.current != Token::RightBrace {
+                    body.push(self.parse_statement());
+                }
+                self.expect(Token::RightBrace);
+                Stmt::For {var, from, to, body, line}
+
             }
 
             Token::Identifier(_) => {
@@ -144,7 +166,7 @@ impl Parser {
                     self.advance();
                     let value  = self.parse_expr();
                     self.expect(Token::Semicolon);
-                    Stmt::Assign{name, value}
+                    Stmt::Assign{name, value, line: self.current_line}
                 }else if self.current == Token::LeftParen {
                     self.advance();
                     let mut args = Vec::new();
@@ -156,7 +178,7 @@ impl Parser {
                     }
                     self.expect(Token::RightParen);
                     self.expect(Token::Semicolon);
-                    Stmt::Expr(Expr::Call { name, args })
+                    Stmt::Expr(Expr::Call { name, args }, self.current_line)
                 }else {
                     panic!("unexpected token: {:?}", self.current);
                 }
@@ -164,7 +186,7 @@ impl Parser {
             _ => {
                 let expr = self.parse_expr();
                 self.expect(Token::Semicolon);
-                Stmt::Expr(expr)
+                Stmt::Expr(expr, self.current_line)
             }
         }
     }
@@ -218,7 +240,7 @@ impl Parser {
             Token::True => { self.advance(); Expr::Bool(true) }
             Token::False => { self.advance(); Expr::Bool(false) }
             Token::StringLiteral(s) => { self.advance(); Expr::StringLiteral(s) }
-            _ => panic!("Beklenmedik token: {:?}", self.current),
+            _ => panic!("Hata [satır {}]: Beklenmedik token: {:?}", self.current_line, self.current),
         }
     }
 }
