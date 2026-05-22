@@ -1,6 +1,6 @@
 use crate::ast::*;
 use std::collections::HashMap;
-
+//test
 pub struct TypeChecker {
     variables: HashMap<String, Type>,
     functions: HashMap<String, (Vec<Type>, Type)>,
