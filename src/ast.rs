@@ -11,8 +11,15 @@ pub enum Expr {
         name: String,
         args: Vec<Expr>,
     },
-
+    Cast {
+        expr: Box<Expr>,
+        target_type: Type,
+    },
     Bool(bool),
+    UnaryOp {
+        op : UnaryOperator,
+        operand: Box<Expr>,
+    },
     StringLiteral(String),
 }
 
@@ -28,6 +35,10 @@ pub enum BinaryOperator {
     Greater,
     And,
     Or,
+}
+#[derive(Debug, Clone)]
+pub enum UnaryOperator {
+    Not,
 }
 #[derive(Debug, Clone)]
 pub enum Stmt {
@@ -70,6 +81,7 @@ pub enum Type {
     I64,
     Bool,
     Void,
+    Str,
 }
 #[derive(Debug, Clone)]
 pub struct Function {

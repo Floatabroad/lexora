@@ -31,6 +31,7 @@ impl Parser {
             Token::I64 => { self.advance(); Type::I64 }
             Token::Bool => { self.advance(); Type::Bool }
             Token::Void => { self.advance(); Type::Void }
+            Token::Str => { self.advance(); Type::Str }
             _ => panic!("Beklenen tip, bulunan: {:?}", self.current),
         }
     }
@@ -250,7 +251,7 @@ impl Parser {
     }
 
     fn parse_multiplicative(&mut self) -> Expr {
-        let mut left = self.parse_primary();
+        let mut left = self.parse_cast();
         loop {
             let op = match self.current {
                 Token::Star => BinaryOperator::Mul,
@@ -258,7 +259,7 @@ impl Parser {
                 _ => break,
             };
             self.advance();
-            let right = self.parse_primary();
+            let right = self.parse_cast();
             left = Expr::BinaryOp {
                 left: Box::new(left),
                 op,
@@ -267,6 +268,16 @@ impl Parser {
         }
         left
 
+    }
+    fn parse_cast(&mut self) -> Expr {
+        let expr = self.parse_primary();
+        if self.current == Token::As {
+            self.advance();
+            let target_type = self.parse_type();
+            Expr::Cast { expr: Box::new(expr), target_type }
+        }else {
+            expr
+        }
     }
     fn parse_primary(&mut self) -> Expr {
         match self.current.clone() {
@@ -287,6 +298,11 @@ impl Parser {
                 } else {
                     Expr::Identifier(name)
                 }
+            }
+            Token::Not => {
+                self.advance();
+                let operand = self.parse_comparison();
+                Expr::UnaryOp { op: UnaryOperator::Not, operand: Box::new(operand) }
             }
             Token::True => { self.advance(); Expr::Bool(true) }
             Token::False => { self.advance(); Expr::Bool(false) }

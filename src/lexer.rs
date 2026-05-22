@@ -21,12 +21,15 @@ pub enum Token {
     DotDot, // ..
     And,
     Or,
+    Not,
+    As,
     
     //Types
     I32,
     I64,
     Bool,
     Void,
+    Str,
 
     //Operators
     Plus,
@@ -196,6 +199,9 @@ impl Lexer {
             "while" => Token::While,
             "and" => Token::And,
             "or" => Token::Or,
+            "not" => Token::Not,
+            "str" => Token::Str,
+            "as" => Token::As,
             _ => Token::Identifier(ident),
         }
     }

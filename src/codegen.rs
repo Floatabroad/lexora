@@ -32,8 +32,16 @@ impl CodeGen {
     }
     fn expr_llvm_type(&self, expr: &Expr) -> &'static str {
         match expr {
-            Expr::Integer(_) => "i32",
+            Expr::Cast {target_type, ..} => Self::ty_to_llvm(target_type),
+            Expr::Integer(n) => {
+                if *n > i32::MAX as i64 || *n < i32::MIN as i64 {
+                    "i64"
+                }else {
+                    "i32"
+                }
+            }
             Expr::Bool(_) => "i1",
+            Expr::UnaryOp { .. } => "i1",
             Expr::Identifier(name) => {
                 if let Some(ty) = self.locals.get(name) {
                     Self::ty_to_llvm(ty)
@@ -61,6 +69,7 @@ impl CodeGen {
             Type::I64 => "i64",
             Type::Bool => "i1",
             Type::Void => "void",
+            Type::Str => "ptr",
         }
     }
     pub fn generate(&mut self, program: &Program) -> String{
@@ -241,7 +250,20 @@ impl CodeGen {
 
     fn gen_expr(&mut self, expr: &Expr) -> String {
         match expr {
+            Expr::Cast {target_type, expr} => {
+                let val = self.gen_expr(expr);
+                let result = self.fresh_temp();
+                let to_ty = Self::ty_to_llvm(target_type);
+                writeln!(self.output, "  {} = sext i32 {} to  {}",result, val, to_ty).unwrap();
+                result
+            }
             Expr::Integer(n) => n.to_string(),
+            Expr::UnaryOp {op: UnaryOperator::Not, operand} =>{
+                let val = self.gen_expr(operand);
+                let result = self.fresh_temp();
+                writeln!(self.output, "  {} = xor i1 {}, 1", result, val).unwrap();
+                result
+            }
             Expr::BinaryOp  { left, op, right } => {
                 let l = self.gen_expr(left);
                 let r = self.gen_expr(right);
@@ -258,6 +280,7 @@ impl CodeGen {
                     BinaryOperator::Greater => "icmp sgt",
                     BinaryOperator::And     => "and",
                     BinaryOperator::Or      => "or",
+
                 };
                // writeln!(self.output, "  {} = {} i32 {}, {}", result, instr, l, r).unwrap();
                 let ty = match op {
@@ -296,7 +319,10 @@ impl CodeGen {
                                 let val = self.gen_expr(arg);
                                 if ty == "i64" {
                                     writeln!(self.output, "  {} = call i32 (ptr, ...) @printf(ptr @.fmt64, i64 {})", result, val).unwrap();
-                                }else {
+                                }else if ty == "ptr" {
+                                    writeln!(self.output, "  {} = call i32 (ptr, ...) @printf(ptr {})", result, val).unwrap();
+                                }
+                                else {
                                     writeln!(self.output, "  {} = call i32 (ptr, ...) @printf(ptr @.fmt, i32 {})", result, val).unwrap();
                                 }
                             }
@@ -304,14 +330,15 @@ impl CodeGen {
                     }
                     return "0".to_string();
                 }
-                let arg_values: Vec<String> = args.iter()
-                    .map(|a| self.gen_expr(a))
-                    .collect();
+               let arg_str = args.iter()
+                   .map(|a| {
+                       let ty = self.expr_llvm_type(a);
+                       let val = self.gen_expr(a);
+                       format!("{} {}", ty, val)
 
-                let arg_str = arg_values.iter()
-                    .map(|v| format!("i32 {}", v))
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                   })
+                   .collect::<Vec<_>>()
+                   .join(", ");
 
                 let ret_ty = self.fn_types.get(name)
                     .map(|t| Self::ty_to_llvm(t))
@@ -326,7 +353,13 @@ impl CodeGen {
                     result
                 }
             }
-            Expr::StringLiteral(_) => panic!("StringLiteral sadece print icinde kullanılabilir"),
+            Expr::StringLiteral(s) => {
+                let id = self.next_str;
+                self.next_str += 1;
+                let len = s.len() + 2;
+                writeln!(self.globals, "@str{} = private constant [{} x i8] c\"{}\\0A\\00\"", id, len, s).unwrap();
+                format!("@str{}", id)
+            }
         }
     }
 }

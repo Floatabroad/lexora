@@ -109,9 +109,29 @@ impl TypeChecker {
     fn check_expr(&mut self, expr: &Expr) -> Type {
         match expr {
             Expr::Bool(_) => Type::Bool,
-            Expr::StringLiteral(_) => Type::I32,
+            Expr::StringLiteral(_) => Type::Str,
+            Expr::UnaryOp { op: UnaryOperator::Not, operand } => {
+                let ty = self.check_expr(operand);
+                if !matches!(ty, Type::Bool) {
+                    panic!("not operatoru sadece bool ile kullanılabilir");
+                }
+                Type::Bool
+            }
+            Expr::Cast { expr, target_type } => {
+                let from = self.check_expr(expr);
+                match (&from, target_type) {
+                    (Type::I32, Type::I64) => Type::I64,
+                    _ => panic!("geçersiz cast:  {:?} as {:?}", from, target_type),
+                }
+            }
 
-            Expr::Integer(_) => Type::I32,
+            Expr::Integer(n) => {
+                if *n > i32::MAX as i64 || *n < i32::MIN as i64 {
+                    Type::I64
+                }else {
+                    Type::I32
+                }
+            }
             Expr::Identifier(name) => {
                 match self.variables.get(name){
                     Some(ty) => ty.clone(),
@@ -169,5 +189,5 @@ impl TypeChecker {
 
 fn types_match(a: &Type, b: &Type) -> bool {
     matches!((a, b), (Type::I32, Type::I32) | (Type::Bool, Type::Bool)
-    | (Type::I64, Type::I64))
+    | (Type::I64, Type::I64) | (Type::Str, Type::Str))
 }
