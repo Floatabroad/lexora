@@ -24,7 +24,18 @@ fn main() {
     let result = std::panic::catch_unwind(|| {
         let lexer = Lexer::new(&source);
         let mut parser = Parser::new(lexer);
-        let program = parser.parse_program();
+        let mut program = parser.parse_program();
+
+        for import_path in &program.imports.clone() {
+            let import_source = fs::read_to_string(import_path)
+                .unwrap_or_else(|_| panic!("Import dosyasi okunamadi: {}", import_path));
+            let import_lexer = Lexer::new(&import_source);
+            let mut import_parser = Parser::new(import_lexer);
+            let import_program = import_parser.parse_program();
+            for func in import_program.functions {
+                program.functions.push(func);
+            }
+        }
 
         let mut checker = TypeChecker::new();
         checker.check_program(&program);

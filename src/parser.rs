@@ -37,10 +37,21 @@ impl Parser {
     }
     pub fn parse_program(&mut self) -> Program {
         let mut functions = Vec::new();
+        let mut imports = Vec::new();
         while self.current != Token::Eof {
-            functions.push(self.parse_function());
+            if self.current == Token::Import {
+                self.advance();
+                let path = match self.advance() {
+                    Token::StringLiteral(s) => s,
+                    _ => panic!("import sonrası dosya yolu bekleniyor"),
+                };
+                self.expect(Token::Semicolon);
+                imports.push(path);
+            } else {
+                functions.push(self.parse_function());
+            }
         }
-        Program { functions }
+        Program { functions, imports }
     }
     fn parse_function(&mut self) -> Function {
         self.expect(Token::Fn);
@@ -218,6 +229,8 @@ impl Parser {
                 Token::BangEquals    => BinaryOperator::NotEq,
                 Token::Less          => BinaryOperator::Less,
                 Token::Greater       => BinaryOperator::Greater,
+                Token::LessEq        => BinaryOperator::LessEq,
+                Token::GreaterEq     => BinaryOperator::GreaterEq,
                 _ => break,
             };
             self.advance();
@@ -303,6 +316,11 @@ impl Parser {
                 self.advance();
                 let operand = self.parse_comparison();
                 Expr::UnaryOp { op: UnaryOperator::Not, operand: Box::new(operand) }
+            }
+            Token::Minus => {
+                self.advance();
+                let operand = self.parse_primary();
+                Expr::UnaryOp { op: UnaryOperator::Neg, operand: Box::new(operand) }
             }
             Token::True => { self.advance(); Expr::Bool(true) }
             Token::False => { self.advance(); Expr::Bool(false) }

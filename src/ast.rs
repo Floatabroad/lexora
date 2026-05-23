@@ -35,10 +35,13 @@ pub enum BinaryOperator {
     Greater,
     And,
     Or,
+    LessEq,
+    GreaterEq,
 }
 #[derive(Debug, Clone)]
 pub enum UnaryOperator {
     Not,
+    Neg,
 }
 #[derive(Debug, Clone)]
 pub enum Stmt {
@@ -93,4 +96,5 @@ pub struct Function {
 #[derive(Debug, Clone)]
 pub struct Program {
     pub functions: Vec<Function>,
+    pub imports: Vec<String>,
 }

@@ -23,7 +23,8 @@ pub enum Token {
     Or,
     Not,
     As,
-    
+    Import,
+
     //Types
     I32,
     I64,
@@ -42,6 +43,8 @@ pub enum Token {
     BangEquals,
     Less,
     Greater,
+    LessEq,
+    GreaterEq,
 
     //Delimiter,
     Semicolon,
@@ -130,8 +133,24 @@ impl Lexer {
             ')' => { self.advance(); Token::RightParen}
             '{' => { self.advance(); Token::LeftBrace}
             '}' => { self.advance(); Token::RightBrace}
-            '<' => { self.advance(); Token::Less}
-            '>' => { self.advance(); Token::Greater}
+            '<' => {
+                if self.peek() == '=' {
+                    self.advance(); self.advance();
+                    Token::LessEq
+                } else {
+                    self.advance();
+                    Token::Less
+                }
+            }
+            '>' => {
+                if self.peek() == '=' {
+                    self.advance(); self.advance();
+                    Token::GreaterEq
+                } else {
+                    self.advance();
+                    Token::Greater
+                }
+            }
             '=' => {
                 if self.peek() == '=' {
                     self.advance();
@@ -202,6 +221,7 @@ impl Lexer {
             "not" => Token::Not,
             "str" => Token::Str,
             "as" => Token::As,
+            "import" => Token::Import,
             _ => Token::Identifier(ident),
         }
     }

@@ -52,6 +52,7 @@ impl CodeGen {
             Expr::BinaryOp {op, ..} => match op {
                 BinaryOperator::Eq | BinaryOperator::NotEq |
                 BinaryOperator::Less | BinaryOperator::Greater |
+                BinaryOperator::LessEq | BinaryOperator::GreaterEq |
                 BinaryOperator::And | BinaryOperator::Or => "i1",
                 _ => "i32",
             },
@@ -264,6 +265,13 @@ impl CodeGen {
                 writeln!(self.output, "  {} = xor i1 {}, 1", result, val).unwrap();
                 result
             }
+            Expr::UnaryOp {op: UnaryOperator::Neg, operand} => {
+                let val = self.gen_expr(operand);
+                let result = self.fresh_temp();
+                let ty = self.expr_llvm_type(operand);
+                writeln!(self.output, "  {} = sub {} 0, {}", result, ty, val).unwrap();
+                result
+            }
             Expr::BinaryOp  { left, op, right } => {
                 let l = self.gen_expr(left);
                 let r = self.gen_expr(right);
@@ -277,7 +285,9 @@ impl CodeGen {
                     BinaryOperator::Eq      => "icmp eq",
                     BinaryOperator::NotEq   => "icmp ne",
                     BinaryOperator::Less    => "icmp slt",
-                    BinaryOperator::Greater => "icmp sgt",
+                    BinaryOperator::Greater   => "icmp sgt",
+                    BinaryOperator::LessEq    => "icmp sle",
+                    BinaryOperator::GreaterEq => "icmp sge",
                     BinaryOperator::And     => "and",
                     BinaryOperator::Or      => "or",
 

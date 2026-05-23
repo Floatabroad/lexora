@@ -117,6 +117,13 @@ impl TypeChecker {
                 }
                 Type::Bool
             }
+            Expr::UnaryOp { op: UnaryOperator::Neg, operand } => {
+                let ty = self.check_expr(operand);
+                if !matches!(ty, Type::I32 | Type::I64) {
+                    panic!("negatif operatoru sadece i32 veya i64 ile kullanilabilir");
+                }
+                ty
+            }
             Expr::Cast { expr, target_type } => {
                 let from = self.check_expr(expr);
                 match (&from, target_type) {
@@ -151,6 +158,8 @@ impl TypeChecker {
                     | BinaryOperator::NotEq
                     | BinaryOperator::Less
                     | BinaryOperator::Greater
+                    | BinaryOperator::LessEq
+                    | BinaryOperator::GreaterEq
                     | BinaryOperator::And
                     | BinaryOperator::Or  => Type::Bool,
                     _ => left_type,
