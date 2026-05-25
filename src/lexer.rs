@@ -24,6 +24,7 @@ pub enum Token {
     Not,
     As,
     Import,
+    Struct,
 
     //Types
     I32,
@@ -57,6 +58,7 @@ pub enum Token {
     RightBrace,
     LeftBracket,
     RightBracket,
+    Dot,
 
     //Special
     Eof,
@@ -125,7 +127,8 @@ impl Lexer {
                     self.advance();
                     Token::DotDot
                 } else {
-                    panic!("Unexpected character: .");
+                    self.advance();
+                    Token::Dot
                 }
             }
             ';' => { self.advance(); Token::Semicolon }
@@ -226,6 +229,7 @@ impl Lexer {
             "str" => Token::Str,
             "as" => Token::As,
             "import" => Token::Import,
+            "struct" => Token::Struct,
             _ => Token::Identifier(ident),
         }
     }

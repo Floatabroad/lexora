@@ -10,6 +10,7 @@ pub struct CodeGen {
     locals: HashMap<String, Type>,
     fn_types: HashMap<String, Type>,
     current_ret_type: Type,
+    structs: HashMap<String, Vec<(String, Type)>>,
 }
 
 impl CodeGen {
@@ -23,6 +24,7 @@ impl CodeGen {
             locals: HashMap::new(),
             fn_types: HashMap::new(),
             current_ret_type: Type::I32,
+            structs: HashMap::new(),
         }
     }
     fn fresh_temp(&mut self) -> String {
@@ -64,6 +66,22 @@ impl CodeGen {
                     .map(|t| Self::ty_to_llvm(t))
                     .unwrap_or("i32")
             }
+            Expr::StructLiteral {name, .. } => {
+                "ptr"
+            }
+            Expr::FieldAccess {object, field} => {
+                if let Expr::Identifier(name) = object.as_ref() {
+                    if let Some(Type::Struct(struct_name)) = self.locals.get(name) {
+                        let struct_name = struct_name.clone();
+                        if let Some(fields) = self.structs.get(&struct_name) {
+                            if let Some((_, ty)) = fields.iter().find(|(n, _)| n == field) {
+                                return Self::ty_to_llvm(ty);
+                            }
+                        }
+                    }
+                }
+                "i32"
+            }
             Expr::ArrayLiteral(_) => "ptr",
             Expr::Index {array, .. } => {
                 if let Expr::Identifier(name) = array.as_ref(){
@@ -84,16 +102,25 @@ impl CodeGen {
             Type::Void => "void",
             Type::Str => "ptr",
             Type::Array(_, _) => panic!("Array için ty_to_llvm_string kullan"),
+            Type::Struct(_) => panic!("Struct için ty_to_llvm_string kullan"),
         }
     }
     fn ty_to_llvm_string(t: &Type) -> String {
         match t {
             Type::Array(elem, size) => format!("[{} x {}]", size, Self::ty_to_llvm(elem)),
+            Type::Struct(name) => format!("%{}", name),
             _ => Self::ty_to_llvm(t).to_string(),
         }
     }
     pub fn generate(&mut self, program: &Program) -> String{
         let mut result = String::new();
+        for s in &program.structs {
+            self.structs.insert(s.name.clone(), s.fields.clone());
+            let field_types: Vec<String> = s.fields.iter()
+                .map(|(_, ty)| Self::ty_to_llvm(ty).to_string())
+                .collect();
+            writeln!(result, "%{} = type {{ {} }}", s.name, field_types.join(", ")).unwrap();
+        }
         writeln!(result, "@.fmt = private constant [4 x i8] c\"%d\\0A\\00\"").unwrap();
         writeln!(result, "@.fmt64 = private constant [6 x i8] c\"%lld\\0A\\00\"").unwrap();
         writeln!(result, "declare i32 @printf(ptr, ...)\n").unwrap();
@@ -170,6 +197,24 @@ impl CodeGen {
                        }
                        self.locals.insert(name.clone(), ty.clone());
                    }
+                   Type::Struct(struct_name) => {
+                       let struct_llvm_ty = format!("%{}", struct_name);
+                       writeln!(self.output, "  %{}.addr = alloca {}", name, struct_llvm_ty).unwrap();
+                       if let Expr::StructLiteral {fields, .. } = value {
+                           let field_defs = self.structs.get(struct_name).unwrap().clone();
+                           for (i, (field_name, _ )) in field_defs.iter().enumerate() {
+                               let field_val = fields.iter().find(|(n, _)| n == field_name)
+                                   .map(|(_, v)| self.gen_expr(v))
+                                   .unwrap();
+                               let field_ty = Self::ty_to_llvm(&field_defs[i].1);
+                               let ptr = self.fresh_temp();
+                               writeln!(self.output, "  {} = getelementptr {}, ptr %{}.addr, i32 0, i32 {}", ptr, struct_llvm_ty, name, i).unwrap();
+                               writeln!(self.output, "  store {} {}, ptr {}", field_ty, field_val, ptr).unwrap();
+                           }
+                       }
+                       self.locals.insert(name.clone(), ty.clone());
+                   }
+
                    _ => {
                        let val = self.gen_expr(value);
                        let llvm_ty = Self::ty_to_llvm(ty);
@@ -294,6 +339,19 @@ impl CodeGen {
                     writeln!(self.output, "  store {} {}, ptr {}", elem_llvm_ty, val, ptr).unwrap();
                 }
             }
+            Stmt::AssignField {object, field, value, ..} => {
+                let obj_ty = self.locals.get(object).unwrap().clone();
+                if let Type::Struct(ref struct_name) = obj_ty {
+                    let struct_llvm_ty = format!("%{}", struct_name);
+                    let field_defs = self.structs.get(struct_name).unwrap().clone();
+                    let i = field_defs.iter().position(|(n, _)| n == field).unwrap();
+                    let field_ty = Self::ty_to_llvm(&field_defs[i].1);
+                    let val = self.gen_expr(value);
+                    let ptr = self.fresh_temp();
+                    writeln!(self.output, "  {} = getelementptr {}, ptr %{}.addr, i32 0, i32 {}", ptr, struct_llvm_ty, object, i).unwrap();
+                    writeln!(self.output, "  store {} {}, ptr {}", field_ty, val, ptr).unwrap();
+                }
+            }
 
         }
     }
@@ -412,6 +470,25 @@ impl CodeGen {
                     result
                 }
             }
+            Expr::FieldAccess {object, field} => {
+                if let Expr::Identifier(name) = object.as_ref() {
+                    let obj_ty = self.locals.get(name).unwrap().clone();
+                    if let Type::Struct(ref struct_name) = obj_ty {
+                        let struct_llvm_ty = format!("%{}", struct_name);
+                        let field_defs = self.structs.get(struct_name).unwrap().clone();
+                        let i = field_defs.iter().position(|(n, _)| n == field).unwrap();
+                        let field_ty = Self::ty_to_llvm(&field_defs[i].1);
+                        let ptr = self.fresh_temp();
+                        let result = self.fresh_temp();
+                        writeln!(self.output, "  {} = getelementptr {}, ptr %{}.addr, i32 0, i32 {}", ptr, struct_llvm_ty, name, i).unwrap();
+                        writeln!(self.output, "  {} = load {}, ptr {}", result, field_ty, ptr).unwrap();
+                        return result;
+                    }
+                }
+                panic!("FieldAcces sadece named structlarda destekleniyor");
+            }
+            Expr::StructLiteral{ .. } => panic! ("StructLiteral doğrudan gen_expr'da kullanılamaz."),
+
             Expr::Index { array, index } => {
                 if let Expr::Identifier(name) = array.as_ref() {
                     let arr_ty = self.locals.get(name).unwrap().clone();

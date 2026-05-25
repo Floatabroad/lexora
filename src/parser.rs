@@ -43,14 +43,18 @@ impl Parser {
                 self.expect(Token::RightBracket);
                 Type::Array(Box::new(elem_ty), size)
             }
+            Token::Identifier(name) => {self.advance(); Type::Struct(name)}
             _ => panic!("Beklenen tip, bulunan: {:?}", self.current),
         }
     }
     pub fn parse_program(&mut self) -> Program {
+        let mut structs = Vec::new();
         let mut functions = Vec::new();
         let mut imports = Vec::new();
         while self.current != Token::Eof {
-            if self.current == Token::Import {
+            if self.current == Token::Struct {
+                structs.push(self.parse_struct());
+            } else if self.current == Token::Import {
                 self.advance();
                 let path = match self.advance() {
                     Token::StringLiteral(s) => s,
@@ -62,7 +66,7 @@ impl Parser {
                 functions.push(self.parse_function());
             }
         }
-        Program { functions, imports }
+        Program { functions, imports, structs}
     }
     fn parse_function(&mut self) -> Function {
         self.expect(Token::Fn);
@@ -97,6 +101,29 @@ impl Parser {
         }
         self.expect(Token::RightBrace);
         Function { name, params, return_type, body }
+    }
+    fn parse_struct(&mut self) -> StructDef {
+        self.expect(Token::Struct);
+        let name = match self.advance() {
+            Token::Identifier(n) => n,
+            _ => panic!("Struct ismi bekleniyor"),
+        };
+        self.expect(Token::LeftBrace);
+        let mut fields = Vec::new();
+        while self.current != Token::RightBrace {
+            let field_name = match self.advance() {
+                Token::Identifier(n) => n,
+                _ => panic!("Alan ismi bekleniyor"),
+            };
+            self.expect(Token::Colon);
+            let field_type = self.parse_type();
+            fields.push((field_name, field_type));
+            if self.current == Token::Comma {
+                self.advance();
+            }
+        }
+        self.expect(Token::RightBrace);
+        StructDef { name, fields }
     }
 
     fn parse_statement(&mut self) -> Stmt {
@@ -192,7 +219,17 @@ impl Parser {
                     let value = self.parse_expr();
                     self.expect(Token::Semicolon);
                     Stmt::AssignIndex{name, index, value, line: self.current_line}
-                }else if self.current == Token::Equals {
+                }else if self.current == Token::Dot {
+                    self.advance();
+                    let field = match self.advance() {
+                        Token::Identifier(n) => n,
+                        _ => panic!("Alan ismi bekleniyor"),
+                    };
+                    self.expect(Token::Equals);
+                    let value = self.parse_expr();
+                    self.expect(Token::Semicolon);
+                    Stmt::AssignField{object: name, field, value, line: self.current_line}
+                } else if self.current == Token::Equals {
                     self.advance();
                     let value  = self.parse_expr();
                     self.expect(Token::Semicolon);
@@ -331,6 +368,30 @@ impl Parser {
                     let index = self.parse_expr();
                     self.expect(Token::RightBracket);
                     Expr::Index { array: Box::new(Expr::Identifier(name)), index: Box::new(index) }
+                } else if self.current == Token::LeftBrace {
+                    self.advance();
+                    let mut fields = Vec::new();
+                    while self.current != Token::RightBrace{
+                        let field_name = match self.advance() {
+                            Token::Identifier(n) => n,
+                            _ => panic!("Alan ismi bekleniyor"),
+                        };
+                        self.expect(Token::Colon);
+                        let value = self.parse_expr();
+                        fields.push((field_name, value));
+                        if self.current == Token::Comma {
+                            self.advance();
+                        }
+                    }
+                    self.expect(Token::RightBrace);
+                    Expr::StructLiteral { name, fields }
+                }else if self.current == Token::Dot {
+                    self.advance();
+                    let field = match self.advance() {
+                        Token::Identifier(n) => n,
+                        _ => panic!("Alan ismi bekleniyor"),
+                    };
+                    Expr::FieldAccess { object: Box::new(Expr::Identifier(name)), field }
                 }
                 else {
                     Expr::Identifier(name)

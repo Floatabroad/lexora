@@ -25,7 +25,16 @@ pub enum Expr {
     Index {
         array: Box<Expr>,
         index: Box<Expr>,
-    }
+    },
+    StructLiteral {
+        name: String,
+        fields: Vec<(String, Expr)>,
+    },
+    FieldAccess {
+        object: Box<Expr>,
+        field: String,
+    },
+
 }
 
 #[derive(Debug, Clone)]
@@ -87,6 +96,12 @@ pub enum Stmt {
         value: Expr,
         line: usize,
     },
+    AssignField {
+        object: String,
+        field: String,
+        value: Expr,
+        line: usize,
+    },
 }
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -96,6 +111,7 @@ pub enum Type {
     Void,
     Str,
     Array(Box<Type>, usize),
+    Struct(String),
 }
 #[derive(Debug, Clone)]
 pub struct Function {
@@ -108,4 +124,11 @@ pub struct Function {
 pub struct Program {
     pub functions: Vec<Function>,
     pub imports: Vec<String>,
+    pub structs: Vec<StructDef>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructDef {
+    pub name: String,
+    pub fields: Vec<(String, Type)>,
 }

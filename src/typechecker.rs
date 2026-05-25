@@ -4,6 +4,7 @@ use std::collections::HashMap;
 pub struct TypeChecker {
     variables: HashMap<String, Type>,
     functions: HashMap<String, (Vec<Type>, Type)>,
+    structs: HashMap<String, Vec<(String, Type)>>,
 }
 
 impl TypeChecker {
@@ -11,10 +12,14 @@ impl TypeChecker {
         TypeChecker {
             variables: HashMap::new(),
             functions: HashMap::new(),
+            structs: HashMap::new(),
         }
     }
 
     pub fn check_program(&mut self, program: &Program) {
+        for s in &program.structs {
+            self.structs.insert(s.name.clone(), s.fields.clone());
+        }
         for func in &program.functions {
             self.functions.insert(
                 func.name.clone(),
@@ -122,6 +127,28 @@ impl TypeChecker {
                     panic!("Hata [satr {}]: yanlis tip", line);
                 }
             }
+            Stmt::AssignField {object, field, value, line } => {
+                let obj_type = match self.variables.get(object) {
+                    Some(t) => t.clone(),
+                    None => panic!("Hata [satir {}]: unknown variable '{}'", line, object),
+                };
+                let struct_name = match &obj_type {
+                    Type::Struct(n) => n.clone(),
+                    _ => panic! ("Hata [satir {}]: '{}' bir struct degil", line, object),
+                };
+                let fields = match self.structs.get(&struct_name) {
+                    Some(f) => f.clone(),
+                    None => panic!("Hata [satir {}]: unknown struct: '{}'", line, struct_name),
+                };
+                let field_type = match fields.iter().find(|(n, _)| n == field) {
+                    Some((_, t)) => t.clone(),
+                    None => panic!("Hata [satir {}]: '{}' struct'inda '{}' alani yok", line,struct_name, field),
+                };
+                let val_type = self.check_expr(value);
+                if !types_match(&val_type, &field_type) {
+                    panic!("Hata [satir {}]: tip uyusmazligi", line);
+                }
+            }
         }
     }
     fn check_expr(&mut self, expr: &Expr) -> Type {
@@ -207,6 +234,38 @@ impl TypeChecker {
                     _ => panic!("Index sadece arraylere uygulanabilir"),
                 }
             }
+            Expr::StructLiteral {name, fields} => {
+                let struct_fields = match self.structs.get(name) {
+                    Some(f) => f.clone(),
+                    None => panic!("Tanimsiz struct: '{}'", name),
+                };
+                for (field_name, value) in fields {
+                    let expected = match struct_fields.iter().find(|(n, _)| n == field_name) {
+                        Some((_, t)) => t.clone(),
+                        None => panic!("Structda '{}' alani yok", field_name),
+                    };
+                    let actual = self.check_expr(value);
+                    if !types_match(&actual, &expected) {
+                        panic!("Structda '{}' alani tipi uyusmuyor: beklenen {:?}, bulunan {:?}", field_name, expected, actual);
+                    }
+                }
+                Type::Struct(name.clone())
+            }
+            Expr::FieldAccess {object, field} => {
+                let obj_type = self.check_expr(object);
+                let struct_name = match &obj_type {
+                    Type::Struct(n) => n.clone(),
+                    _ => panic!("field access sadece struct'larda kullanılabilir."),
+                };
+                let fields = match self.structs.get(&struct_name) {
+                    Some(f) => f.clone(),
+                    None => panic!("unknown struct '{}'", struct_name),
+                };
+                match fields.iter().find(|(n, _)| n == field) {
+                    Some((_, ty)) => ty.clone(),
+                    None => panic!("'{}' struct'inda '{}' alani yok",struct_name, field),
+                }
+            }
             Expr::Call {name, args } => {
                 if name == "print" {
                     for arg in args {
@@ -242,8 +301,8 @@ fn types_match(a: &Type, b: &Type) -> bool {
     match (a, b) {
         (Type::I32, Type::I32) | (Type::Bool, Type::Bool) |
         (Type::I64, Type::I64) | (Type::Str, Type::Str) => true,
-        (Type::Array(ta, sa), Type::Array(tb, sb)) => sa == sb && types_match(ta,
-                                                                              tb),
+        (Type::Array(ta, sa), Type::Array(tb, sb)) => sa == sb && types_match(ta, tb),
+        (Type::Struct(a), Type::Struct(b)) => a == b,
         _ => false,
     }
 }
