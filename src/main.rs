@@ -3,6 +3,9 @@ mod ast;
 mod parser;
 mod typechecker;
 mod codegen;
+mod span;
+mod symbol;
+mod error;
 
 //use std::os::unix::raw::off_t;
 use lexer::Lexer;

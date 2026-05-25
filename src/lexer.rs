@@ -1,236 +1,206 @@
-use std::thread::sleep;
+use crate::span::Span;
+use crate::error::LexoraError;
+
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Token {
-    //literals
+pub enum Token<'src> {
     Integer(i64),
-    Identifier(String),
-    StringLiteral(String),
+    Identifier(&'src str),
+    StringLiteral(&'src str),
 
-    //Keywords
-    Let, 
-    Fn, 
-    Return, 
-    If,
-    Else,
-    True,
-    False,
-    While,
-    For,
-    In,
-    DotDot, // ..
-    And,
-    Or,
-    Not,
-    As,
-    Import,
-    Struct,
+    Let, Fn, Return, If, Else,
+    True, False, While, For, In,
+    And, Or, Not, As, Import, Struct,
 
-    //Types
-    I32,
-    I64,
-    Bool,
-    Void,
-    Str,
+    I32, I64, Bool, Void, Str,
 
-    //Operators
-    Plus,
-    Minus,
-    Star,
-    Slash,
-    Equals,
-    EqualsEquals,
-    Bang,
-    BangEquals,
-    Less,
-    Greater,
-    LessEq,
-    GreaterEq,
+    Plus, Minus, Star, Slash,
+    Equals, EqualsEquals,
+    Bang, BangEquals,
+    Less, Greater, LessEq, GreaterEq,
 
-    //Delimiter,
-    Semicolon,
-    Colon,
-    Comma,
-    Arrow, // ->
-    LeftParen,
-    RightParen,
-    LeftBrace,
-    RightBrace,
-    LeftBracket,
-    RightBracket,
-    Dot,
+    Semicolon, Colon, Comma,
+    Arrow, Dot, DotDot,
+    LeftParen, RightParen,
+    LeftBrace, RightBrace,
+    LeftBracket, RightBracket,
 
-    //Special
     Eof,
 }
-
-pub struct Lexer {
-    input: Vec<char>,
-    pos: usize,
-    pub line: usize,
+#[derive(Debug, Clone)]
+pub struct SpannedToken<'src> {
+    pub token: Token<'src>,
+    pub span: Span,
 }
 
 
-impl Lexer {
-    pub fn new(source: &str) -> Self {
-        Lexer{
-            input: source.chars().collect(),
-            pos: 0,
-            line: 1,
+pub struct Lexer<'src> {
+    source:   &'src str,
+    pos:      usize,
+    pub line: usize
+}
+
+impl<'src> Lexer<'src> {
+    pub fn new(source: &'src str) -> Self {
+        Lexer { source, pos: 0, line: 1}
+    }
+    fn current(&self) -> u8 {
+        if self.pos < self.source.len() {
+            self.source.as_bytes()[self.pos]
+        }else {
+            0
         }
     }
-    fn current(&self) -> char {
-        if self.pos < self.input.len() {
-            self.input[self.pos]
-        } else {
-            '\0'
+    fn peek(&self) -> u8 {
+        if self.pos + 1 < self.source.len() {
+            self.source.as_bytes()[self.pos + 1]
+        }else {
+            0
         }
     }
-    fn peek(&self) -> char {
-        if self.pos + 1 < self.input.len() {
-            self.input[self.pos + 1]
-        }  else {
-            '\0'
+    fn advance(&mut self) {
+        if self.pos < self.source.len() {
+            if self.source.as_bytes()[self.pos] == b'\n' {
+                self.line += 1;
+            }
+            self.pos += 1;
         }
     }
-    fn advance(&mut self){
-        if self.pos < self.input.len() && self.input[self.pos] == '\n' {
-            self.line += 1;
-        }
-        self.pos += 1;
-    }
-    pub fn next_token(&mut self) -> Token {
-        //whitespace atla
-        while self.current().is_whitespace() {
+    fn skip_whitespace(&mut self) {
+        while self.pos < self.source.len()
+            && (self.current() == b' '
+             || self.current() == b'\t'
+             || self.current() == b'\r'
+             || self.current() == b'\n') {
             self.advance();
+        }
+    }
+    pub fn next_token(&mut self) -> Result<SpannedToken<'src>, LexoraError> {
+        self.skip_whitespace();
+        let start = self.pos as u32;
+
+        if self.pos >= self.source.len() {
+            return Ok(SpannedToken {
+                token: Token::Eof,
+                span: Span::new(start, start),
+            });
         }
         let ch = self.current();
-
-        match ch {
-            '\0' => Token::Eof,
-            '+' => { self.advance(); Token::Plus }
-            '-' => {
-                if self.peek() == '>' {
-                    self.advance();
-                    self.advance();
-                    Token::Arrow
-                } else {
-                    self.advance();
-                    Token::Minus
-                }
-            }
-            '*' => { self.advance(); Token::Star }
-            '/' => { self.advance(); Token::Slash }
-            '.' => {
-                if self.peek() == '.' {
-                    self.advance();
-                    self.advance();
-                    Token::DotDot
-                } else {
-                    self.advance();
-                    Token::Dot
-                }
-            }
-            ';' => { self.advance(); Token::Semicolon }
-            ':' => { self.advance(); Token::Colon }
-            ',' => { self.advance(); Token::Comma }
-            '(' => { self.advance(); Token::LeftParen}
-            ')' => { self.advance(); Token::RightParen}
-            '{' => { self.advance(); Token::LeftBrace}
-            '}' => { self.advance(); Token::RightBrace}
-            '[' => { self.advance(); Token::LeftBracket}
-            ']' => { self.advance(); Token::RightBracket}
-            '<' => {
-                if self.peek() == '=' {
-                    self.advance(); self.advance();
-                    Token::LessEq
-                } else {
-                    self.advance();
-                    Token::Less
-                }
-            }
-            '>' => {
-                if self.peek() == '=' {
-                    self.advance(); self.advance();
-                    Token::GreaterEq
-                } else {
-                    self.advance();
-                    Token::Greater
-                }
-            }
-            '=' => {
-                if self.peek() == '=' {
-                    self.advance();
-                    self.advance();
-                    Token::EqualsEquals
-                } else {
-                    self.advance();
-                    Token::Equals
-                }
-            }
-            '!' => {
-                if self.peek() == '=' {
-                    self.advance();
-                    self.advance();
-                    Token::BangEquals
-                } else {
-                    self.advance();
-                    Token::Bang
-                }
-            }
-            '0'..='9' => self.read_integer(),
-            '"' => {
+        let token = match ch {
+            b'+' => {self.advance(); Token::Plus}
+            b'-' => {
                 self.advance();
-                let mut s = String::new();
-                while self.current() != '"' && self.current() != '\0' {
-                    s.push(self.current());
-                    self.advance();
-                }
-                if self.current() == '"' { self.advance();}
-                Token::StringLiteral(s)
+                if self.current() == b'>' {self.advance(); Token::Arrow}
+                else {Token::Minus}
             }
-            'a'..='z' | 'A'..='Z' | '_' => self.read_identifier(),
-            _ => panic!("Unexpected character: {}", ch),
-        }
+            b'*' => {self.advance(); Token::Star}
+            b'/' => {self.advance(); Token::Slash}
+            b';' => {self.advance(); Token::Semicolon}
+            b':' => {self.advance(); Token::Colon}
+            b',' => {self.advance(); Token::Comma}
+            b'(' => {self.advance(); Token::LeftParen}
+            b')' => {self.advance(); Token::RightParen}
+            b'{' => {self.advance(); Token::LeftBrace}
+            b'}' => {self.advance(); Token::RightBrace}
+            b'[' => {self.advance(); Token::LeftBracket}
+            b']' => {self.advance(); Token::RightBracket}
+            b'.' => {
+                self.advance();
+                if self.current() == b'.' {self.advance();Token::DotDot}
+                else {Token::Dot}
+            }
+            b'<' => {
+                self.advance();
+                if self.current() == b'=' {self.advance(); Token::LessEq}
+                else {Token::Less}
+            }
+            b'>' => {
+                self.advance();
+                if self.current() == b'=' {self.advance(); Token::GreaterEq}
+                else {Token::Greater}
+            }
+            b'=' => {
+                self.advance();
+                if self.current() == b'=' {self.advance(); Token::EqualsEquals}
+                else {Token::Equals}
+            }
+            b'!' => {
+                self.advance();
+                if self.current() == b'=' {self.advance(); Token::BangEquals}
+                else {Token::Bang}
+            }
+            b'0'..=b'9' => self.read_integer(),
+            b'"'        => self.read_string(start)?,
+            b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.read_identifier(),
+            _ => {
+                return Err(LexoraError::Custom {
+                    message: format!("Beklenmedik karakter: '{}'", ch as char),
+                    span: Span::new(start, start + 1),
+                });
+            }
+        };
+        let end = self.pos as u32;
+        Ok(SpannedToken { token, span: Span::new(start, end) })
     }
-    fn read_integer(&mut self) -> Token {
-        let mut number = String::new();
-        while self.current().is_ascii_digit() {
-            number.push(self.current());
+
+    fn read_integer(&mut self) -> Token<'src> {
+        let start = self.pos;
+        while self.pos < self.source.len()
+            && self.source.as_bytes()[self.pos].is_ascii_digit() {
             self.advance();
         }
-        let value: i64 = number.parse().unwrap();
+        let s = &self.source[start..self.pos];
+        let value: i64 = s.parse().unwrap();
         Token::Integer(value)
     }
-    fn read_identifier(&mut self) -> Token {
-        let mut ident = String::new();
-         while self.current().is_alphanumeric() || self.current() == '_' {
-            ident.push(self.current());
+    fn read_string(&mut self, start: u32) -> Result<Token<'src>, LexoraError> {
+        self.advance();
+        let content_start = self.pos;
+        while self.pos < self.source.len() && self.current() != b'"' {
             self.advance();
-         }
-        match ident.as_str() {
-            "for" => Token::For,
-            "in" => Token::In,
+        }
+        if self.pos >= self.source.len() {
+            return Err(LexoraError::Custom {
+                message: "Kapatilmamis string".to_string(),
+                span: Span::new(start, self.pos as u32),
+            });
+        }
+        let content = &self.source[content_start..self.pos];
+        self.advance();
+        Ok(Token::StringLiteral(content))
+    }
+    fn read_identifier(&mut self) -> Token<'src> {
+        let start = self.pos;
+        while self.pos < self.source.len()
+            && (self.source.as_bytes()[self.pos].is_ascii_alphanumeric()
+            || self.source.as_bytes()[self.pos] == b'_') {
+            self.advance();
+        }
+        let ident = &self.source[start..self.pos];
+        match ident {
             "let" => Token::Let,
             "fn" => Token::Fn,
             "return" => Token::Return,
             "if" => Token::If,
             "else" => Token::Else,
+            "true" => Token::True,
+            "false" => Token::False,
+            "while" => Token::While,
+            "for" => Token::For,
+            "in" => Token::In,
+            "and" => Token::And,
+            "or" => Token::Or,
+            "not" => Token::Not,
+            "as" => Token::As,
+            "import" => Token::Import,
+            "struct" => Token::Struct,
             "i32" => Token::I32,
             "i64" => Token::I64,
             "bool" => Token::Bool,
             "void" => Token::Void,
-            "true" => Token::True,
-            "false" => Token::False,
-            "while" => Token::While,
-            "and" => Token::And,
-            "or" => Token::Or,
-            "not" => Token::Not,
             "str" => Token::Str,
-            "as" => Token::As,
-            "import" => Token::Import,
-            "struct" => Token::Struct,
             _ => Token::Identifier(ident),
         }
     }
 }
+
