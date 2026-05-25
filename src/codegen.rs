@@ -41,7 +41,10 @@ impl CodeGen {
                 }
             }
             Expr::Bool(_) => "i1",
-            Expr::UnaryOp { .. } => "i1",
+            Expr::UnaryOp { op, operand } => match op {
+                UnaryOperator::Not => "i1",
+                UnaryOperator::Neg => self.expr_llvm_type(operand),
+            },
             Expr::Identifier(name) => {
                 if let Some(ty) = self.locals.get(name) {
                     Self::ty_to_llvm(ty)
@@ -61,6 +64,15 @@ impl CodeGen {
                     .map(|t| Self::ty_to_llvm(t))
                     .unwrap_or("i32")
             }
+            Expr::ArrayLiteral(_) => "ptr",
+            Expr::Index {array, .. } => {
+                if let Expr::Identifier(name) = array.as_ref(){
+                    if let Some(Type::Array(elem_ty, _)) =self.locals.get(name) {
+                        return Self::ty_to_llvm(elem_ty);
+                    }
+                }
+                "i32"
+            }
             Expr::StringLiteral(_) => "ptr",
         }
     }
@@ -71,6 +83,13 @@ impl CodeGen {
             Type::Bool => "i1",
             Type::Void => "void",
             Type::Str => "ptr",
+            Type::Array(_, _) => panic!("Array için ty_to_llvm_string kullan"),
+        }
+    }
+    fn ty_to_llvm_string(t: &Type) -> String {
+        match t {
+            Type::Array(elem, size) => format!("[{} x {}]", size, Self::ty_to_llvm(elem)),
+            _ => Self::ty_to_llvm(t).to_string(),
         }
     }
     pub fn generate(&mut self, program: &Program) -> String{
@@ -136,11 +155,29 @@ impl CodeGen {
                 self.gen_expr(expr);
             }
             Stmt::Let {name , ty, value, .. } => {
-                let val = self.gen_expr(value);
-                let llvm_ty = Self::ty_to_llvm(ty);
-                writeln!(self.output, "  %{}.addr = alloca {}", name, llvm_ty).unwrap();
-                writeln!(self.output, "  store {} {}, ptr %{}.addr", llvm_ty, val, name).unwrap();
-                self.locals.insert(name.clone(), ty.clone());
+               match ty {
+                   Type::Array(elem_ty, _) => {
+                       let arr_llvm_ty = Self::ty_to_llvm_string(ty);
+                       let elem_llvm_ty = Self::ty_to_llvm(elem_ty);
+                       writeln!(self.output, "  %{}.addr = alloca {}", name, arr_llvm_ty).unwrap();
+                       if let Expr::ArrayLiteral(elems) = value {
+                           for (i, elem) in elems.iter().enumerate() {
+                               let val = self.gen_expr(elem);
+                               let ptr = self.fresh_temp();
+                               writeln!(self.output, "  {} = getelementptr {}, ptr %{}.addr, i32 0, i32 {}", ptr, arr_llvm_ty, name, i).unwrap();
+                               writeln!(self.output, "  store {} {}, ptr {}", elem_llvm_ty, val, ptr).unwrap();
+                           }
+                       }
+                       self.locals.insert(name.clone(), ty.clone());
+                   }
+                   _ => {
+                       let val = self.gen_expr(value);
+                       let llvm_ty = Self::ty_to_llvm(ty);
+                       writeln!(self.output, "  %{}.addr = alloca {}", name, llvm_ty).unwrap();
+                       writeln!(self.output, "  store {} {}, ptr %{}.addr", llvm_ty, val, name).unwrap();
+                       self.locals.insert(name.clone(), ty.clone());
+                   }
+               }
             }
             Stmt::Assign {name, value, ..} => {
                 let val = self.gen_expr(value);
@@ -244,6 +281,18 @@ impl CodeGen {
                 writeln!(self.output, "  br label %{}", cond_label).unwrap();
 
                 writeln!(self.output, "{}:", end_label).unwrap();
+            }
+            Stmt::AssignIndex {name, index, value, ..} => {
+                let arr_ty = self.locals.get(name).unwrap().clone();
+                if let Type::Array(ref elem_ty, _) = arr_ty {
+                    let arr_llvm_ty = Self::ty_to_llvm_string(&arr_ty);
+                    let elem_llvm_ty = Self::ty_to_llvm(elem_ty);
+                    let idx_val = self.gen_expr(index);
+                    let val = self.gen_expr(value);
+                    let ptr = self.fresh_temp();
+                    writeln!(self.output, "  {} = getelementptr {}, ptr %{}.addr, i32 0, i32 {}", ptr, arr_llvm_ty, name, idx_val).unwrap();
+                    writeln!(self.output, "  store {} {}, ptr {}", elem_llvm_ty, val, ptr).unwrap();
+                }
             }
 
         }
@@ -363,6 +412,24 @@ impl CodeGen {
                     result
                 }
             }
+            Expr::Index { array, index } => {
+                if let Expr::Identifier(name) = array.as_ref() {
+                    let arr_ty = self.locals.get(name).unwrap().clone();
+                    if let Type::Array(ref elem_ty, _) = arr_ty {
+                        let arr_llvm_ty = Self::ty_to_llvm_string(&arr_ty);
+                        let elem_llvm_ty = Self::ty_to_llvm(elem_ty);
+                        let idx_val = self.gen_expr(index);
+                        let ptr = self.fresh_temp();
+                        let result = self.fresh_temp();
+                        writeln!(self.output, "  {} = getelementptr {}, ptr %{}.addr, i32 0, i32 {}", ptr, arr_llvm_ty, name, idx_val).unwrap();
+                        writeln!(self.output, "  {} = load {}, ptr {}", result,
+                                 elem_llvm_ty, ptr).unwrap();
+                        return result;
+
+                    }
+                }
+                panic!("Index sadece named arraylerde destekleniyor");
+            }
             Expr::StringLiteral(s) => {
                 let id = self.next_str;
                 self.next_str += 1;
@@ -370,6 +437,7 @@ impl CodeGen {
                 writeln!(self.globals, "@str{} = private constant [{} x i8] c\"{}\\0A\\00\"", id, len, s).unwrap();
                 format!("@str{}", id)
             }
+            Expr::ArrayLiteral(_) => panic!("ArrayLiteral doğrudan gen_expr da kullanılamaz"),
         }
     }
 }

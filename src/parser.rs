@@ -32,6 +32,17 @@ impl Parser {
             Token::Bool => { self.advance(); Type::Bool }
             Token::Void => { self.advance(); Type::Void }
             Token::Str => { self.advance(); Type::Str }
+            Token::LeftBracket => {
+                self.advance();
+                let elem_ty = self.parse_type();
+                self.expect(Token::Semicolon);
+                let size = match self.advance() {
+                    Token::Integer(n) => n as usize,
+                    _ => panic!("Array boyutu bekleniyor"),
+                };
+                self.expect(Token::RightBracket);
+                Type::Array(Box::new(elem_ty), size)
+            }
             _ => panic!("Beklenen tip, bulunan: {:?}", self.current),
         }
     }
@@ -173,8 +184,15 @@ impl Parser {
                   Token::Identifier(n) => n,
                   _ => unreachable!(),
                 };
-
-                if self.current == Token::Equals {
+                if self.current == Token::LeftBracket{
+                    self.advance();
+                    let index = self.parse_expr();
+                    self.expect(Token::RightBracket);
+                    self.expect(Token::Equals);
+                    let value = self.parse_expr();
+                    self.expect(Token::Semicolon);
+                    Stmt::AssignIndex{name, index, value, line: self.current_line}
+                }else if self.current == Token::Equals {
                     self.advance();
                     let value  = self.parse_expr();
                     self.expect(Token::Semicolon);
@@ -308,7 +326,13 @@ impl Parser {
                     }
                     self.expect(Token::RightParen);
                     Expr::Call  { name, args }
-                } else {
+                }else if self.current == Token::LeftBracket {
+                    self.advance();
+                    let index = self.parse_expr();
+                    self.expect(Token::RightBracket);
+                    Expr::Index { array: Box::new(Expr::Identifier(name)), index: Box::new(index) }
+                }
+                else {
                     Expr::Identifier(name)
                 }
             }
@@ -330,6 +354,18 @@ impl Parser {
                 let expr = self.parse_expr();
                 self.expect(Token::RightParen);
                 expr
+            }
+            Token::LeftBracket => {
+                self.advance();
+                let mut elems = Vec::new();
+                while self.current != Token::RightBracket {
+                    elems.push(self.parse_expr());
+                    if self.current == Token::Comma {
+                        self.advance();
+                    }
+                }
+                self.expect(Token::RightBracket);
+                Expr::ArrayLiteral(elems)
             }
             _ => panic!("Hata [satır {}]: Beklenmedik token: {:?}", self.current_line, self.current),
         }

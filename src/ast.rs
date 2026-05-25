@@ -21,6 +21,11 @@ pub enum Expr {
         operand: Box<Expr>,
     },
     StringLiteral(String),
+    ArrayLiteral(Vec<Expr>),
+    Index {
+        array: Box<Expr>,
+        index: Box<Expr>,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -75,8 +80,13 @@ pub enum Stmt {
         to: Expr,
         body: Vec<Stmt>,
         line: usize,
-    }
-
+    },
+    AssignIndex {
+        name: String,
+        index: Expr,
+        value: Expr,
+        line: usize,
+    },
 }
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -85,6 +95,7 @@ pub enum Type {
     Bool,
     Void,
     Str,
+    Array(Box<Type>, usize),
 }
 #[derive(Debug, Clone)]
 pub struct Function {

@@ -104,6 +104,24 @@ impl TypeChecker {
                 }
                 self.variables.remove(var);
             }
+            Stmt::AssignIndex {name, index, value, line } => {
+                let var_type = match self.variables.get(name) {
+                    Some(t) => t.clone(),
+                    None => panic!("Hata [satır {}]: unknown variable '{}'", line, name),
+                };
+                let elem_ty = match var_type {
+                    Type::Array(ref elem, _) => *elem.clone(),
+                    _ => panic!("Hata [satır {}]: '{}' bir array değil", line, name),
+                };
+                let idx_ty = self.check_expr(index);
+                if !types_match(&idx_ty, &Type::I32) {
+                    panic!("Array indexi i32 olmali");
+                }
+                let val_ty = self.check_expr(value);
+                if !types_match(&val_ty, &elem_ty) {
+                    panic!("Hata [satr {}]: yanlis tip", line);
+                }
+            }
         }
     }
     fn check_expr(&mut self, expr: &Expr) -> Type {
@@ -165,6 +183,30 @@ impl TypeChecker {
                     _ => left_type,
                 }
             }
+            Expr::ArrayLiteral(elems) => {
+                if elems.is_empty() {
+                    panic!("Boş array desteklenmiyor");
+                }
+                let first_ty = self.check_expr(&elems[0]);
+                for elem in &elems[1..] {
+                    let ty = self.check_expr(elem);
+                    if !types_match(&ty, &first_ty) {
+                        panic!("Array elemanları aynı tipte olmalı");
+                    }
+                }
+                Type::Array(Box::new(first_ty), elems.len())
+            }
+            Expr::Index {array, index } => {
+                let arr_ty = self.check_expr(array);
+                let idx_ty = self.check_expr(index);
+                if !types_match(&idx_ty, &Type::I32) {
+                    panic!("Array indexi i32 olmalı");
+                }
+                match arr_ty {
+                    Type::Array(elem_ty, _) => *elem_ty,
+                    _ => panic!("Index sadece arraylere uygulanabilir"),
+                }
+            }
             Expr::Call {name, args } => {
                 if name == "print" {
                     for arg in args {
@@ -197,6 +239,11 @@ impl TypeChecker {
 }
 
 fn types_match(a: &Type, b: &Type) -> bool {
-    matches!((a, b), (Type::I32, Type::I32) | (Type::Bool, Type::Bool)
-    | (Type::I64, Type::I64) | (Type::Str, Type::Str))
+    match (a, b) {
+        (Type::I32, Type::I32) | (Type::Bool, Type::Bool) |
+        (Type::I64, Type::I64) | (Type::Str, Type::Str) => true,
+        (Type::Array(ta, sa), Type::Array(tb, sb)) => sa == sb && types_match(ta,
+                                                                              tb),
+        _ => false,
+    }
 }

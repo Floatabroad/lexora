@@ -55,6 +55,8 @@ pub enum Token {
     RightParen,
     LeftBrace,
     RightBrace,
+    LeftBracket,
+    RightBracket,
 
     //Special
     Eof,
@@ -133,6 +135,8 @@ impl Lexer {
             ')' => { self.advance(); Token::RightParen}
             '{' => { self.advance(); Token::LeftBrace}
             '}' => { self.advance(); Token::RightBrace}
+            '[' => { self.advance(); Token::LeftBracket}
+            ']' => { self.advance(); Token::RightBracket}
             '<' => {
                 if self.peek() == '=' {
                     self.advance(); self.advance();
