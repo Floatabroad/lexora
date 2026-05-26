@@ -1,68 +1,48 @@
-mod lexer;
-mod ast;
-mod parser;
-mod typechecker;
-mod codegen;
-mod span;
-mod symbol;
-mod error;
 
-//use std::os::unix::raw::off_t;
-use lexer::Lexer;
-use parser::Parser;
-use typechecker::TypeChecker;
-use codegen::CodeGen;
+
+use bumpalo::Bump;
+use lexora::lexer::Lexer;
+use lexora::parser::Parser;
+use lexora::typechecker::TypeChecker;
 use std::env;
 use std::fs;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        eprintln!("Kullanim: lexora <dosya.lx>");
+        eprintln!("kullanım: lexora <dosya.lx>");
         std::process::exit(1);
     }
     let source = fs::read_to_string(&args[1])
-        .unwrap_or_else(|_| panic!("Dosya okunamadi: {}", args[1]));
-    std::panic::set_hook(Box::new(|_| {}));
-    let result = std::panic::catch_unwind(|| {
-        let lexer = Lexer::new(&source);
-        let mut parser = Parser::new(lexer);
-        let mut program = parser.parse_program();
+        .unwrap_or_else(|e| {
+            eprintln!("dosya okunamadı: {}", e);
+            std::process::exit(1);
+        });
+    let arena = Bump::new();
+    let lexer = Lexer::new(&source);
 
-        for import_path in &program.imports.clone() {
-            let import_source = fs::read_to_string(import_path)
-                .unwrap_or_else(|_| panic!("Import dosyasi okunamadi: {}", import_path));
-            let import_lexer = Lexer::new(&import_source);
-            let mut import_parser = Parser::new(import_lexer);
-            let import_program = import_parser.parse_program();
-            for func in import_program.functions {
-                program.functions.push(func);
-            }
-        }
-
-        let mut checker = TypeChecker::new();
-        checker.check_program(&program);
-
-        let mut codegen = CodeGen::new();
-        codegen.generate(&program)
-    });
-
-    match result {
-        Ok(ir) => {
-            fs::write("output.ll", &ir).unwrap();
-            println!("LLVM IR yazildi: output.ll");
-            println!("---");
-            println!("{}", ir);
-        }
+    let mut parser = match Parser::new(lexer, &arena) {
+        Ok(p) => p,
         Err(e) => {
-            if let Some(msg) = e.downcast_ref::<String>() {
-                eprintln!("{}", msg);
-            } else if let Some(msg) = e.downcast_ref::<&str>() {
-                eprintln!("{}", msg);
-            } else {
-                eprintln!("Bilinmeyen hata");
-            }
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+    };
+    let program = match parser.parse_program(){
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+    };
+    let interner = &parser.interner;
+    let mut checker = TypeChecker::new(interner);
+    match checker.check_program(&program) {
+        Ok(()) => println!("Ok: tip kontrolu basarili."),
+        Err(e) => {
+            eprintln!("{}", e);
             std::process::exit(1);
         }
     }
+
 }
