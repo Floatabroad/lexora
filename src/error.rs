@@ -35,6 +35,9 @@ pub enum LexoraError {
         message: String,
         span: Span,
     },
+    Codegen {
+        message: String,
+    }
 }
 
 impl fmt::Display for LexoraError{
@@ -54,6 +57,8 @@ impl fmt::Display for LexoraError{
                 write!(f, "Gecersiz cast: {} -> {}", from, to),
             LexoraError::Custom { message, .. } =>
                 write!(f, "{}", message),
+            LexoraError::Codegen { message} =>
+                write!(f, "ic derleyici hatasi (codegen): {}", message),
         }
     }
 }

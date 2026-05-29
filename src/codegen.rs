@@ -1,520 +1,190 @@
 use crate::ast::*;
-use std::fmt::Write;
+use crate::symbol::{Symbol, Interner};
+use inkwell::context::Context;
+use inkwell::module::Module;
+use inkwell::builder::{Builder, BuilderError};
+use inkwell::values::{FunctionValue, PointerValue, BasicValueEnum};
+use inkwell::types::{BasicTypeEnum, BasicType, BasicMetadataTypeEnum};
+use inkwell::AddressSpace;
 use std::collections::HashMap;
-pub struct CodeGen {
-    output: String,
-    globals: String,
-    next_temp: usize,
-    next_block: usize,
-    next_str: usize,
-    locals: HashMap<String, Type>,
-    fn_types: HashMap<String, Type>,
-    current_ret_type: Type,
-    structs: HashMap<String, Vec<(String, Type)>>,
+use inkwell::IntPredicate;
+
+
+pub struct CodeGen<'ctx> {
+    context: &'ctx Context,
+    module: Module<'ctx>,
+    builder: Builder<'ctx>,
+    interner: &'ctx Interner,
+
+    vars: HashMap<Symbol, (PointerValue<'ctx>, BasicTypeEnum<'ctx>)>,
+    cur_fn: Option<FunctionValue<'ctx>>,
 }
 
-impl CodeGen {
-    pub fn new() -> Self {
+impl<'ctx> CodeGen<'ctx> {
+    pub fn new(
+        context: &'ctx Context,
+        interner: &'ctx Interner,
+        module_name: &str,
+    ) -> Self {
+        let module = context.create_module(module_name);
+        let builder = context.create_builder();
         CodeGen {
-            output: String::new(),
-            globals: String::new(),
-            next_temp: 0,
-            next_block : 0,
-            next_str: 0,
-            locals: HashMap::new(),
-            fn_types: HashMap::new(),
-            current_ret_type: Type::I32,
-            structs: HashMap::new(),
+            context,
+            module,
+            builder,
+            interner,
+            vars: HashMap::new(),
+            cur_fn: None,
         }
     }
-    fn fresh_temp(&mut self) -> String {
-        let t = format!("%t{}", self.next_temp);
-        self.next_temp += 1;
-        t
-    }
-    fn expr_llvm_type(&self, expr: &Expr) -> &'static str {
-        match expr {
-            Expr::Cast {target_type, ..} => Self::ty_to_llvm(target_type),
-            Expr::Integer(n) => {
-                if *n > i32::MAX as i64 || *n < i32::MIN as i64 {
-                    "i64"
-                }else {
-                    "i32"
-                }
+    fn llvm_type(&self, ty: &Type) -> BasicTypeEnum<'ctx> {
+        match ty {
+            Type::I32 => self.context.i32_type().into(),
+            Type::I64 => self.context.i64_type().into(),
+            Type::Bool => self.context.bool_type().into(),
+            Type::Str => self.context.ptr_type(AddressSpace::default()).into(),
+            Type::Array(elem, n) => {
+                let elem_ty = self.llvm_type(elem);
+                elem_ty.array_type(*n as u32).into()
             }
-            Expr::Bool(_) => "i1",
-            Expr::UnaryOp { op, operand } => match op {
-                UnaryOperator::Not => "i1",
-                UnaryOperator::Neg => self.expr_llvm_type(operand),
-            },
-            Expr::Identifier(name) => {
-                if let Some(ty) = self.locals.get(name) {
-                    Self::ty_to_llvm(ty)
-                } else {
-                    "i32"
-                }
-            }
-            Expr::BinaryOp {op, ..} => match op {
-                BinaryOperator::Eq | BinaryOperator::NotEq |
-                BinaryOperator::Less | BinaryOperator::Greater |
-                BinaryOperator::LessEq | BinaryOperator::GreaterEq |
-                BinaryOperator::And | BinaryOperator::Or => "i1",
-                _ => "i32",
-            },
-            Expr::Call {name, ..} => {
-                self.fn_types.get(name.as_str())
-                    .map(|t| Self::ty_to_llvm(t))
-                    .unwrap_or("i32")
-            }
-            Expr::StructLiteral {name, .. } => {
-                "ptr"
-            }
-            Expr::FieldAccess {object, field} => {
-                if let Expr::Identifier(name) = object.as_ref() {
-                    if let Some(Type::Struct(struct_name)) = self.locals.get(name) {
-                        let struct_name = struct_name.clone();
-                        if let Some(fields) = self.structs.get(&struct_name) {
-                            if let Some((_, ty)) = fields.iter().find(|(n, _)| n == field) {
-                                return Self::ty_to_llvm(ty);
-                            }
-                        }
-                    }
-                }
-                "i32"
-            }
-            Expr::ArrayLiteral(_) => "ptr",
-            Expr::Index {array, .. } => {
-                if let Expr::Identifier(name) = array.as_ref(){
-                    if let Some(Type::Array(elem_ty, _)) =self.locals.get(name) {
-                        return Self::ty_to_llvm(elem_ty);
-                    }
-                }
-                "i32"
-            }
-            Expr::StringLiteral(_) => "ptr",
+            Type::Struct(_) => todo!("Struct tipini sonraki adimda ekleyecegiz"),
+            Type::Void => panic!("void bir deger tipi olarak kullanilamaz"),
         }
     }
-    fn ty_to_llvm(t: &Type) -> &'static str {
-        match t {
-            Type::I32 => "i32",
-            Type::I64 => "i64",
-            Type::Bool => "i1",
-            Type::Void => "void",
-            Type::Str => "ptr",
-            Type::Array(_, _) => panic!("Array için ty_to_llvm_string kullan"),
-            Type::Struct(_) => panic!("Struct için ty_to_llvm_string kullan"),
-        }
-    }
-    fn ty_to_llvm_string(t: &Type) -> String {
-        match t {
-            Type::Array(elem, size) => format!("[{} x {}]", size, Self::ty_to_llvm(elem)),
-            Type::Struct(name) => format!("%{}", name),
-            _ => Self::ty_to_llvm(t).to_string(),
-        }
-    }
-    pub fn generate(&mut self, program: &Program) -> String{
-        let mut result = String::new();
-        for s in &program.structs {
-            self.structs.insert(s.name.clone(), s.fields.clone());
-            let field_types: Vec<String> = s.fields.iter()
-                .map(|(_, ty)| Self::ty_to_llvm(ty).to_string())
-                .collect();
-            writeln!(result, "%{} = type {{ {} }}", s.name, field_types.join(", ")).unwrap();
-        }
-        writeln!(result, "@.fmt = private constant [4 x i8] c\"%d\\0A\\00\"").unwrap();
-        writeln!(result, "@.fmt64 = private constant [6 x i8] c\"%lld\\0A\\00\"").unwrap();
-        writeln!(result, "declare i32 @printf(ptr, ...)\n").unwrap();
+    pub fn compile(&mut self, program: &Program) -> Result<(), BuilderError> {
         for func in &program.functions {
-            self.fn_types.insert(func.name.clone(), func.return_type.clone());
+            self.declare_functions(func);
         }
-        for func in &program.functions {
-            self.gen_function(func);
+        for func in &program.functions{
+            self.gen_function(func)?;
         }
-        result.push_str(&self.globals);
-        result.push_str(&self.output);
-        result
+        Ok(())
     }
-    fn gen_function(&mut self, func: &Function) {
-        self.next_temp = 0;
-        self.next_block = 0;
-        self.locals.clear();
-        self.current_ret_type = func.return_type.clone();
 
-
-        let params: Vec<String> = func.params.iter()
-            .map(|(name, ty)| format!("{} %{}", Self::ty_to_llvm(ty), name))
+    fn declare_functions(&mut self, func: &Function) -> FunctionValue<'ctx> {
+        let param_types: Vec<BasicMetadataTypeEnum>  = func.params.iter()
+            .map(|(_, ty)| self.llvm_type(ty).into())
             .collect();
-        writeln!(
-            self.output,
-            "define {} @{}({}) {{",
-            Self::ty_to_llvm(&func.return_type),
-            func.name,
-            params.join(", ")
-        ).unwrap();
 
-        writeln!(self.output, "entry:").unwrap();
-        for (name, ty) in &func.params {
-            let llvm_ty = Self::ty_to_llvm(ty);
-            writeln!(self.output, "  %{}.addr = alloca {}", name, llvm_ty).unwrap();
-            writeln!(self.output, "  store {} %{}, ptr %{}.addr", llvm_ty, name,
-                     name).unwrap();
-            self.locals.insert(name.clone(), ty.clone());
-        }
+        let fn_type = match &func.return_type {
+            Type::Void => self.context.void_type().fn_type(&param_types, false),
+            ret => self.llvm_type(ret).fn_type(&param_types, false),
+        };
 
-        for stmt in &func.body {
-            self.gen_statement(stmt);
-        }
-        if matches!(func.return_type, Type::Void) {
-            writeln!(self.output, "  ret void").unwrap();
-        }
-        writeln!(self.output, "}}\n").unwrap();
+        let name = self.interner.resolve(func.name);
+        self.module.get_function(name)
+            .unwrap_or_else(|| self.module.add_function(name, fn_type, None))
     }
 
-    fn gen_statement(&mut self, stmt: &Stmt) {
+    fn gen_function(&mut self, func: &Function) -> Result<(), BuilderError> {
+        let name = self.interner.resolve(func.name);
+        let function = self.module.get_function(name).unwrap();
+        self.cur_fn = Some(function);
+
+        let entry = self.context.append_basic_block(function, "entry");
+        self.builder.position_at_end(entry);
+
+        self.vars.clear();
+
+        for(i, (sym, ty)) in func.params.iter().enumerate() {
+            let llvm_ty = self.llvm_type(ty);
+            let pname = self.interner.resolve(*sym);
+            let slot = self.builder.build_alloca(llvm_ty, pname)?;
+            let arg = function.get_nth_param(i as u32).unwrap();
+            self.builder.build_store(slot, arg)?;
+            self.vars.insert(*sym, (slot, llvm_ty));
+        }
+        for stmt in func.body {
+            self.gen_statement(stmt)?;
+        }
+
+        let cur = self.builder.get_insert_block().unwrap();
+        if cur.get_terminator().is_none() {
+            match func.return_type {
+                Type::Void => { self.builder.build_return(None)?; }
+                _ => { self.builder.build_unreachable()?;}
+            }
+        }
+        Ok(())
+    }
+    fn gen_statement(&mut self, stmt: &Stmt) -> Result<(), BuilderError> {
         match stmt {
+            Stmt::Let {name, ty, value, .. } => {
+                // simdilik sadece skalar tipler array struct sonra
+                let llvm_ty = self.llvm_type(ty);
+                let pname = self.interner.resolve(*name);
+                let slot = self.builder.build_alloca(llvm_ty, pname)?;
+                let val = self.gen_expr(value)?;
+                self.builder.build_store(slot, val)?;
+                self.vars.insert(*name, (slot, llvm_ty));
+                Ok(())
+            }
+            Stmt::Assign {name, value , .. } => {
+                let (slot, _ ) = self.vars[name];
+                let val = self.gen_expr(value)?;
+                self.builder.build_store(slot, val)?;
+                Ok(())
+            }
             Stmt::Return(expr, _) => {
-                let val = self.gen_expr(expr);
-                let ret_ty = Self::ty_to_llvm(&self.current_ret_type);
-                writeln!(self.output, "  ret {} {}",ret_ty, val).unwrap();
+                let val = self.gen_expr(expr)?;
+                self.builder.build_return(Some(&val))?;
+                Ok(())
             }
-
             Stmt::Expr(expr, _) => {
-                self.gen_expr(expr);
+                self.gen_expr(expr)?;
+                Ok(())
             }
-            Stmt::Let {name , ty, value, .. } => {
-               match ty {
-                   Type::Array(elem_ty, _) => {
-                       let arr_llvm_ty = Self::ty_to_llvm_string(ty);
-                       let elem_llvm_ty = Self::ty_to_llvm(elem_ty);
-                       writeln!(self.output, "  %{}.addr = alloca {}", name, arr_llvm_ty).unwrap();
-                       if let Expr::ArrayLiteral(elems) = value {
-                           for (i, elem) in elems.iter().enumerate() {
-                               let val = self.gen_expr(elem);
-                               let ptr = self.fresh_temp();
-                               writeln!(self.output, "  {} = getelementptr {}, ptr %{}.addr, i32 0, i32 {}", ptr, arr_llvm_ty, name, i).unwrap();
-                               writeln!(self.output, "  store {} {}, ptr {}", elem_llvm_ty, val, ptr).unwrap();
-                           }
-                       }
-                       self.locals.insert(name.clone(), ty.clone());
-                   }
-                   Type::Struct(struct_name) => {
-                       let struct_llvm_ty = format!("%{}", struct_name);
-                       writeln!(self.output, "  %{}.addr = alloca {}", name, struct_llvm_ty).unwrap();
-                       if let Expr::StructLiteral {fields, .. } = value {
-                           let field_defs = self.structs.get(struct_name).unwrap().clone();
-                           for (i, (field_name, _ )) in field_defs.iter().enumerate() {
-                               let field_val = fields.iter().find(|(n, _)| n == field_name)
-                                   .map(|(_, v)| self.gen_expr(v))
-                                   .unwrap();
-                               let field_ty = Self::ty_to_llvm(&field_defs[i].1);
-                               let ptr = self.fresh_temp();
-                               writeln!(self.output, "  {} = getelementptr {}, ptr %{}.addr, i32 0, i32 {}", ptr, struct_llvm_ty, name, i).unwrap();
-                               writeln!(self.output, "  store {} {}, ptr {}", field_ty, field_val, ptr).unwrap();
-                           }
-                       }
-                       self.locals.insert(name.clone(), ty.clone());
-                   }
-
-                   _ => {
-                       let val = self.gen_expr(value);
-                       let llvm_ty = Self::ty_to_llvm(ty);
-                       writeln!(self.output, "  %{}.addr = alloca {}", name, llvm_ty).unwrap();
-                       writeln!(self.output, "  store {} {}, ptr %{}.addr", llvm_ty, val, name).unwrap();
-                       self.locals.insert(name.clone(), ty.clone());
-                   }
-               }
-            }
-            Stmt::Assign {name, value, ..} => {
-                let val = self.gen_expr(value);
-                let llvm_ty = match self.locals.get(name) {
-                    Some(ty) => Self::ty_to_llvm(ty),
-                    None => "i32",
-                };
-                writeln!(self.output, "  store {} {}, ptr %{}.addr", llvm_ty, val, name).unwrap();
-            }
-            Stmt::If { condition, then_body, else_body, .. } => {
-                let cond_val = self.gen_expr(condition);
-                let id = self.next_block;
-                self.next_block += 1;
-                let then_label = format!("then{}", id);
-                let merge_label = format!("merge{}", id);
-
-                if let Some(else_stmts) = else_body {
-                    let else_label = format!("else{}", id);
-                    writeln!(self.output, "  br i1 {}, label %{}, label %{}", cond_val, then_label, else_label).unwrap();
-
-                    writeln!(self.output, "{}:", then_label).unwrap();
-                    for s in then_body { self.gen_statement(s); }
-                    if !matches!(then_body.last(),
-  Some(Stmt::Return(_, _))) {
-                        writeln!(self.output, "  br label %{}",
-                                 merge_label).unwrap();
-                    }
-
-
-
-
-                    writeln!(self.output, "{}:", else_label).unwrap();
-                    for s in else_stmts { self.gen_statement(s); }
-                    if !matches!(else_stmts.last(), Some(Stmt::Return(_, _))) {
-                        writeln!(self.output, "  br label %{}", merge_label).unwrap();
-                    }
-
-                    writeln!(self.output, "{}:", merge_label).unwrap();
-                } else {
-                    writeln!(self.output, "  br i1 {}, label %{}, label %{}", cond_val, then_label, merge_label).unwrap();
-
-                    writeln!(self.output, "{}:", then_label).unwrap();
-                    for s in then_body { self.gen_statement(s); }
-                    if !matches!(then_body.last(), Some(Stmt::Return(_, _))) {
-                        writeln!(self.output, "  br label %{}", merge_label).unwrap();
-                    }
-
-                    writeln!(self.output, "{}:", merge_label).unwrap();
-                }
-            }
-            Stmt::While {condition, body, ..} => {
-                let id = self.next_block;
-                self.next_block += 1;
-                let cond_label = format!("loop_cond{}", id);
-                let body_label = format!("loop_body{}", id);
-                let end_label = format!("loop_end{}", id);
-
-                writeln!(self.output, "  br label %{}", cond_label).unwrap();
-                writeln!(self.output, "{}:", cond_label).unwrap();
-                let cond_val = self.gen_expr(condition);
-                writeln!(self.output, "  br i1 {}, label %{}, label %{}", cond_val, body_label, end_label).unwrap();
-
-                writeln!(self.output, "{}:", body_label).unwrap();
-                for s in body { self.gen_statement(s); }
-                writeln!(self.output, "  br label %{}", cond_label).unwrap();
-
-                writeln!(self.output, "{}:", end_label).unwrap();
-            }
-
-            Stmt::For {var, from, to, body, ..} => {
-                let id = self.next_block;
-                self.next_block += 1;
-                let cond_label = format!("for_cond{}", id);
-                let body_label = format!("for_body{}", id);
-                let end_label = format!("for_end{}", id);
-
-                let from_val = self.gen_expr(from);
-                writeln!(self.output, "  %{}.addr = alloca i32", var).unwrap();
-                writeln!(self.output, "  store i32 {}, ptr %{}.addr", from_val, var).unwrap();
-                self.locals.insert(var.clone(), Type::I32);
-
-                writeln!(self.output, "  br label %{}", cond_label).unwrap();
-                writeln!(self.output, "{}:", cond_label).unwrap();
-
-                let cur = self.fresh_temp();
-
-                writeln!(self.output, "  {} = load i32, ptr %{}.addr", cur, var).unwrap();
-                let to_val = self.gen_expr(to);
-                let cond = self.fresh_temp();
-                writeln!(self.output, "  {} = icmp slt i32 {}, {}", cond, cur, to_val).unwrap();
-                writeln!(self.output, "  br i1 {}, label %{}, label %{}", cond, body_label, end_label).unwrap();
-
-                writeln!(self.output, "{}:", body_label).unwrap();
-                for s in body { self.gen_statement(s); }
-
-                let inc_val = self.fresh_temp();
-                let cur2 = self.fresh_temp();
-                writeln!(self.output, "  {} = load i32, ptr %{}.addr", cur2, var).unwrap();
-                writeln!(self.output, "  {} = add i32 {}, 1", inc_val, cur2).unwrap();
-                writeln!(self.output, "  store i32 {}, ptr %{}.addr", inc_val, var).unwrap();
-                writeln!(self.output, "  br label %{}", cond_label).unwrap();
-
-                writeln!(self.output, "{}:", end_label).unwrap();
-            }
-            Stmt::AssignIndex {name, index, value, ..} => {
-                let arr_ty = self.locals.get(name).unwrap().clone();
-                if let Type::Array(ref elem_ty, _) = arr_ty {
-                    let arr_llvm_ty = Self::ty_to_llvm_string(&arr_ty);
-                    let elem_llvm_ty = Self::ty_to_llvm(elem_ty);
-                    let idx_val = self.gen_expr(index);
-                    let val = self.gen_expr(value);
-                    let ptr = self.fresh_temp();
-                    writeln!(self.output, "  {} = getelementptr {}, ptr %{}.addr, i32 0, i32 {}", ptr, arr_llvm_ty, name, idx_val).unwrap();
-                    writeln!(self.output, "  store {} {}, ptr {}", elem_llvm_ty, val, ptr).unwrap();
-                }
-            }
-            Stmt::AssignField {object, field, value, ..} => {
-                let obj_ty = self.locals.get(object).unwrap().clone();
-                if let Type::Struct(ref struct_name) = obj_ty {
-                    let struct_llvm_ty = format!("%{}", struct_name);
-                    let field_defs = self.structs.get(struct_name).unwrap().clone();
-                    let i = field_defs.iter().position(|(n, _)| n == field).unwrap();
-                    let field_ty = Self::ty_to_llvm(&field_defs[i].1);
-                    let val = self.gen_expr(value);
-                    let ptr = self.fresh_temp();
-                    writeln!(self.output, "  {} = getelementptr {}, ptr %{}.addr, i32 0, i32 {}", ptr, struct_llvm_ty, object, i).unwrap();
-                    writeln!(self.output, "  store {} {}, ptr {}", field_ty, val, ptr).unwrap();
-                }
-            }
-
+            _ => todo!("if/while/for/assignindex/assignfield")
         }
     }
-
-    fn gen_expr(&mut self, expr: &Expr) -> String {
+    fn gen_expr(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>, BuilderError> {
         match expr {
-            Expr::Cast {target_type, expr} => {
-                let val = self.gen_expr(expr);
-                let result = self.fresh_temp();
-                let to_ty = Self::ty_to_llvm(target_type);
-                writeln!(self.output, "  {} = sext i32 {} to  {}",result, val, to_ty).unwrap();
-                result
-            }
-            Expr::Integer(n) => n.to_string(),
-            Expr::UnaryOp {op: UnaryOperator::Not, operand} =>{
-                let val = self.gen_expr(operand);
-                let result = self.fresh_temp();
-                writeln!(self.output, "  {} = xor i1 {}, 1", result, val).unwrap();
-                result
-            }
-            Expr::UnaryOp {op: UnaryOperator::Neg, operand} => {
-                let val = self.gen_expr(operand);
-                let result = self.fresh_temp();
-                let ty = self.expr_llvm_type(operand);
-                writeln!(self.output, "  {} = sub {} 0, {}", result, ty, val).unwrap();
-                result
-            }
-            Expr::BinaryOp  { left, op, right } => {
-                let l = self.gen_expr(left);
-                let r = self.gen_expr(right);
-                let result = self.fresh_temp();
-
-                let instr = match op {
-                    BinaryOperator::Add     => "add",
-                    BinaryOperator::Sub     => "sub",
-                    BinaryOperator::Mul     => "mul",
-                    BinaryOperator::Div     => "sdiv",
-                    BinaryOperator::Eq      => "icmp eq",
-                    BinaryOperator::NotEq   => "icmp ne",
-                    BinaryOperator::Less    => "icmp slt",
-                    BinaryOperator::Greater   => "icmp sgt",
-                    BinaryOperator::LessEq    => "icmp sle",
-                    BinaryOperator::GreaterEq => "icmp sge",
-                    BinaryOperator::And     => "and",
-                    BinaryOperator::Or      => "or",
-
-                };
-               // writeln!(self.output, "  {} = {} i32 {}, {}", result, instr, l, r).unwrap();
-                let ty = match op {
-                    BinaryOperator::And | BinaryOperator::Or => "i1", _ => "i32",
-                };
-                writeln!(self.output, "  {} = {} {} {}, {}", result, instr,ty, l, r).unwrap();
-                result
-            }
-            Expr::Bool(b) => {
-                if *b { "1".to_string() } else { "0".to_string() }
-            }
-            Expr::Identifier(name) => {
-                if let Some(ty) = self.locals.get(name) {
-                    let llvm_ty = Self::ty_to_llvm(ty);
-                    let result = self.fresh_temp();
-                    writeln!(self.output, "  {} = load {}, ptr %{}.addr", result, llvm_ty, name).unwrap();
-                    result
-                } else {
-                    format!("%{}", name)
-                }
-            }
-            Expr::Call{name, args} => {
-                if name == "print" {
-                    for arg in args {
-                        let result = self.fresh_temp();
-                        match arg {
-                            Expr::StringLiteral(s) => {
-                                let id = self.next_str;
-                                self.next_str += 1;
-                                let len = s.len() + 2;
-                                writeln!(self.globals, "@str{} = private constant [{} x i8] c\"{}\\0A\\00\"", id, len, s).unwrap();
-                                writeln!(self.output, "  {} = call i32 (ptr, ...) @printf(ptr @str{})", result, id).unwrap();
-                            }
-                            _ => {
-                                let ty = self.expr_llvm_type(arg);
-                                let val = self.gen_expr(arg);
-                                if ty == "i64" {
-                                    writeln!(self.output, "  {} = call i32 (ptr, ...) @printf(ptr @.fmt64, i64 {})", result, val).unwrap();
-                                }else if ty == "ptr" {
-                                    writeln!(self.output, "  {} = call i32 (ptr, ...) @printf(ptr {})", result, val).unwrap();
-                                }
-                                else {
-                                    writeln!(self.output, "  {} = call i32 (ptr, ...) @printf(ptr @.fmt, i32 {})", result, val).unwrap();
-                                }
-                            }
-                        }
-                    }
-                    return "0".to_string();
-                }
-               let arg_str = args.iter()
-                   .map(|a| {
-                       let ty = self.expr_llvm_type(a);
-                       let val = self.gen_expr(a);
-                       format!("{} {}", ty, val)
-
-                   })
-                   .collect::<Vec<_>>()
-                   .join(", ");
-
-                let ret_ty = self.fn_types.get(name)
-                    .map(|t| Self::ty_to_llvm(t))
-                    .unwrap_or("i32");
-
-                if ret_ty == "void" {
-                    writeln!(self.output, "  call void @{}({})", name, arg_str).unwrap();
-                    "0".to_string()
+            Expr::Integer(n, _ ) => {
+                let val = if *n > i32::MAX as i64 || *n < i32::MIN as i64 {
+                    self.context.i64_type().const_int(*n as u64, true)
                 }else {
-                    let result = self.fresh_temp();
-                    writeln!(self.output, "  {} = call {} @{}({})", result, ret_ty, name, arg_str).unwrap();
-                    result
-                }
+                    self.context.i32_type().const_int(*n as u64, true)
+                };
+                Ok(val.into())
             }
-            Expr::FieldAccess {object, field} => {
-                if let Expr::Identifier(name) = object.as_ref() {
-                    let obj_ty = self.locals.get(name).unwrap().clone();
-                    if let Type::Struct(ref struct_name) = obj_ty {
-                        let struct_llvm_ty = format!("%{}", struct_name);
-                        let field_defs = self.structs.get(struct_name).unwrap().clone();
-                        let i = field_defs.iter().position(|(n, _)| n == field).unwrap();
-                        let field_ty = Self::ty_to_llvm(&field_defs[i].1);
-                        let ptr = self.fresh_temp();
-                        let result = self.fresh_temp();
-                        writeln!(self.output, "  {} = getelementptr {}, ptr %{}.addr, i32 0, i32 {}", ptr, struct_llvm_ty, name, i).unwrap();
-                        writeln!(self.output, "  {} = load {}, ptr {}", result, field_ty, ptr).unwrap();
-                        return result;
-                    }
-                }
-                panic!("FieldAcces sadece named structlarda destekleniyor");
+            Expr::Bool(b, _) => {
+                Ok(self.context.bool_type().const_int(*b as u64, false).into())
             }
-            Expr::StructLiteral{ .. } => panic! ("StructLiteral doğrudan gen_expr'da kullanılamaz."),
-
-            Expr::Index { array, index } => {
-                if let Expr::Identifier(name) = array.as_ref() {
-                    let arr_ty = self.locals.get(name).unwrap().clone();
-                    if let Type::Array(ref elem_ty, _) = arr_ty {
-                        let arr_llvm_ty = Self::ty_to_llvm_string(&arr_ty);
-                        let elem_llvm_ty = Self::ty_to_llvm(elem_ty);
-                        let idx_val = self.gen_expr(index);
-                        let ptr = self.fresh_temp();
-                        let result = self.fresh_temp();
-                        writeln!(self.output, "  {} = getelementptr {}, ptr %{}.addr, i32 0, i32 {}", ptr, arr_llvm_ty, name, idx_val).unwrap();
-                        writeln!(self.output, "  {} = load {}, ptr {}", result,
-                                 elem_llvm_ty, ptr).unwrap();
-                        return result;
-
-                    }
-                }
-                panic!("Index sadece named arraylerde destekleniyor");
+            Expr::Identifier(sym, _) => {
+                let (ptr, pointee_ty) = self.vars[sym];
+                let name =self.interner.resolve(*sym);
+                Ok(self.builder.build_load(pointee_ty, ptr, name)?)
             }
-            Expr::StringLiteral(s) => {
-                let id = self.next_str;
-                self.next_str += 1;
-                let len = s.len() + 2;
-                writeln!(self.globals, "@str{} = private constant [{} x i8] c\"{}\\0A\\00\"", id, len, s).unwrap();
-                format!("@str{}", id)
+            Expr::BinaryOp {left, op, right, ..} => {
+                let l = self.gen_expr(left)?.into_int_value();
+                let r = self.gen_expr(right)?.into_int_value();
+                let res = match op {
+                    BinaryOperator::Add => self.builder.build_int_add(l, r, "add")?,
+                    BinaryOperator::Sub => self.builder.build_int_sub(l, r, "sub")?,
+                    BinaryOperator::Mul => self.builder.build_int_mul(l, r, "mul")?,
+                    BinaryOperator::Div => self.builder.build_int_signed_div(l, r, "div")?,
+                    BinaryOperator::Eq        =>
+                        self.builder.build_int_compare(IntPredicate::EQ,  l, r, "cmp")?,
+                    BinaryOperator::NotEq     =>
+                        self.builder.build_int_compare(IntPredicate::NE,  l, r, "cmp")?,
+                    BinaryOperator::Less      =>
+                        self.builder.build_int_compare(IntPredicate::SLT, l, r, "cmp")?,
+                    BinaryOperator::Greater   =>
+                        self.builder.build_int_compare(IntPredicate::SGT, l, r, "cmp")?,
+                    BinaryOperator::LessEq    =>
+                        self.builder.build_int_compare(IntPredicate::SLE, l, r, "cmp")?,
+                    BinaryOperator::GreaterEq =>
+                        self.builder.build_int_compare(IntPredicate::SGE, l, r, "cmp")?,
+                    BinaryOperator::And => self.builder.build_and(l, r, "and")?,
+                    BinaryOperator::Or  => self.builder.build_or(l, r, "or")?,
+                };
+                Ok(res.into())
             }
-            Expr::ArrayLiteral(_) => panic!("ArrayLiteral doğrudan gen_expr da kullanılamaz"),
+            _ => todo!("call/cast/unary/index/struct/array/string sonraki adımlarda"),
         }
+    }
+    pub fn print_ir(&self) {
+        println!("{}", self.module.print_to_string().to_string());
     }
 }
+

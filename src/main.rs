@@ -1,11 +1,13 @@
-
-
 use bumpalo::Bump;
 use lexora::lexer::Lexer;
 use lexora::parser::Parser;
 use lexora::typechecker::TypeChecker;
 use std::env;
 use std::fs;
+
+use inkwell::context::Context;
+use lexora::codegen::CodeGen;
+use lexora::error::LexoraError;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -37,12 +39,19 @@ fn main() {
     };
     let interner = &parser.interner;
     let mut checker = TypeChecker::new(interner);
-    match checker.check_program(&program) {
-        Ok(()) => println!("Ok: tip kontrolu basarili."),
-        Err(e) => {
-            eprintln!("{}", e);
-            std::process::exit(1);
-        }
+    if let Err(e) = checker.check_program(&program) {
+        eprintln!("{}", e);
+        std::process::exit(1);
     }
+    println!("Ok: tip kontrolu basarili.");
+
+    // ---- CodeGen (inkwell) ----
+    let context = Context::create();
+    let mut codegen = CodeGen::new(&context, interner, "lexora_module");
+    if let Err(e) = codegen.compile(&program) {
+        eprintln!("{}", LexoraError::Codegen { message: e.to_string() });
+        std::process::exit(1);
+    }
+    codegen.print_ir();
 
 }
