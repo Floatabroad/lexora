@@ -1,0 +1,25 @@
+fn main() -> i32 {
+      let x: i32 = 10;
+
+      if x > 5 {
+          print(1);
+      }
+
+      if x > 20 {
+          print(2);
+      } else {
+          print(3);
+      }
+
+      let i: i32 = 0;
+      while i < 3 {
+          print(i);
+          i = i + 1;
+      }
+
+      for j in 0..3 {
+          print(j);
+      }
+
+      return 0;
+  }

@@ -3,12 +3,11 @@ use crate::symbol::{Symbol, Interner};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::builder::{Builder, BuilderError};
-use inkwell::values::{FunctionValue, PointerValue, BasicValueEnum};
+use inkwell::values::{FunctionValue, PointerValue, BasicValueEnum, BasicMetadataValueEnum, ValueKind};
 use inkwell::types::{BasicTypeEnum, BasicType, BasicMetadataTypeEnum};
 use inkwell::AddressSpace;
 use std::collections::HashMap;
 use inkwell::IntPredicate;
-
 
 pub struct CodeGen<'ctx> {
     context: &'ctx Context,
@@ -134,7 +133,100 @@ impl<'ctx> CodeGen<'ctx> {
                 self.gen_expr(expr)?;
                 Ok(())
             }
-            _ => todo!("if/while/for/assignindex/assignfield")
+            Stmt::If { condition, then_body, else_branch, .. } => {
+                let cond_val = self.gen_expr(condition)?.into_int_value();
+                let function = self.cur_fn.unwrap();
+
+                let then_bb = self.context.append_basic_block(function, "then");
+
+                if let Some(else_stmts)  = *else_branch{
+                    let else_bb = self.context.append_basic_block(function, "else_br");
+                    let merge_bb  = self.context.append_basic_block(function, "merge");
+                    self.builder.build_conditional_branch(cond_val, then_bb, else_bb)?;
+
+                    self.builder.position_at_end(then_bb);
+                    for stmt in *then_body {
+                        self.gen_statement(stmt)?;
+                    }
+                    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                        self.builder.build_unconditional_branch(merge_bb)?;
+                    }
+                    self.builder.position_at_end(else_bb);
+                    for stmt in else_stmts {self.gen_statement(stmt)?; }
+                    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                        self.builder.build_unconditional_branch(merge_bb)?;
+                    }
+                    self.builder.position_at_end(merge_bb);
+                }else {
+                    let merge_bb = self.context.append_basic_block(function, "merge");
+                    self.builder.build_conditional_branch(cond_val, then_bb, merge_bb)?;
+
+                    self.builder.position_at_end(then_bb);
+                    for stmt in *then_body{self.gen_statement(stmt)?;}
+                    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                        self.builder.build_unconditional_branch(merge_bb)?;
+                    }
+                    self.builder.position_at_end(merge_bb);
+                }
+                Ok(())
+            }
+            Stmt::While { condition, body, .. } => {
+                let function = self.cur_fn.unwrap();
+
+                let cond_bb = self.context.append_basic_block(function, "while_cond");
+                let body_bb = self.context.append_basic_block(function, "while_body");
+                let after_bb = self.context.append_basic_block(function, "while_after");
+
+                self.builder.build_unconditional_branch(cond_bb)?;
+
+                self.builder.position_at_end(cond_bb);
+                let cond_val = self.gen_expr(condition)?.into_int_value();
+                self.builder.build_conditional_branch(cond_val, body_bb, after_bb)?;
+
+                self.builder.position_at_end(body_bb);
+                for stmt in *body {self.gen_statement(stmt)?;}
+                if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                    self.builder.build_unconditional_branch(cond_bb)?;
+                }
+                self.builder.position_at_end(after_bb);
+                Ok(())
+            }
+            Stmt::For {var, from, to, body, .. } => {
+                let function = self.cur_fn.unwrap();
+                let i32t: BasicTypeEnum<'ctx> = self.context.i32_type().into();
+                let var_name = self.interner.resolve(*var);
+
+                let slot = self.builder.build_alloca(i32t, var_name)?;
+                let from_val = self.gen_expr(from)?;
+                self.builder.build_store(slot, from_val)?;
+                self.vars.insert(*var, (slot, i32t));
+
+                let cond_bb = self.context.append_basic_block(function, "for_cond");
+                let body_bb = self.context.append_basic_block(function, "for_body");
+                let after_bb = self.context.append_basic_block(function, "for_after");
+
+                self.builder.build_unconditional_branch(cond_bb)?;
+
+                self.builder.position_at_end(cond_bb);
+                let cur_val = self.builder.build_load(i32t, slot, var_name)?.into_int_value();
+                let to_val = self.gen_expr(to)?.into_int_value();
+                let cmp = self.builder.build_int_compare(IntPredicate::SLT, cur_val, to_val, "for_cmp")?;
+                self.builder.build_conditional_branch(cmp, body_bb, after_bb)?;
+
+                self.builder.position_at_end(body_bb);
+                for stmt in *body {self.gen_statement(stmt)?;}
+
+                if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                    let cur = self.builder.build_load(i32t, slot, var_name)?.into_int_value();
+                    let one = self.context.i32_type().const_int(1, false);
+                    let next = self.builder.build_int_add(cur, one, "inc")?;
+                    self.builder.build_store(slot, next)?;
+                    self.builder.build_unconditional_branch(cond_bb)?;
+                }
+                self.builder.position_at_end(after_bb);
+                Ok(())
+            }
+            _ => todo!("/assignindex/assignfield")
         }
     }
     fn gen_expr(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>, BuilderError> {
@@ -180,8 +272,67 @@ impl<'ctx> CodeGen<'ctx> {
                 };
                 Ok(res.into())
             }
+            Expr::Call {name, args, ..} => {
+                let fname = self.interner.resolve(*name);
+
+                if fname == "print" {
+                    let arg = self.gen_expr(&args[0])?;
+                    let printf = self.get_printf();
+
+                    let (fmt_ptr, print_arg): (PointerValue, BasicMetadataValueEnum) =
+                    if arg.is_pointer_value() {
+                        (self.fmt_global(".fmt_s", "%s\n")?, arg.into())
+                    }else {
+                        let iv = arg.into_int_value();
+                        match iv.get_type().get_bit_width(){
+                            64 => (self.fmt_global(".fmt_lld", "%lld\n")?, iv.into()),
+                            1 => {
+                                let z = self.builder.build_int_z_extend(
+                                    iv, self.context.i32_type(), "boolext")?;
+                                (self.fmt_global(".fmt_d", "%d\n")?, z.into())
+                            }
+                            _ => (self.fmt_global(".fmt_d", "%d\n")?, iv.into()),
+                        }
+                    };
+
+                    self.builder.build_call(printf, &[fmt_ptr.into(), print_arg], "printf_call")?;
+                    Ok(self.context.i32_type().const_int(0, false).into())
+                } else {
+                    let function = self.module.get_function(fname).unwrap();
+                    let mut argv: Vec<BasicMetadataValueEnum> = Vec::new();
+                    for a in args.iter() {
+                        argv.push(self.gen_expr(a)?.into());
+                    }
+                    let call = self.builder.build_call(function, &argv, "call")?;
+                    match call.try_as_basic_value() {
+                        ValueKind::Basic(v)       => Ok(v),
+                        ValueKind::Instruction(_) => Ok(self.context.i32_type().const_int(0, false).into()),
+                    }
+                }
+
+            }
+            Expr::StringLiteral(s, _) => {
+                let g = self.builder.build_global_string_ptr(s, ".str")?;
+                Ok(g.as_pointer_value().into())
+            }
             _ => todo!("call/cast/unary/index/struct/array/string sonraki adımlarda"),
         }
+    }
+    fn get_printf(&self) -> FunctionValue<'ctx> {
+        if let Some(f) = self.module.get_function("printf") {
+            return f;
+        }
+        let i32t = self.context.i32_type();
+        let ptrt = self.context.ptr_type(AddressSpace::default());
+        let fn_type = i32t.fn_type(&[ptrt.into()], true);
+        self.module.add_function("printf", fn_type, None)
+    }
+    fn fmt_global(&self, name: &str, text: &str) -> Result<PointerValue<'ctx>, BuilderError> {
+        if let Some(g) = self.module.get_global(name) {
+            return Ok(g.as_pointer_value());
+        }
+        let g = self.builder.build_global_string_ptr(text, name)?;
+        Ok(g.as_pointer_value())
     }
     pub fn print_ir(&self) {
         println!("{}", self.module.print_to_string().to_string());
