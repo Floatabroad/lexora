@@ -315,6 +315,30 @@ impl<'ctx> CodeGen<'ctx> {
                 let g = self.builder.build_global_string_ptr(s, ".str")?;
                 Ok(g.as_pointer_value().into())
             }
+            Expr::Cast{ expr, target_type, ..} => {
+                let val = self.gen_expr(expr)?.into_int_value();
+                let  from_bits = val.get_type().get_bit_width();
+
+                let target_ty = self.llvm_type(target_type).into_int_type();
+                let to_bits = target_ty.get_bit_width();
+
+                let res = if to_bits > from_bits {
+                    self.builder.build_int_s_extend(val, target_ty, "sext")?
+                } else if to_bits < from_bits {
+                    self.builder.build_int_truncate(val, target_ty, "trunc")?
+                }else {
+                    val
+                };
+                Ok(res.into())
+            }
+            Expr::UnaryOp {op, operand, ..} => {
+                let val = self.gen_expr(operand)?.into_int_value();
+                let res = match op {
+                    UnaryOperator::Not => self.builder.build_not(val, "not")?,
+                    UnaryOperator::Neg => self.builder.build_int_neg(val, "neg")?,
+                };
+                Ok(res.into())
+            }
             _ => todo!("call/cast/unary/index/struct/array/string sonraki adımlarda"),
         }
     }
