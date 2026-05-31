@@ -108,13 +108,31 @@ impl<'ctx> CodeGen<'ctx> {
     }
     fn gen_statement(&mut self, stmt: &Stmt) -> Result<(), BuilderError> {
         match stmt {
-            Stmt::Let {name, ty, value, .. } => {
-                // simdilik sadece skalar tipler array struct sonra
+            Stmt::Let { name, ty, value, .. } => {
                 let llvm_ty = self.llvm_type(ty);
                 let pname = self.interner.resolve(*name);
                 let slot = self.builder.build_alloca(llvm_ty, pname)?;
-                let val = self.gen_expr(value)?;
-                self.builder.build_store(slot, val)?;
+
+                match value {
+                    Expr::ArrayLiteral(elems, _) => {
+                        let array_ty = llvm_ty.into_array_type();
+                        let zero = self.context.i32_type().const_zero();
+                        for (i, elem) in elems.iter().enumerate() {
+                            let elem_val = self.gen_expr(elem)?;
+                            let idx = self.context.i32_type().const_int(i as u64,
+                                                                        false);
+                            let elem_ptr = unsafe {
+                                self.builder.build_in_bounds_gep(array_ty, slot, &[zero,
+                                    idx], "init_ptr")?
+                            };
+                            self.builder.build_store(elem_ptr, elem_val)?;
+                        }
+                    }
+                    _ => {
+                        let val = self.gen_expr(value)?;
+                        self.builder.build_store(slot, val)?;
+                    }
+                }
                 self.vars.insert(*name, (slot, llvm_ty));
                 Ok(())
             }
@@ -224,6 +242,20 @@ impl<'ctx> CodeGen<'ctx> {
                     self.builder.build_unconditional_branch(cond_bb)?;
                 }
                 self.builder.position_at_end(after_bb);
+                Ok(())
+            }
+            Stmt::AssignIndex { name, index, value, .. } => {
+                let (arr_ptr, arr_ty) = self.vars[name];
+                let array_ty = arr_ty.into_array_type();
+
+                let idx_val = self.gen_expr(index)?.into_int_value();
+                let val = self.gen_expr(value)?;
+                let zero = self.context.i32_type().const_zero();
+                let elem_ptr = unsafe {
+                    self.builder.build_in_bounds_gep(array_ty, arr_ptr, &[zero,
+                        idx_val], "elem_ptr")?
+                };
+                self.builder.build_store(elem_ptr, val)?;
                 Ok(())
             }
             _ => todo!("/assignindex/assignfield")
@@ -339,6 +371,23 @@ impl<'ctx> CodeGen<'ctx> {
                 };
                 Ok(res.into())
             }
+            Expr::Index {array, index, ..} => {
+                let arr_sym = match array {
+                    Expr::Identifier(s, _) =>  *s,
+                    _ => unreachable!("index hedefi degisken olmali"),
+                };
+                let (arr_ptr, arr_ty) = self.vars[&arr_sym];
+                let array_ty = arr_ty.into_array_type();
+                let elem_ty = array_ty.get_element_type();
+
+                let idx_val = self.gen_expr(index)?.into_int_value();
+                let zero = self.context.i32_type().const_zero();
+                let elem_ptr = unsafe {
+                    self.builder.build_in_bounds_gep(array_ty, arr_ptr, &[zero, idx_val], "elem_ptr")?
+                };
+                Ok(self.builder.build_load(elem_ty, elem_ptr,"elem")?)
+            }
+
             _ => todo!("call/cast/unary/index/struct/array/string sonraki adımlarda"),
         }
     }
