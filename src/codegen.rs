@@ -9,13 +9,32 @@ use inkwell::AddressSpace;
 use std::collections::HashMap;
 use inkwell::IntPredicate;
 
+
+struct VarTable<'ctx> {
+    scopes: Vec<HashMap<Symbol, (PointerValue<'ctx>, BasicTypeEnum<'ctx>)>>,
+}
+impl<'ctx> VarTable<'ctx> {
+    fn new() -> Self { VarTable { scopes: Vec::new() } }
+    fn enter(&mut self) { self.scopes.push(HashMap::new()); }
+    fn exit(&mut self)  { self.scopes.pop(); }
+    fn insert(&mut self, sym: Symbol, val: (PointerValue<'ctx>, BasicTypeEnum<'ctx>)) {
+        self.scopes.last_mut().unwrap().insert(sym, val);
+    }
+    fn get(&self, sym: Symbol) -> (PointerValue<'ctx>, BasicTypeEnum<'ctx>) {
+        for scope in self.scopes.iter().rev() {
+            if let Some(v) = scope.get(&sym) { return *v; }
+        }
+        panic!("codegen: tanimsiz degisken (typechecker kacirmali)");
+    }
+}
+
 pub struct CodeGen<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
     interner: &'ctx Interner,
 
-    vars: HashMap<Symbol, (PointerValue<'ctx>, BasicTypeEnum<'ctx>)>,
+    vars: VarTable<'ctx>,
     cur_fn: Option<FunctionValue<'ctx>>,
 }
 
@@ -32,7 +51,7 @@ impl<'ctx> CodeGen<'ctx> {
             module,
             builder,
             interner,
-            vars: HashMap::new(),
+            vars: VarTable::new(),
             cur_fn: None,
         }
     }
@@ -83,7 +102,8 @@ impl<'ctx> CodeGen<'ctx> {
         let entry = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry);
 
-        self.vars.clear();
+        self.vars = VarTable::new();
+        self.vars.enter();
 
         for(i, (sym, ty)) in func.params.iter().enumerate() {
             let llvm_ty = self.llvm_type(ty);
@@ -104,6 +124,7 @@ impl<'ctx> CodeGen<'ctx> {
                 _ => { self.builder.build_unreachable()?;}
             }
         }
+        self.vars.exit();
         Ok(())
     }
     fn gen_statement(&mut self, stmt: &Stmt) -> Result<(), BuilderError> {
@@ -137,7 +158,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(())
             }
             Stmt::Assign {name, value , .. } => {
-                let (slot, _ ) = self.vars[name];
+                let (slot, _ ) = self.vars.get(*name);
                 let val = self.gen_expr(value)?;
                 self.builder.build_store(slot, val)?;
                 Ok(())
@@ -163,14 +184,18 @@ impl<'ctx> CodeGen<'ctx> {
                     self.builder.build_conditional_branch(cond_val, then_bb, else_bb)?;
 
                     self.builder.position_at_end(then_bb);
-                    for stmt in *then_body {
-                        self.gen_statement(stmt)?;
-                    }
+                    self.vars.enter();
+                    for stmt in *then_body {self.gen_statement(stmt)?; }
+                    self.vars.exit();
+
                     if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
                         self.builder.build_unconditional_branch(merge_bb)?;
                     }
                     self.builder.position_at_end(else_bb);
+                    self.vars.enter();
                     for stmt in else_stmts {self.gen_statement(stmt)?; }
+                    self.vars.exit();
+
                     if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
                         self.builder.build_unconditional_branch(merge_bb)?;
                     }
@@ -180,7 +205,9 @@ impl<'ctx> CodeGen<'ctx> {
                     self.builder.build_conditional_branch(cond_val, then_bb, merge_bb)?;
 
                     self.builder.position_at_end(then_bb);
+                    self.vars.enter();
                     for stmt in *then_body{self.gen_statement(stmt)?;}
+                    self.vars.exit();
                     if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
                         self.builder.build_unconditional_branch(merge_bb)?;
                     }
@@ -202,7 +229,9 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_conditional_branch(cond_val, body_bb, after_bb)?;
 
                 self.builder.position_at_end(body_bb);
+                self.vars.enter();
                 for stmt in *body {self.gen_statement(stmt)?;}
+                self.vars.exit();
                 if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
                     self.builder.build_unconditional_branch(cond_bb)?;
                 }
@@ -214,6 +243,8 @@ impl<'ctx> CodeGen<'ctx> {
                 let i32t: BasicTypeEnum<'ctx> = self.context.i32_type().into();
                 let var_name = self.interner.resolve(*var);
 
+
+                self.vars.enter();
                 let slot = self.builder.build_alloca(i32t, var_name)?;
                 let from_val = self.gen_expr(from)?;
                 self.builder.build_store(slot, from_val)?;
@@ -241,11 +272,12 @@ impl<'ctx> CodeGen<'ctx> {
                     self.builder.build_store(slot, next)?;
                     self.builder.build_unconditional_branch(cond_bb)?;
                 }
+                self.vars.exit();
                 self.builder.position_at_end(after_bb);
                 Ok(())
             }
             Stmt::AssignIndex { name, index, value, .. } => {
-                let (arr_ptr, arr_ty) = self.vars[name];
+                let (arr_ptr, arr_ty) = self.vars.get(*name);
                 let array_ty = arr_ty.into_array_type();
 
                 let idx_val = self.gen_expr(index)?.into_int_value();
@@ -275,7 +307,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(self.context.bool_type().const_int(*b as u64, false).into())
             }
             Expr::Identifier(sym, _) => {
-                let (ptr, pointee_ty) = self.vars[sym];
+                let (ptr, pointee_ty) = self.vars.get(*sym);
                 let name =self.interner.resolve(*sym);
                 Ok(self.builder.build_load(pointee_ty, ptr, name)?)
             }
@@ -376,7 +408,7 @@ impl<'ctx> CodeGen<'ctx> {
                     Expr::Identifier(s, _) =>  *s,
                     _ => unreachable!("index hedefi degisken olmali"),
                 };
-                let (arr_ptr, arr_ty) = self.vars[&arr_sym];
+                let (arr_ptr, arr_ty) = self.vars.get(arr_sym);
                 let array_ty = arr_ty.into_array_type();
                 let elem_ty = array_ty.get_element_type();
 
