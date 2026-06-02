@@ -5,4 +5,4 @@ pub mod lexer;
 pub mod ast;
 pub mod parser;
 pub mod typechecker;
-pub mod codegen;
+pub mod backend;

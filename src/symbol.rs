@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Symbol(u32);
+pub struct Symbol(pub u32);
 
 pub struct Interner {
     map: HashMap<String, Symbol>,
