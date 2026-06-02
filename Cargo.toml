@@ -5,8 +5,6 @@ edition = "2024"
 
 
 [features]
-default = ["string-ir"]
-string-ir = []
 inkwell = ["dep:inkwell"]
 
 [dependencies]
