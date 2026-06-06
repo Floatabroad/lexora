@@ -6,9 +6,28 @@ use super::value::Value;
 use super::builder::IrBuilder;
 use std::collections::HashMap;
 
+
+struct VarTable {
+    scopes: Vec<HashMap<Symbol, (LlvmType, Value)>>,
+}
+
+impl VarTable {
+    fn new() -> Self { VarTable { scopes: Vec::new() }}
+    fn enter(&mut self) { self.scopes.push(HashMap::new());}
+    fn exit(&mut self) { self.scopes.pop(); }
+    fn insert(&mut self, sym: Symbol, val: (LlvmType, Value)){
+        self.scopes.last_mut().unwrap().insert(sym, val);
+    }
+    fn get(&self, sym: &Symbol) -> Option<&(LlvmType, Value)> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(v) = scope.get(sym) { return Some(v); }
+        }
+        None
+    }
+}
 pub struct CodeGen<'i> {
     builder: IrBuilder<'i>,
-    locals: HashMap<Symbol, (LlvmType, Value)>,
+    locals: VarTable,
     functions: HashMap<Symbol, (Vec<LlvmType>, LlvmType)>,
     structs: HashMap<Symbol, Vec<(Symbol, LlvmType)>>,
     current_ret_ty: LlvmType,
@@ -17,7 +36,7 @@ impl<'i> CodeGen<'i> {
     pub fn new(builder: IrBuilder<'i>) -> Self {
         CodeGen {
             builder,
-            locals: HashMap::new(),
+            locals: VarTable::new(),
             functions: HashMap::new(),
             structs: HashMap::new(),
             current_ret_ty: LlvmType::Void,
@@ -40,8 +59,9 @@ impl<'i> CodeGen<'i> {
     ) -> Result<String, LexoraError> {
         self.builder.globals.push_str(
             "@.fmt   = private constant [4 x i8] c\"%d\\0A\\00\"\n\
-               @.fmt64 = private constant [6 x i8] c\"%lld\\0A\\00\"\n\
-               declare i32 @printf(ptr, ...)\n\n"
+                 @.fmt64 = private constant [6 x i8] c\"%lld\\0A\\00\"\n\
+                 @.fmts  = private constant [4 x i8] c\"%s\\0A\\00\"\n\
+                 declare i32 @printf(ptr, ...)\n\n"
         );
         for s in &program.structs {
             let field_llvm_tys: Vec<(Symbol, LlvmType)> = s.fields.iter()
@@ -66,7 +86,9 @@ impl<'i> CodeGen<'i> {
         Ok(self.builder.finish())
     }
     fn gen_function<'arena>(&mut self, func: &Function<'arena>) -> Result<(), LexoraError> {
-        self.locals.clear();
+        self.locals = VarTable::new();
+        self.locals.enter();
+
         self.current_ret_ty = self.ast_type_to_llvm(&func.return_type);
 
         let params_ir: Vec<(Symbol, LlvmType)> = func.params.iter()
@@ -90,6 +112,7 @@ impl<'i> CodeGen<'i> {
                 self.builder.build_unreachable();
             }
         }
+        self.locals.exit();
         self.builder.emit_function_end();
         Ok(())
     }
@@ -172,18 +195,24 @@ impl<'i> CodeGen<'i> {
                                                &else_label.clone());
 
                     self.builder.emit_label(&then_label);
+                    self.locals.enter();
                     for s in then_body.iter() { self.gen_statement(s)?; }
+                    self.locals.exit();
                     self.builder.build_br(&merge_label);
 
                     self.builder.emit_label(&else_label);
+                    self.locals.enter();
                     for s in else_stmts.iter() { self.gen_statement(s)?; }
+                    self.locals.exit();
                     self.builder.build_br(&merge_label);
                 } else {
                     self.builder.build_cond_br(cond_val, &then_label.clone(),
                                                &merge_label.clone());
 
                     self.builder.emit_label(&then_label);
+                    self.locals.enter();
                     for s in then_body.iter() { self.gen_statement(s)?; }
+                    self.locals.exit();
                     self.builder.build_br(&merge_label);
                 }
                 self.builder.emit_label(&merge_label);
@@ -201,7 +230,9 @@ impl<'i> CodeGen<'i> {
                                            &end_label.clone());
 
                 self.builder.emit_label(&body_label);
+                self.locals.enter();
                 for s in body.iter() { self.gen_statement(s)?; }
+                self.locals.exit();
                 self.builder.build_br(&cond_label);
 
                 self.builder.emit_label(&end_label);
@@ -212,6 +243,7 @@ impl<'i> CodeGen<'i> {
                 let body_label = self.builder.fresh_block("for_body");
                 let end_label = self.builder.fresh_block("for_end");
 
+                self.locals.enter();
                 let from_val = self.gen_expr(from)?;
                 let ptr = self.builder.build_alloca(&LlvmType::I32, "");
                 self.builder.build_store(&LlvmType::I32, from_val, ptr.clone());
@@ -239,6 +271,7 @@ impl<'i> CodeGen<'i> {
                 self.builder.build_br(&cond_label);
 
                 self.builder.emit_label(&end_label);
+                self.locals.exit();
             }
 
             Stmt::AssignIndex { name, index, value, span } => {
@@ -357,28 +390,18 @@ impl<'i> CodeGen<'i> {
                 if name_str == "print" {
                     let arg = &args[0];
                     let arg_ty = self.expr_llvm_type(arg);
-                    match arg {
-                        Expr::StringLiteral(s, _) => {
-                            let (ptr, _) = self.builder.add_string_global(s);
-                            self.builder.output.push_str(&format!(
-                                "  call i32 (ptr, ...) @printf(ptr {})\n",
-                                ptr.to_ir_str(),
-                            ));
-                        }
-                        _ => {
-                            let val = self.gen_expr(arg)?;
-                            let fmt_ptr = match &arg_ty {
-                                LlvmType::I64 => Value::Named("@.fmt64".to_string()),
-                                _ => Value::Named("@.fmt".to_string()),
-                            };
-                            self.builder.output.push_str(&format!(
-                                "  call i32 (ptr, ...) @printf(ptr {}, {} {})\n",
-                                fmt_ptr.to_ir_str(),
-                                arg_ty.to_ir_str(),
-                                val.to_ir_str(),
-                            ));
-                        }
-                    }
+                    let val = self.gen_expr(arg)?;
+                    let fmt = match &arg_ty {
+                        LlvmType::I64 => "@.fmt64",
+                        LlvmType::Ptr => "@.fmts",
+                        _ => "@.fmt",
+                    };
+                    self.builder.output.push_str(&format!(
+                        "  call i32 (ptr, ...) @printf(ptr {}, {} {})\n",
+                        fmt,
+                        arg_ty.to_ir_str(),
+                        val.to_ir_str(),
+                    ));
                     return Ok(Value::Void);
                 }
                 let (params_tys, ret_ty) = match self.functions.get(name).cloned() {

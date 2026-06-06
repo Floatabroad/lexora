@@ -19,15 +19,23 @@ pub struct Parser<'src, 'arena> {
 }
 
 impl<'src, 'arena> Parser<'src, 'arena> {
-    pub fn new(mut lexer: Lexer<'src>, arena: &'arena Bump) ->Result<Self, LexoraError> {
+   pub fn new(lexer: Lexer<'src>, arena: &'arena Bump) -> Result<Self, LexoraError> {
+       Self::with_interner(lexer, arena, Interner::new())
+   }
+    pub fn with_interner(
+        mut lexer: Lexer<'src>,
+        arena: &'arena Bump,
+        interner: Interner,
+    ) -> Result<Self, LexoraError> {
         let current = lexer.next_token()?;
-        let peek = lexer.next_token()?;
-        Ok(Parser {
+        let peek    = lexer.next_token()?;
+
+        Ok(Parser{
             lexer,
             current,
             peek,
             arena,
-            interner: Interner::new(),
+            interner,
             allow_struct_literal: true,
         })
     }

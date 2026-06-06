@@ -10,7 +10,7 @@ run: build
 	./output
 
 clean:
-	rm -f output output.ll output.s
+	rm -f output output.ll output.s output.o
 
 .PHONY: build run clean
 

@@ -4,10 +4,13 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::values::{FunctionValue, PointerValue, BasicValueEnum, BasicMetadataValueEnum, ValueKind};
-use inkwell::types::{BasicTypeEnum, BasicType, BasicMetadataTypeEnum};
+use inkwell::types::{BasicTypeEnum, BasicType, BasicMetadataTypeEnum, StructType};
 use inkwell::AddressSpace;
 use std::collections::HashMap;
 use inkwell::IntPredicate;
+use inkwell::targets::{Target, TargetMachine, InitializationConfig, RelocMode, CodeModel, FileType};
+use inkwell::OptimizationLevel;
+use std::path::Path;
 
 
 struct VarTable<'ctx> {
@@ -35,6 +38,7 @@ pub struct CodeGen<'ctx> {
     interner: &'ctx Interner,
 
     vars: VarTable<'ctx>,
+    structs: HashMap<Symbol, (StructType<'ctx>, Vec<(Symbol, BasicTypeEnum<'ctx>)>)>,
     cur_fn: Option<FunctionValue<'ctx>>,
 }
 
@@ -52,6 +56,7 @@ impl<'ctx> CodeGen<'ctx> {
             builder,
             interner,
             vars: VarTable::new(),
+            structs: HashMap::new(),
             cur_fn: None,
         }
     }
@@ -65,11 +70,15 @@ impl<'ctx> CodeGen<'ctx> {
                 let elem_ty = self.llvm_type(elem);
                 elem_ty.array_type(*n as u32).into()
             }
-            Type::Struct(_) => todo!("Struct tipini sonraki adimda ekleyecegiz"),
+            Type::Struct(s) => self.structs.get(s)
+                .expect("struct kayitli degil, register_structs once calismali")
+                .0.into(),
+
             Type::Void => panic!("void bir deger tipi olarak kullanilamaz"),
         }
     }
     pub fn compile(&mut self, program: &Program) -> Result<(), BuilderError> {
+        self.register_structs(program);
         for func in &program.functions {
             self.declare_functions(func);
         }
@@ -78,7 +87,24 @@ impl<'ctx> CodeGen<'ctx> {
         }
         Ok(())
     }
-
+    fn register_structs(&mut self, program: &Program) {
+        for s in &program.structs {
+            let st = self.context.opaque_struct_type(&format!("struct.{}", s.name.0));
+            self.structs.insert(s.name, (st, Vec::new()));
+        }
+        for s in &program.structs {
+            let mut fields = Vec::new();
+            let mut fields_tys = Vec::new();
+            for (fsym, fty) in &s.fields {
+                let lty = self.llvm_type(fty);
+                fields.push((*fsym, lty));
+                fields_tys.push(lty);
+            }
+            let st = self.structs.get(&s.name).unwrap().0;
+            st.set_body(&fields_tys, false);
+            self.structs.get_mut(&s.name).unwrap().1 = fields;
+        }
+    }
     fn declare_functions(&mut self, func: &Function) -> FunctionValue<'ctx> {
         let param_types: Vec<BasicMetadataTypeEnum>  = func.params.iter()
             .map(|(_, ty)| self.llvm_type(ty).into())
@@ -147,6 +173,20 @@ impl<'ctx> CodeGen<'ctx> {
                                     idx], "init_ptr")?
                             };
                             self.builder.build_store(elem_ptr, elem_val)?;
+                        }
+                    }
+                    Expr::StructLiteral { name: struct_name, fields, .. } => {
+                        let st = llvm_ty.into_struct_type();
+                        let defs = self.structs.get(struct_name).unwrap().1.clone();
+                        for (idx, (fsym, _)) in defs.iter().enumerate() {
+                            let fexpr = fields.iter()
+                                .find(|(n, _)| n == fsym)
+                                .map(|(_, v)| v)
+                                .unwrap();
+                            let fval = self.gen_expr(fexpr)?;
+                            let fptr = self.builder.build_struct_gep(st, slot,
+                                                                     idx as u32, "fld")?;
+                            self.builder.build_store(fptr, fval)?;
                         }
                     }
                     _ => {
@@ -290,7 +330,15 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_store(elem_ptr, val)?;
                 Ok(())
             }
-            _ => todo!("/assignindex/assignfield")
+            Stmt::AssignField { object, field, value, .. } => {
+                let (obj_ptr, obj_ty) = self.vars.get(*object);
+                let st = obj_ty.into_struct_type();
+                let idx = self.field_index(st, *field);
+                let val = self.gen_expr(value)?;
+                let fptr = self.builder.build_struct_gep(st, obj_ptr, idx, "fld")?;
+                self.builder.build_store(fptr, val)?;
+                Ok(())
+            }
         }
     }
     fn gen_expr(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>, BuilderError> {
@@ -419,9 +467,20 @@ impl<'ctx> CodeGen<'ctx> {
                 };
                 Ok(self.builder.build_load(elem_ty, elem_ptr,"elem")?)
             }
+            Expr::FieldAccess { object, field, .. } => {
+                let obj_sym = match object {
+                    Expr::Identifier(s, _) => *s,
+                    _ => unreachable!("alan erisimi degisken olmali"),
+                };
+                let (obj_ptr, obj_ty) = self.vars.get(obj_sym);
+                let st = obj_ty.into_struct_type();
+                let idx = self.field_index(st, *field);
+                let fptr = self.builder.build_struct_gep(st, obj_ptr, idx, "fld")?;
+                let fld_ty = st.get_field_type_at_index(idx).unwrap();
+                Ok(self.builder.build_load(fld_ty, fptr, "fldval")?)
+            }
 
-            _ => todo!("call/cast/unary/index/struct/array/string sonraki adımlarda"),
-        }
+            _ => todo!("call/cast/unary/index/struct/array/string sonraki adımlarda"),        }
     }
     fn get_printf(&self) -> FunctionValue<'ctx> {
         if let Some(f) = self.module.get_function("printf") {
@@ -432,6 +491,17 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_type = i32t.fn_type(&[ptrt.into()], true);
         self.module.add_function("printf", fn_type, None)
     }
+    fn field_index(&self, st: StructType<'ctx>, field: Symbol) -> u32 {
+        for (_, (sty, defs)) in self.structs.iter() {
+            if *sty == st {
+                if let Some(i) = defs.iter().position(|(n, _)| *n == field) {
+                    return i as u32;
+                }
+
+            }
+        }
+        panic!("codegen: struct alani bulunamadi");
+    }
     fn fmt_global(&self, name: &str, text: &str) -> Result<PointerValue<'ctx>, BuilderError> {
         if let Some(g) = self.module.get_global(name) {
             return Ok(g.as_pointer_value());
@@ -441,6 +511,28 @@ impl<'ctx> CodeGen<'ctx> {
     }
     pub fn print_ir(&self) {
         println!("{}", self.module.print_to_string().to_string());
+
+    }
+
+    pub fn verify(&self) -> Result<(), String> {
+        self.module.verify().map_err(|e| e.to_string())
+    }
+    pub fn emit_object(&self, path: &Path) -> Result<(), String> {
+        Target::initialize_native(&InitializationConfig::default())?;
+        let triple = TargetMachine::get_default_triple();
+        let target = Target::from_triple(&triple).map_err(|e| e.to_string())?;
+        let tm = target
+            .create_target_machine(
+                &triple,
+                &TargetMachine::get_host_cpu_name().to_string(),
+                &TargetMachine::get_host_cpu_features().to_string(),
+                OptimizationLevel::None,
+                RelocMode::PIC,
+                CodeModel::Default,
+            )
+            .ok_or_else(|| "TargetMachine olusturulmaadi".to_string())?;
+        tm.write_to_file(&self.module, FileType::Object, path)
+            .map_err(|e| e.to_string())
     }
 }
 
