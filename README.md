@@ -2,9 +2,9 @@
 
 # Lexora
 
-**A statically-typed, compiled programming language written from scratch in Rust.**
+**A small statically-typed, compiled language I'm building from scratch in Rust — mostly to learn how compilers actually work.**
 
-Lexora compiles `.lx` source to LLVM IR and produces native binaries.
+It takes `.lx` source, type-checks it, and lowers it down to LLVM IR and native binaries.
 
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust](https://img.shields.io/badge/Rust-2024-orange.svg)](https://www.rust-lang.org/)
@@ -16,10 +16,12 @@ Lexora compiles `.lx` source to LLVM IR and produces native binaries.
 
 ## Overview
 
-Lexora is a small but real compiler. It has a hand-written, zero-copy lexer, an
-arena-allocated AST with string interning, a scope-aware type checker, and **two
-interchangeable code-generation backends** that target LLVM. The frontend is
-shared; only the final IR-emission stage differs.
+Lexora is a hobby project — a place for me to learn compiler internals by
+actually building one, not a production tool. That said, it's a complete
+end-to-end pipeline: a hand-written lexer, an arena-allocated AST with string
+interning, a scope-aware type checker, and **two interchangeable
+code-generation backends** that target LLVM. The frontend is shared; only the
+final IR-emission stage differs.
 
 ```
 source.lx → Lexer → Parser → TypeChecker → CodeGen → LLVM IR → native binary
@@ -57,8 +59,8 @@ fn main() -> i32 {
 
 ## Architecture
 
-The frontend (lexer, parser, type checker, AST) is built with performance and
-correctness in mind:
+The frontend (lexer, parser, type checker, AST) is where I spent most of my
+time, trying to do things the "proper" way rather than the quickest:
 
 - **Zero-copy lexer** — tokens borrow directly from the source string
 - **Arena-allocated AST** — nodes live in a single `bumpalo` arena; cache-friendly, `O(1)` to drop
@@ -102,6 +104,8 @@ clang -no-pie output.s -o hello
 
 # Choose a backend explicitly
 cargo run -- --backend string-ir program.lx
+
+# inkwell backend → emits output.o and links a native binary via cc
 cargo run --features inkwell -- --backend inkwell program.lx
 ```
 
@@ -125,10 +129,13 @@ std/
 
 ## Status
 
-The `string_ir` backend is complete and produces working native binaries across
-the full language surface. The `inkwell` backend supports scalars, control flow,
-casts, arrays, function calls and `print`, with struct support and native object
-emission in progress.
+Both backends now compile the full language surface to working native binaries.
+`string_ir` lowers textual IR via `llc` + `clang`; `inkwell` emits a native
+object through LLVM's `TargetMachine` and links it with `cc`. The shared
+`test.lx` suite produces **byte-identical binaries** on both backends.
+
+It's still a learning project, so expect rough edges, missing features, and the
+occasional `unimplemented!()` — I add things as I get to them.
 
 ## License
 
