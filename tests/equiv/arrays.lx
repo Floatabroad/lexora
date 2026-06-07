@@ -1,0 +1,14 @@
+fn main() -> i32 {
+    let arr: [i32; 4] = [10, 20, 30, 40];
+    arr[1] = 99;
+    print(arr[0]);
+    print(arr[1]);
+    print(arr[2]);
+    print(arr[3]);
+    let sum: i32 = 0;
+    for i in 0..4 {
+        sum = sum + arr[i];
+    }
+    print(sum);
+    return 0;
+}

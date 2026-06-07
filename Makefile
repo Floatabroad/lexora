@@ -12,7 +12,13 @@ run: build
 clean:
 	rm -f output output.ll output.s output.o
 
-.PHONY: build run clean
+equiv:
+	./scripts/equiv.sh
+
+equiv-bless:
+	./scripts/equiv.sh --bless
+
+.PHONY: build run clean equiv equiv-bless
 
 
 

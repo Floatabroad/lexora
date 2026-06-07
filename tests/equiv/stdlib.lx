@@ -1,0 +1,11 @@
+import "../../std/math.lx";
+
+fn main() -> i32 {
+    print(abs(-7));
+    print(max(3, 9));
+    print(min(3, 9));
+    print(pow(2, 10));
+    print(sum_to(10));
+    print(clamp(15, 0, 10));
+    return 0;
+}

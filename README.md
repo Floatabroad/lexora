@@ -73,11 +73,16 @@ time, trying to do things the "proper" way rather than the quickest:
 | Backend | How it works | Notes |
 | --- | --- | --- |
 | `string_ir` *(default)* | Emits textual LLVM IR through a type-safe builder | No external dependencies; pure Rust; lowered to a binary via `llc` + `clang` |
-| `inkwell` *(optional)* | Builds LLVM's in-memory IR via the official Rust bindings | Enables real optimization passes and native object emission; requires LLVM |
+| `inkwell` *(optional)* | Builds LLVM's in-memory IR via the official Rust bindings | Runs real optimization passes (`mem2reg` and friends, selectable with `-O0`…`-O3`) and emits a native object; requires LLVM |
 
 The backend is selected **at runtime** with `--backend`, while the heavyweight
 LLVM-linked `inkwell` backend is gated behind a **build-time feature** — so the
 default build needs no LLVM development libraries at all.
+
+Because both backends share the entire frontend, they must agree byte-for-byte
+on every program. That invariant is enforced by an equivalence harness
+(`make equiv`, or `cargo test --features inkwell`) that compiles each case in
+`tests/equiv/` with both backends and diffs their output.
 
 ## Building
 
@@ -107,6 +112,9 @@ cargo run -- --backend string-ir program.lx
 
 # inkwell backend → emits output.o and links a native binary via cc
 cargo run --features inkwell -- --backend inkwell program.lx
+
+# Pick an optimization level for the inkwell backend: -O0 (default) … -O3
+cargo run --features inkwell -- --backend inkwell -O2 program.lx
 ```
 
 ## Project layout
@@ -131,8 +139,10 @@ std/
 
 Both backends now compile the full language surface to working native binaries.
 `string_ir` lowers textual IR via `llc` + `clang`; `inkwell` emits a native
-object through LLVM's `TargetMachine` and links it with `cc`. The shared
-`test.lx` suite produces **byte-identical binaries** on both backends.
+object through LLVM's `TargetMachine` and links it with `cc`, and runs LLVM
+optimization passes (`mem2reg` promotes stack slots into SSA registers) at a
+chosen `-O` level. The two backends produce **byte-identical output** across the
+`tests/equiv/` corpus, checked automatically by the equivalence harness.
 
 It's still a learning project, so expect rough edges, missing features, and the
 occasional `unimplemented!()` — I add things as I get to them.
