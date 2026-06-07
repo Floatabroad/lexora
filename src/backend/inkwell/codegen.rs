@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use inkwell::IntPredicate;
 use inkwell::targets::{Target, TargetMachine, InitializationConfig, RelocMode, CodeModel, FileType};
 use inkwell::OptimizationLevel;
+use inkwell::passes::PassBuilderOptions;
 use std::path::Path;
 
 
@@ -40,6 +41,7 @@ pub struct CodeGen<'ctx> {
     vars: VarTable<'ctx>,
     structs: HashMap<Symbol, (StructType<'ctx>, Vec<(Symbol, BasicTypeEnum<'ctx>)>)>,
     cur_fn: Option<FunctionValue<'ctx>>,
+    opt: u8,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -47,6 +49,7 @@ impl<'ctx> CodeGen<'ctx> {
         context: &'ctx Context,
         interner: &'ctx Interner,
         module_name: &str,
+        opt: u8,
     ) -> Self {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
@@ -58,6 +61,7 @@ impl<'ctx> CodeGen<'ctx> {
             vars: VarTable::new(),
             structs: HashMap::new(),
             cur_fn: None,
+            opt,
         }
     }
     fn llvm_type(&self, ty: &Type) -> BasicTypeEnum<'ctx> {
@@ -134,7 +138,7 @@ impl<'ctx> CodeGen<'ctx> {
         for(i, (sym, ty)) in func.params.iter().enumerate() {
             let llvm_ty = self.llvm_type(ty);
             let pname = self.interner.resolve(*sym);
-            let slot = self.builder.build_alloca(llvm_ty, pname)?;
+            let slot = self.entry_alloca(llvm_ty, pname)?;
             let arg = function.get_nth_param(i as u32).unwrap();
             self.builder.build_store(slot, arg)?;
             self.vars.insert(*sym, (slot, llvm_ty));
@@ -158,7 +162,7 @@ impl<'ctx> CodeGen<'ctx> {
             Stmt::Let { name, ty, value, .. } => {
                 let llvm_ty = self.llvm_type(ty);
                 let pname = self.interner.resolve(*name);
-                let slot = self.builder.build_alloca(llvm_ty, pname)?;
+                let slot = self.entry_alloca(llvm_ty, pname)?;
 
                 match value {
                     Expr::ArrayLiteral(elems, _) => {
@@ -285,7 +289,7 @@ impl<'ctx> CodeGen<'ctx> {
 
 
                 self.vars.enter();
-                let slot = self.builder.build_alloca(i32t, var_name)?;
+                let slot = self.entry_alloca(i32t, var_name)?;
                 let from_val = self.gen_expr(from)?;
                 self.builder.build_store(slot, from_val)?;
                 self.vars.insert(*var, (slot, i32t));
@@ -482,6 +486,17 @@ impl<'ctx> CodeGen<'ctx> {
 
             _ => todo!("call/cast/unary/index/struct/array/string sonraki adımlarda"),        }
     }
+    fn entry_alloca(&self, ty: BasicTypeEnum<'ctx>, name: &str)
+        -> Result<PointerValue<'ctx>, BuilderError> {
+        let func = self.cur_fn.unwrap();
+        let entry = func.get_first_basic_block().unwrap();
+        let tmp = self.context.create_builder();
+        match entry.get_first_instruction(){
+            Some(first) => tmp.position_before(&first),
+            None => tmp.position_at_end(entry),
+        }
+        tmp.build_alloca(ty, name)
+    }
     fn get_printf(&self) -> FunctionValue<'ctx> {
         if let Some(f) = self.module.get_function("printf") {
             return f;
@@ -509,28 +524,49 @@ impl<'ctx> CodeGen<'ctx> {
         let g = self.builder.build_global_string_ptr(text, name)?;
         Ok(g.as_pointer_value())
     }
-    pub fn print_ir(&self) {
-        println!("{}", self.module.print_to_string().to_string());
 
-    }
 
     pub fn verify(&self) -> Result<(), String> {
         self.module.verify().map_err(|e| e.to_string())
     }
-    pub fn emit_object(&self, path: &Path) -> Result<(), String> {
+    fn target_machine(&self) -> Result<TargetMachine, String> {
         Target::initialize_native(&InitializationConfig::default())?;
         let triple = TargetMachine::get_default_triple();
         let target = Target::from_triple(&triple).map_err(|e| e.to_string())?;
-        let tm = target
+        let level = match self.opt {
+            0 => OptimizationLevel::None,
+            1 => OptimizationLevel::Less,
+            2 => OptimizationLevel::Default,
+            _ => OptimizationLevel::Aggressive,
+        };
+        target
             .create_target_machine(
                 &triple,
                 &TargetMachine::get_host_cpu_name().to_string(),
                 &TargetMachine::get_host_cpu_features().to_string(),
-                OptimizationLevel::None,
+                level,
                 RelocMode::PIC,
                 CodeModel::Default,
             )
-            .ok_or_else(|| "TargetMachine olusturulmaadi".to_string())?;
+            .ok_or_else(|| "TargetMachine olusturulamadi".to_string())
+    }
+    pub fn optimize(&self) -> Result<(), String> {
+        if self.opt == 0 {
+            return Ok(());
+        }
+        let tm = self.target_machine()?;
+        self.module.set_triple(&tm.get_triple());
+        self.module.set_data_layout(&tm.get_target_data().get_data_layout());
+        let opts = PassBuilderOptions::create();
+        self.module
+            .run_passes(&format!("default<O{}>", self.opt), &tm, opts)
+            .map_err(|e| e.to_string())
+    }
+    pub fn write_ir(&self, path: &Path) -> Result<(), String> {
+        self.module.print_to_file(path).map_err(|e| e.to_string())
+    }
+    pub fn emit_object(&self, path: &Path) -> Result<(), String> {
+        let tm = self.target_machine()?;
         tm.write_to_file(&self.module, FileType::Object, path)
             .map_err(|e| e.to_string())
     }

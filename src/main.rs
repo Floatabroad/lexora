@@ -15,6 +15,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let mut file: Option<String> = None;
     let mut backend = String::from("string-ir");
+    let mut opt: u8 = 0;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -26,6 +27,10 @@ fn main() {
                 }
                 backend = args[i].clone();
             }
+            "-O0" => opt = 0,
+            "-O1" => opt = 1,
+            "-O2" => opt = 2,
+            "-O3" => opt = 3,
             other => file = Some(other.to_string()),
         }
         i += 1;
@@ -56,7 +61,7 @@ fn main() {
 
     match backend.as_str() {
         "string-ir" => run_string_ir(&interner, &program),
-        "inkwell" => run_inkwell(&interner, &program),
+        "inkwell" => run_inkwell(&interner, &program, opt),
         other => {
             eprintln!("bilinmeyen backend: '{}' (string-ir veya inkwell)", other);
             std::process::exit(1);
@@ -132,12 +137,12 @@ fn run_string_ir(interner: &Interner, program: &Program) {
 }
 
 #[cfg(feature = "inkwell")]
-fn run_inkwell(interner: &Interner, program: &Program) {
+fn run_inkwell(interner: &Interner, program: &Program, opt: u8) {
     use inkwell::context::Context;
     use lexora::backend::inkwell::codegen::CodeGen;
 
     let context = Context::create();
-    let mut codegen = CodeGen::new(&context, interner, "lexora_module");
+    let mut codegen = CodeGen::new(&context, interner, "lexora_module", opt);
     if let Err(e) = codegen.compile(program) {
         eprintln!("{}", LexoraError::Codegen { message: e.to_string() });
         std::process::exit(1);
@@ -145,6 +150,14 @@ fn run_inkwell(interner: &Interner, program: &Program) {
     if let Err(e) = codegen.verify() {
         eprintln!("{}", LexoraError::Codegen { message: format!("module.verify: {}", e)
         });
+        std::process::exit(1);
+    }
+    if let Err(e) = codegen.optimize() {
+        eprintln!("{}", LexoraError::Codegen { message: format!("optimize: {}", e) });
+        std::process::exit(1);
+    }
+    if let Err(e) = codegen.write_ir(Path::new("output.ll")) {
+        eprintln!("{}", LexoraError::Codegen { message: format!("ir dump: {}", e) });
         std::process::exit(1);
     }
     if let Err(e) = codegen.emit_object(Path::new("output.o")) {
@@ -171,7 +184,7 @@ fn run_inkwell(interner: &Interner, program: &Program) {
 }
 
 #[cfg(not(feature = "inkwell"))]
-fn run_inkwell(_interner: &Interner, _program: &Program) {
+fn run_inkwell(_interner: &Interner, _program: &Program, _opt: u8) {
     eprintln!("inkwell backend bu binary'de derlenmemis; `cargo run --features inkwell` ile derle");
     std::process::exit(1);
 }
