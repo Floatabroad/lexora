@@ -3,7 +3,7 @@ use crate::symbol::{Symbol, Interner};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::builder::{Builder, BuilderError};
-use inkwell::values::{FunctionValue, PointerValue, BasicValueEnum, BasicMetadataValueEnum, ValueKind};
+use inkwell::values::{FunctionValue, PointerValue, BasicValueEnum, BasicMetadataValueEnum, ValueKind,IntValue};
 use inkwell::types::{BasicTypeEnum, BasicType, BasicMetadataTypeEnum, StructType};
 use inkwell::AddressSpace;
 use std::collections::HashMap;
@@ -12,6 +12,7 @@ use inkwell::targets::{Target, TargetMachine, InitializationConfig, RelocMode, C
 use inkwell::OptimizationLevel;
 use inkwell::passes::PassBuilderOptions;
 use std::path::Path;
+use inkwell::intrinsics::Intrinsic;
 
 
 struct VarTable<'ctx> {
@@ -326,6 +327,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                 let idx_val = self.gen_expr(index)?.into_int_value();
                 let val = self.gen_expr(value)?;
+                self.bounds_check(idx_val, array_ty.len())?;
                 let zero = self.context.i32_type().const_zero();
                 let elem_ptr = unsafe {
                     self.builder.build_in_bounds_gep(array_ty, arr_ptr, &[zero,
@@ -367,10 +369,26 @@ impl<'ctx> CodeGen<'ctx> {
                 let l = self.gen_expr(left)?.into_int_value();
                 let r = self.gen_expr(right)?.into_int_value();
                 let res = match op {
-                    BinaryOperator::Add => self.builder.build_int_add(l, r, "add")?,
-                    BinaryOperator::Sub => self.builder.build_int_sub(l, r, "sub")?,
-                    BinaryOperator::Mul => self.builder.build_int_mul(l, r, "mul")?,
-                    BinaryOperator::Div => self.builder.build_int_signed_div(l, r, "div")?,
+                    BinaryOperator::Add => self.checked_arith("llvm.sadd.with.overflow", l, r)?,
+                    BinaryOperator::Sub => self.checked_arith("llvm.ssub.with.overflow", l, r)?,
+                    BinaryOperator::Mul => self.checked_arith("llvm.smul.with.overflow", l, r)?,
+                    BinaryOperator::Div => {
+                        let function = self.cur_fn.unwrap();
+                        let is_zero = self.builder.build_int_compare(
+                            IntPredicate::EQ, r, r.get_type().const_zero(), "divz")?;
+                        let panic_bb = self.context.append_basic_block(function, "div_panic");
+                        let ok_bb = self.context.append_basic_block(function, "div_ok");
+                        self.builder.build_conditional_branch(is_zero, panic_bb, ok_bb)?;
+
+                        self.builder.position_at_end(panic_bb);
+                        let panic_fn = self.get_or_build_panic()?;
+                        let msg = self.fmt_global(".panicmsg_div", "lexora: division by zero")?;
+                        self.builder.build_call(panic_fn, &[msg.into()], "")?;
+                        self.builder.build_unreachable()?;
+
+                        self.builder.position_at_end(ok_bb);
+                        self.builder.build_int_signed_div(l, r, "div")?
+                    }
                     BinaryOperator::Eq        =>
                         self.builder.build_int_compare(IntPredicate::EQ,  l, r, "cmp")?,
                     BinaryOperator::NotEq     =>
@@ -465,6 +483,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let elem_ty = array_ty.get_element_type();
 
                 let idx_val = self.gen_expr(index)?.into_int_value();
+                self.bounds_check(idx_val, array_ty.len())?;
                 let zero = self.context.i32_type().const_zero();
                 let elem_ptr = unsafe {
                     self.builder.build_in_bounds_gep(array_ty, arr_ptr, &[zero, idx_val], "elem_ptr")?
@@ -505,6 +524,77 @@ impl<'ctx> CodeGen<'ctx> {
         let ptrt = self.context.ptr_type(AddressSpace::default());
         let fn_type = i32t.fn_type(&[ptrt.into()], true);
         self.module.add_function("printf", fn_type, None)
+    }
+    fn get_or_build_exit(&self) -> FunctionValue<'ctx> {
+        if let Some(f) = self.module.get_function("exit") {
+            return f;
+        }
+        let void_t = self.context.void_type();
+        let i32t = self.context.i32_type();
+        let fn_type = void_t.fn_type(&[i32t.into()], false);
+        self.module.add_function("exit", fn_type, None)
+    }
+    fn get_or_build_panic(&self) -> Result<FunctionValue<'ctx>, BuilderError> {
+        if let Some(f) = self.module.get_function("lexora_panic") {
+            return Ok(f);
+        }
+        let void_t = self.context.void_type();
+        let ptr_t = self.context.ptr_type(AddressSpace::default());
+        let fn_type = void_t.fn_type(&[ptr_t.into()], false);
+        let func = self.module.add_function("lexora_panic", fn_type, None);
+
+        let entry = self.context.append_basic_block(func, "entry");
+        let tmp = self.context.create_builder();
+        tmp.position_at_end(entry);
+
+        let msg = func.get_nth_param(0).unwrap().into_pointer_value();
+        let fmt = tmp.build_global_string_ptr("%s\n", ".panic_fmt")?.as_pointer_value();
+        let printf = self.get_printf();
+        tmp.build_call(printf, &[fmt.into(), msg.into()], "")?;
+
+        let one = self.context.i32_type().const_int(1, false);
+        tmp.build_call(self.get_or_build_exit(), &[one.into()], "")?;
+        tmp.build_unreachable()?;
+        Ok(func)
+    }
+    fn bounds_check(&self, idx: IntValue<'ctx>, len: u32) -> Result<(), BuilderError> {
+        let function = self.cur_fn.unwrap();
+        let size = self.context.i32_type().const_int(len as u64, false);
+        let oob = self.builder.build_int_compare(IntPredicate::UGE, idx, size, "oob")?;
+        let panic_bb = self.context.append_basic_block(function, "idx_panic");
+        let ok_bb = self.context.append_basic_block(function, "idx_ok");
+        self.builder.build_conditional_branch(oob, panic_bb, ok_bb)?;
+        self.builder.position_at_end(panic_bb);
+        let panic_fn = self.get_or_build_panic()?;
+        let msg = self.fmt_global(".panicmsg_idx", "lexora: index out of bounds")?;
+        self.builder.build_call(panic_fn, &[msg.into()], "")?;
+        self.builder.build_unreachable()?;
+        self.builder.position_at_end(ok_bb);
+        Ok(())
+    }
+
+    fn checked_arith(&self, name: &str, l: IntValue<'ctx>, r: IntValue<'ctx>) -> Result<IntValue<'ctx>, BuilderError> {
+        let function = self.cur_fn.unwrap();
+        let int_ty = l.get_type();
+        let intrinsic = Intrinsic::find(name).expect("intrinsic bulunamadi");
+        let decl = intrinsic.get_declaration(&self.module, &[int_ty.into()]).expect("intrinsic decl alinamadi");
+        let call = self.builder.build_call(decl, &[l.into(), r.into()], "ovf_call")?;
+        let agg = match call.try_as_basic_value() {
+            ValueKind::Basic(v) => v.into_struct_value(),
+            ValueKind::Instruction(_) => unreachable!("overflow intrinsic struct dondurur"),
+        };
+        let res = self.builder.build_extract_value(agg, 0, "res")?.into_int_value();
+        let ovc = self.builder.build_extract_value(agg, 1, "ovc")?.into_int_value();
+        let panic_bb = self.context.append_basic_block(function, "ovf_panic");
+        let ok_bb = self.context.append_basic_block(function, "ovf_ok");
+        self.builder.build_conditional_branch(ovc, panic_bb, ok_bb)?;
+        self.builder.position_at_end(panic_bb);
+        let panic_fn = self.get_or_build_panic()?;
+        let msg = self.fmt_global(".panicmsg_ovf", "lexora: integer overflow")?;
+        self.builder.build_call(panic_fn, &[msg.into()], "")?;
+        self.builder.build_unreachable()?;
+        self.builder.position_at_end(ok_bb);
+        Ok(res)
     }
     fn field_index(&self, st: StructType<'ctx>, field: Symbol) -> u32 {
         for (_, (sty, defs)) in self.structs.iter() {

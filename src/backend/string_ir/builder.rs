@@ -127,6 +127,36 @@ impl<'i> IrBuilder<'i> {
         ));
         result
     }
+    pub fn build_checked_sdiv(&mut self, ty: &LlvmType, lhs: Value, rhs: Value) -> Value {
+        let is_zero = self.build_icmp("eq", ty, rhs.clone(), Value::Const(0));
+        let panic_label = self.fresh_block("div_panic");
+        let ok_label = self.fresh_block("div_ok");
+        self.build_cond_br(is_zero, &panic_label, &ok_label);
+        self.emit_label(&panic_label);
+        self.output.push_str("  call void @lexora_panic(ptr @.panicmsg_div)\n");
+        self.build_unreachable();
+        self.emit_label(&ok_label);
+        self.build_sdiv(ty, lhs, rhs)
+    }
+
+    pub fn build_checked_arith(&mut self, intrinsic: &str, ty: &LlvmType, lhs: Value, rhs: Value) -> Value {
+        let t = ty.to_ir_str();
+        let pair = self.fresh_temp();
+        self.output.push_str(&format!("  {} = call {{{}, i1}} @llvm.{}.with.overflow.{}({} {}, {} {})\n",
+        pair.to_ir_str(),t , intrinsic, t, t, lhs.to_ir_str(),t, rhs.to_ir_str()));
+        let res = self.fresh_temp();
+        self.output.push_str(&format!("  {} = extractvalue {{{}, i1}} {}, 0\n", res.to_ir_str(), t, pair.to_ir_str()));
+        let ovf = self.fresh_temp();
+        self.output.push_str(&format!("  {} = extractvalue {{{}, i1}} {}, 1\n", ovf.to_ir_str(), t, pair.to_ir_str()));
+        let panic_label = self.fresh_block("ovf_panic");
+        let ok_label = self.fresh_block("ovf_ok");
+        self.build_cond_br(ovf, &panic_label, &ok_label);
+        self.emit_label(&panic_label);
+        self.output.push_str("  call void @lexora_panic(ptr @.panicmsg_ovf)\n");
+        self.build_unreachable();
+        self.emit_label(&ok_label);
+        res
+    }
 
     pub fn build_icmp(&mut self, pred: &str, ty: &LlvmType, lhs: Value, rhs: Value) -> Value {
         let result = self.fresh_temp();
@@ -245,6 +275,24 @@ impl<'i> IrBuilder<'i> {
             result.to_ir_str(), array_size, elem_ty.to_ir_str(), ptr.to_ir_str(), index.to_ir_str(),
         ));
         result
+    }
+    pub fn build_checked_gep_array(
+        &mut self,
+        elem_ty: &LlvmType,
+        array_size: usize,
+        ptr: Value,
+        index: Value,
+    ) -> Value {
+        let oob = self.build_icmp("uge", &LlvmType::I32, index.clone(),
+        Value::Const(array_size as i64));
+        let panic_label = self.fresh_block("idx_panic");
+        let ok_label = self.fresh_block("idx_ok");
+        self.build_cond_br(oob, &panic_label, &ok_label);
+        self.emit_label(&panic_label);
+        self.output.push_str("  call void @lexora_panic(ptr @.panicmsg_idx)\n");
+        self.build_unreachable();
+        self.emit_label(&ok_label);
+        self.build_gep_array(elem_ty, array_size, ptr, index)
     }
     pub fn build_gep_struct(&mut self, struct_name: Symbol, ptr: Value, field_index: u32,) -> Value {
         let result = self.fresh_temp();

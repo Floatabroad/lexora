@@ -63,6 +63,25 @@ impl<'i> CodeGen<'i> {
                  @.fmts  = private constant [4 x i8] c\"%s\\0A\\00\"\n\
                  declare i32 @printf(ptr, ...)\n\n"
         );
+        self.builder.globals.push_str(
+            "@.panicmsg_ovf = private unnamed_addr constant [25 x i8] c\"lexora: integer overflow\\00\"\n\
+               declare {i32, i1} @llvm.sadd.with.overflow.i32(i32, i32)\n\
+               declare {i32, i1} @llvm.ssub.with.overflow.i32(i32, i32)\n\
+               declare {i32, i1} @llvm.smul.with.overflow.i32(i32, i32)\n\
+               declare {i64, i1} @llvm.sadd.with.overflow.i64(i64, i64)\n\
+               declare {i64, i1} @llvm.ssub.with.overflow.i64(i64, i64)\n\
+               declare {i64, i1} @llvm.smul.with.overflow.i64(i64, i64)\n\n"
+        );
+        self.builder.globals.push_str(
+            "declare void @exit(i32)\n\
+       @.panicmsg_div = private unnamed_addr constant [25 x i8] c\"lexora: division by zero\\00\"\n\
+       @.panicmsg_idx = private unnamed_addr constant [28 x i8] c\"lexora: index out of bounds\\00\"\n\
+       define void @lexora_panic(ptr %msg) {\n\
+       call i32 (ptr, ...) @printf(ptr @.fmts, ptr %msg)\n\
+       call void @exit(i32 1)\n\
+       unreachable\n\
+       }\n\n"
+        );
         for s in &program.structs {
             let field_llvm_tys: Vec<(Symbol, LlvmType)> = s.fields.iter()
                 .map(|(sym, ty)| (*sym, self.ast_type_to_llvm(ty)))
@@ -285,7 +304,7 @@ impl<'i> CodeGen<'i> {
                 if let LlvmType::Array(elem_ty, size) = arr_ty {
                     let idx_val = self.gen_expr(index)?;
                     let val = self.gen_expr(value)?;
-                    let elem_ptr = self.builder.build_gep_array(&elem_ty, size,
+                    let elem_ptr = self.builder.build_checked_gep_array(&elem_ty, size,
                                                                 arr_ptr, idx_val);
                     self.builder.build_store(&elem_ty, val, elem_ptr);
                 }
@@ -344,10 +363,10 @@ impl<'i> CodeGen<'i> {
                 let rv = self.gen_expr(right)?;
                 let lt = self.expr_llvm_type(left);
                 let val = match op {
-                    BinaryOperator::Add => self.builder.build_add(&lt, lv, rv),
-                    BinaryOperator::Sub => self.builder.build_sub(&lt, lv, rv),
-                    BinaryOperator::Mul => self.builder.build_mul(&lt, lv, rv),
-                    BinaryOperator::Div => self.builder.build_sdiv(&lt, lv, rv),
+                    BinaryOperator::Add => self.builder.build_checked_arith("sadd", &lt, lv, rv),
+                    BinaryOperator::Sub => self.builder.build_checked_arith("ssub", &lt, lv, rv),
+                    BinaryOperator::Mul => self.builder.build_checked_arith("smul", &lt, lv, rv),
+                    BinaryOperator::Div => self.builder.build_checked_sdiv(&lt, lv, rv),
                     BinaryOperator::Eq => self.builder.build_icmp("eq", &lt,
                                                                   lv, rv),
                     BinaryOperator::NotEq => self.builder.build_icmp("ne", &lt,
@@ -435,7 +454,7 @@ impl<'i> CodeGen<'i> {
                 };
                 if let LlvmType::Array(elem_ty, size) = arr_ty {
                     let idx_val = self.gen_expr(index)?;
-                    let elem_ptr = self.builder.build_gep_array(&elem_ty, size,
+                    let elem_ptr = self.builder.build_checked_gep_array(&elem_ty, size,
                                                                 arr_ptr, idx_val);
                     Ok(self.builder.build_load(&elem_ty, elem_ptr))
                 } else {

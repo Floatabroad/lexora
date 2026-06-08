@@ -56,6 +56,7 @@ fn main() -> i32 {
 - **Operators** — arithmetic, comparison, logical (`and` / `or` / `not`), unary negation, explicit `as` casts
 - **Aggregates** — array literals, indexing, struct literals, field access and assignment
 - **Built-ins** — `print(...)` for integers, booleans, and strings
+- **Runtime safety** — checked division (divide-by-zero), array bounds checks, and overflow-checked `+` / `-` / `*`; a violation prints a diagnostic and exits non-zero instead of misbehaving
 
 ## Architecture
 
@@ -143,6 +144,11 @@ object through LLVM's `TargetMachine` and links it with `cc`, and runs LLVM
 optimization passes (`mem2reg` promotes stack slots into SSA registers) at a
 chosen `-O` level. The two backends produce **byte-identical output** across the
 `tests/equiv/` corpus, checked automatically by the equivalence harness.
+
+Generated code is also runtime-safe: division-by-zero, out-of-bounds indexing,
+and integer overflow are each guarded and routed through a shared panic path
+that prints a diagnostic and exits — and both backends agree byte-for-byte on
+that behaviour too.
 
 It's still a learning project, so expect rough edges, missing features, and the
 occasional `unimplemented!()` — I add things as I get to them.
