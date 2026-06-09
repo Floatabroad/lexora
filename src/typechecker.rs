@@ -34,6 +34,7 @@ pub struct TypeChecker<'i> {
     functions: HashMap<Symbol, (Vec<Type>, Type)>,
     structs:   HashMap<Symbol, Vec<(Symbol, Type)>>,
     interner: &'i Interner,
+    pub types: HashMap<ExprId, Type>,
 }
 
 impl<'i> TypeChecker<'i> {
@@ -43,6 +44,7 @@ impl<'i> TypeChecker<'i> {
             functions: HashMap::new(),
             structs:   HashMap::new(),
             interner,
+            types: HashMap::new(),
         }
     }
     fn resolve(&self, sym:  Symbol) -> String {
@@ -283,18 +285,23 @@ impl<'i> TypeChecker<'i> {
         }
     }
     fn check_expr<'arena>(&mut self, expr: &Expr<'arena>) -> Result<Type, LexoraError> {
+        let ty = self.check_expr_inner(expr)?;
+        self.types.insert(expr.id(), ty.clone());
+        Ok(ty)
+    }
+    fn check_expr_inner<'arena>(&mut self, expr: &Expr<'arena>) -> Result<Type, LexoraError> {
         match expr{
-            Expr::Integer(n, _) => {
+            Expr::Integer(n, _,_) => {
                 if *n >= i32::MIN as i64 && *n <=i32::MAX as i64{
                     Ok(Type::I32)
                 }else {
                     Ok(Type::I64)
                 }
             }
-            Expr::Bool(_, _)    =>Ok(Type::Bool),
-            Expr::StringLiteral(_,_) => Ok(Type::Str),
+            Expr::Bool(_, _,_)    =>Ok(Type::Bool),
+            Expr::StringLiteral(_,_,_) => Ok(Type::Str),
 
-            Expr::Identifier(sym,span) =>{
+            Expr::Identifier(sym,span,_) =>{
                 match self.variables.lookup(*sym) {
                     Some(t) => Ok(t.clone()),
                     None => return Err(LexoraError::UndefinedVariable {
@@ -303,7 +310,7 @@ impl<'i> TypeChecker<'i> {
                     }),
                 }
             }
-            Expr::BinaryOp {left, op, right, span} => {
+            Expr::BinaryOp {left, op, right, span,..} => {
                 let lt = self.check_expr(left)?;
                 let rt = self.check_expr(right)?;
                 match op {
@@ -345,7 +352,7 @@ impl<'i> TypeChecker<'i> {
                     }
                 }
             }
-            Expr::UnaryOp {op, operand, span } => {
+            Expr::UnaryOp {op, operand, span , ..} => {
                 let ty = self.check_expr(operand)?;
                 match op {
                     UnaryOperator::Not => {
@@ -371,7 +378,7 @@ impl<'i> TypeChecker<'i> {
                     }
                 }
             }
-            Expr::Cast {expr, target_type, span} => {
+            Expr::Cast {expr, target_type, span, ..} => {
                 let from_ty = self.check_expr(expr)?;
                 match(&from_ty, target_type){
                     (Type::I32, Type::I64) | (Type::I64, Type::I32) =>
@@ -383,7 +390,7 @@ impl<'i> TypeChecker<'i> {
                     }),
                 }
             }
-            Expr::Call{name, args, span } => {
+            Expr::Call{name, args, span, .. } => {
                 if let Some((param_types, ret_ty)) = self.functions.get(name).cloned() {
                     if args.len() != param_types.len() {
                         return Err(LexoraError::Custom {
@@ -421,7 +428,7 @@ impl<'i> TypeChecker<'i> {
                     }
                 }
             }
-            Expr::ArrayLiteral(elems, span) => {
+            Expr::ArrayLiteral(elems, span, _) => {
                 if elems.is_empty() {
                     return Err(LexoraError::Custom {
                         message: "bos dizi literal tanımlamaz".to_string(),
@@ -441,7 +448,7 @@ impl<'i> TypeChecker<'i> {
                 }
                 Ok(Type::Array(Box::new(elem_ty), elems.len()))
             }
-            Expr::Index {array, index, span} => {
+            Expr::Index {array, index, span, ..} => {
                 let arr_ty = self.check_expr(array)?;
                 let idx_ty = self.check_expr(index)?;
                 if !types_match(&idx_ty, &Type::I32) {
@@ -459,7 +466,7 @@ impl<'i> TypeChecker<'i> {
                     }),
                 }
             }
-            Expr::StructLiteral {name, fields, span} => {
+            Expr::StructLiteral {name, fields, span, ..} => {
                 let struct_fields = match self.structs.get(name).cloned() {
                     Some(f) => f,
                     None => return Err(LexoraError::Custom {
@@ -486,7 +493,7 @@ impl<'i> TypeChecker<'i> {
                 }
                 Ok(Type::Struct(*name))
             }
-            Expr::FieldAccess {object, field, span} => {
+            Expr::FieldAccess {object, field, span, ..} => {
                 let obj_ty = self.check_expr(object)?;
                 let struct_sym = match &obj_ty {
                     Type::Struct(s) => *s,

@@ -67,6 +67,7 @@ time, trying to do things the "proper" way rather than the quickest:
 - **Arena-allocated AST** — nodes live in a single `bumpalo` arena; cache-friendly, `O(1)` to drop
 - **String interning** — identifiers are `u32` symbols, so comparison is integer-fast
 - **Scope-stack type checker** — lexically correct shadowing and resolution
+- **Typed expressions** — the type checker records each expression's type once, into a side table keyed by a per-node id, so both backends read one authoritative source instead of separately re-deriving types
 - **Span-based diagnostics** — every node carries its source location
 
 ### Two backends

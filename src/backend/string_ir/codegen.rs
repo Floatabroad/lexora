@@ -31,15 +31,17 @@ pub struct CodeGen<'i> {
     functions: HashMap<Symbol, (Vec<LlvmType>, LlvmType)>,
     structs: HashMap<Symbol, Vec<(Symbol, LlvmType)>>,
     current_ret_ty: LlvmType,
+    types: &'i HashMap<ExprId, Type>,
 }
 impl<'i> CodeGen<'i> {
-    pub fn new(builder: IrBuilder<'i>) -> Self {
+    pub fn new(builder: IrBuilder<'i>, types: &'i HashMap<ExprId, Type>) -> Self {
         CodeGen {
             builder,
             locals: VarTable::new(),
             functions: HashMap::new(),
             structs: HashMap::new(),
             current_ret_ty: LlvmType::Void,
+            types,
         }
     }
     fn ast_type_to_llvm(&self, ty: &Type) -> LlvmType {
@@ -154,7 +156,7 @@ impl<'i> CodeGen<'i> {
                 let llvm_ty = self.ast_type_to_llvm(ty);
                 let ptr = self.builder.build_alloca(&llvm_ty, "");
                 match value {
-                    Expr::ArrayLiteral(elems, _) => {
+                    Expr::ArrayLiteral(elems, _, _) => {
                         if let LlvmType::Array(elem_ty, _) = &llvm_ty {
                             for (i, elem) in elems.iter().enumerate() {
                                 let elem_val = self.gen_expr(elem)?;
@@ -339,13 +341,13 @@ impl<'i> CodeGen<'i> {
     }
     fn gen_expr<'arena>(&mut self, expr: &Expr<'arena>) -> Result<Value, LexoraError> {
         match expr {
-            Expr::Integer(n, _) => Ok(Value::Const(*n)),
-            Expr::Bool(b, _) => Ok(Value::Const(if *b { 1 } else { 0 })),
-            Expr::StringLiteral(s, _) => {
+            Expr::Integer(n, _, _) => Ok(Value::Const(*n)),
+            Expr::Bool(b, _, _) => Ok(Value::Const(if *b { 1 } else { 0 })),
+            Expr::StringLiteral(s, _, _) => {
                 let (ptr, _) = self.builder.add_string_global(s);
                 Ok(ptr)
             }
-            Expr::Identifier(sym, span) => {
+            Expr::Identifier(sym, span, _) => {
                 match self.locals.get(sym) {
                     Some((ty, ptr)) => {
                         let ty = ty.clone();
@@ -404,7 +406,7 @@ impl<'i> CodeGen<'i> {
                 };
                 Ok(result)
             }
-            Expr::Call { name, args, span } => {
+            Expr::Call { name, args, span, .. } => {
                 let name_str = self.builder.resolve(*name).to_string();
                 if name_str == "print" {
                     let arg = &args[0];
@@ -437,9 +439,9 @@ impl<'i> CodeGen<'i> {
                 }
                 Ok(self.builder.build_call(&ret_ty.clone(), *name, &call_args))
             }
-            Expr::Index { array, index, span } => {
+            Expr::Index { array, index, span, .. } => {
                 let arr_sym = match *array {
-                    Expr::Identifier(s, _) => s,
+                    Expr::Identifier(s, _, _) => s,
                     _ => return Err(LexoraError::Custom {
                         message: "index: dizi adı bekleniyor".to_string(),
                         span: *span,
@@ -464,9 +466,9 @@ impl<'i> CodeGen<'i> {
                     })
                 }
             }
-            Expr::FieldAccess { object, field, span } => {
+            Expr::FieldAccess { object, field, span, .. } => {
                 let obj_sym = match *object {
-                    Expr::Identifier(s, _) => s,
+                    Expr::Identifier(s, _,_) => s,
                     _ => return Err(LexoraError::Custom {
                         message: "alan erişimi: identifier bekleniyor".to_string(),
                         span: *span,
@@ -494,7 +496,7 @@ impl<'i> CodeGen<'i> {
                                                               idx as u32);
                 Ok(self.builder.build_load(&field_ty.clone(), field_ptr))
             }
-            Expr::ArrayLiteral(_, span) | Expr::StructLiteral { span, .. } => {
+            Expr::ArrayLiteral(_, span, _) | Expr::StructLiteral { span, .. } => {
                 Err(LexoraError::Custom {
                     message: "literal doğrudan ifade olarak kullanılamaz".to_string(),
                     span: *span,
@@ -502,57 +504,60 @@ impl<'i> CodeGen<'i> {
             }
         }
     }
+    // fn expr_llvm_type<'arena>(&self, expr: &Expr<'arena>) -> LlvmType {
+    //     match expr {
+    //         Expr::Integer(n, _) => {
+    //             if *n >= i32::MIN as i64 && *n <= i32::MAX as i64 { LlvmType::I32 }
+    //             else { LlvmType::I64 }
+    //         }
+    //         Expr::Bool(_, _)          => LlvmType::I1,
+    //         Expr::StringLiteral(_, _) => LlvmType::Ptr,
+    //         Expr::Identifier(sym, _)  => {
+    //             self.locals.get(sym).map(|(t, _)| t.clone()).unwrap_or(LlvmType::I32)
+    //         }
+    //         Expr::BinaryOp { op, left, .. } => match op {
+    //             BinaryOperator::Eq | BinaryOperator::NotEq  |
+    //             BinaryOperator::Less | BinaryOperator::Greater |
+    //             BinaryOperator::LessEq | BinaryOperator::GreaterEq |
+    //             BinaryOperator::And | BinaryOperator::Or => LlvmType::I1,
+    //             _ => self.expr_llvm_type(left),
+    //         },
+    //         Expr::UnaryOp { op, operand, .. } => match op {
+    //             UnaryOperator::Not => LlvmType::I1,
+    //             UnaryOperator::Neg => self.expr_llvm_type(operand),
+    //         },
+    //         Expr::Cast { target_type, .. } => self.ast_type_to_llvm(target_type),
+    //         Expr::Call { name, .. } => {
+    //             self.functions.get(name).map(|(_, r)|
+    //                 r.clone()).unwrap_or(LlvmType::I32)
+    //         }
+    //         Expr::Index { array, .. } => {
+    //             if let Expr::Identifier(sym, _) = *array {
+    //                 if let Some((LlvmType::Array(elem, _), _)) = self.locals.get(&sym)
+    //                 {
+    //                     return *elem.clone();
+    //                 }
+    //             }
+    //             LlvmType::I32
+    //         }
+    //         Expr::FieldAccess { object, field, .. } => {
+    //             if let Expr::Identifier(sym, _) = *object {
+    //                 if let Some((LlvmType::Struct(s), _)) = self.locals.get(sym) {
+    //                     if let Some(fields) = self.structs.get(s) {
+    //                         if let Some((_, ty)) = fields.iter().find(|(n, _)| n ==
+    //                             field) {
+    //                             return ty.clone();
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //             LlvmType::I32
+    //         }
+    //         Expr::ArrayLiteral(_, _) | Expr::StructLiteral { .. } => LlvmType::Ptr,
+    //     }
+    // }
     fn expr_llvm_type<'arena>(&self, expr: &Expr<'arena>) -> LlvmType {
-        match expr {
-            Expr::Integer(n, _) => {
-                if *n >= i32::MIN as i64 && *n <= i32::MAX as i64 { LlvmType::I32 }
-                else { LlvmType::I64 }
-            }
-            Expr::Bool(_, _)          => LlvmType::I1,
-            Expr::StringLiteral(_, _) => LlvmType::Ptr,
-            Expr::Identifier(sym, _)  => {
-                self.locals.get(sym).map(|(t, _)| t.clone()).unwrap_or(LlvmType::I32)
-            }
-            Expr::BinaryOp { op, left, .. } => match op {
-                BinaryOperator::Eq | BinaryOperator::NotEq  |
-                BinaryOperator::Less | BinaryOperator::Greater |
-                BinaryOperator::LessEq | BinaryOperator::GreaterEq |
-                BinaryOperator::And | BinaryOperator::Or => LlvmType::I1,
-                _ => self.expr_llvm_type(left),
-            },
-            Expr::UnaryOp { op, operand, .. } => match op {
-                UnaryOperator::Not => LlvmType::I1,
-                UnaryOperator::Neg => self.expr_llvm_type(operand),
-            },
-            Expr::Cast { target_type, .. } => self.ast_type_to_llvm(target_type),
-            Expr::Call { name, .. } => {
-                self.functions.get(name).map(|(_, r)|
-                    r.clone()).unwrap_or(LlvmType::I32)
-            }
-            Expr::Index { array, .. } => {
-                if let Expr::Identifier(sym, _) = *array {
-                    if let Some((LlvmType::Array(elem, _), _)) = self.locals.get(&sym)
-                    {
-                        return *elem.clone();
-                    }
-                }
-                LlvmType::I32
-            }
-            Expr::FieldAccess { object, field, .. } => {
-                if let Expr::Identifier(sym, _) = *object {
-                    if let Some((LlvmType::Struct(s), _)) = self.locals.get(sym) {
-                        if let Some(fields) = self.structs.get(s) {
-                            if let Some((_, ty)) = fields.iter().find(|(n, _)| n ==
-                                field) {
-                                return ty.clone();
-                            }
-                        }
-                    }
-                }
-                LlvmType::I32
-            }
-            Expr::ArrayLiteral(_, _) | Expr::StructLiteral { .. } => LlvmType::Ptr,
-        }
+        self.ast_type_to_llvm(&self.types[&expr.id()])
     }
 }
 

@@ -43,6 +43,7 @@ pub struct CodeGen<'ctx> {
     structs: HashMap<Symbol, (StructType<'ctx>, Vec<(Symbol, BasicTypeEnum<'ctx>)>)>,
     cur_fn: Option<FunctionValue<'ctx>>,
     opt: u8,
+    types: &'ctx HashMap<ExprId, Type>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -50,6 +51,7 @@ impl<'ctx> CodeGen<'ctx> {
         context: &'ctx Context,
         interner: &'ctx Interner,
         module_name: &str,
+        types: &'ctx HashMap<ExprId, Type>,
         opt: u8,
     ) -> Self {
         let module = context.create_module(module_name);
@@ -63,6 +65,7 @@ impl<'ctx> CodeGen<'ctx> {
             structs: HashMap::new(),
             cur_fn: None,
             opt,
+            types,
         }
     }
     fn llvm_type(&self, ty: &Type) -> BasicTypeEnum<'ctx> {
@@ -166,7 +169,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let slot = self.entry_alloca(llvm_ty, pname)?;
 
                 match value {
-                    Expr::ArrayLiteral(elems, _) => {
+                    Expr::ArrayLiteral(elems, _, _) => {
                         let array_ty = llvm_ty.into_array_type();
                         let zero = self.context.i32_type().const_zero();
                         for (i, elem) in elems.iter().enumerate() {
@@ -349,7 +352,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
     fn gen_expr(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>, BuilderError> {
         match expr {
-            Expr::Integer(n, _ ) => {
+            Expr::Integer(n, _, _ ) => {
                 let val = if *n > i32::MAX as i64 || *n < i32::MIN as i64 {
                     self.context.i64_type().const_int(*n as u64, true)
                 }else {
@@ -357,10 +360,10 @@ impl<'ctx> CodeGen<'ctx> {
                 };
                 Ok(val.into())
             }
-            Expr::Bool(b, _) => {
+            Expr::Bool(b, _,_) => {
                 Ok(self.context.bool_type().const_int(*b as u64, false).into())
             }
-            Expr::Identifier(sym, _) => {
+            Expr::Identifier(sym, _,_) => {
                 let (ptr, pointee_ty) = self.vars.get(*sym);
                 let name =self.interner.resolve(*sym);
                 Ok(self.builder.build_load(pointee_ty, ptr, name)?)
@@ -414,22 +417,21 @@ impl<'ctx> CodeGen<'ctx> {
                     let printf = self.get_printf();
 
                     let (fmt_ptr, print_arg): (PointerValue, BasicMetadataValueEnum) =
-                    if arg.is_pointer_value() {
-                        (self.fmt_global(".fmt_s", "%s\n")?, arg.into())
-                    }else {
-                        let iv = arg.into_int_value();
-                        match iv.get_type().get_bit_width(){
-                            64 => (self.fmt_global(".fmt_lld", "%lld\n")?, iv.into()),
-                            1 => {
+                        match &self.types[&args[0].id()] {
+                            Type::Str => (self.fmt_global(".fmt_s", "%s\n")?, arg.into()),
+                            Type::I64 => (self.fmt_global(".fmt_lld", "%lld\n")?,
+                                          arg.into()),
+                            Type::Bool => {
                                 let z = self.builder.build_int_z_extend(
-                                    iv, self.context.i32_type(), "boolext")?;
+                                    arg.into_int_value(), self.context.i32_type(),
+                                    "boolext")?;
                                 (self.fmt_global(".fmt_d", "%d\n")?, z.into())
                             }
-                            _ => (self.fmt_global(".fmt_d", "%d\n")?, iv.into()),
-                        }
-                    };
+                            _ => (self.fmt_global(".fmt_d", "%d\n")?, arg.into()),
+                        };
 
-                    self.builder.build_call(printf, &[fmt_ptr.into(), print_arg], "printf_call")?;
+                    self.builder.build_call(printf, &[fmt_ptr.into(), print_arg],
+                                            "printf_call")?;
                     Ok(self.context.i32_type().const_int(0, false).into())
                 } else {
                     let function = self.module.get_function(fname).unwrap();
@@ -445,7 +447,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
 
             }
-            Expr::StringLiteral(s, _) => {
+            Expr::StringLiteral(s, _,_) => {
                 let g = self.builder.build_global_string_ptr(s, ".str")?;
                 Ok(g.as_pointer_value().into())
             }
@@ -475,7 +477,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             Expr::Index {array, index, ..} => {
                 let arr_sym = match array {
-                    Expr::Identifier(s, _) =>  *s,
+                    Expr::Identifier(s, _,_) =>  *s,
                     _ => unreachable!("index hedefi degisken olmali"),
                 };
                 let (arr_ptr, arr_ty) = self.vars.get(arr_sym);
@@ -492,7 +494,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             Expr::FieldAccess { object, field, .. } => {
                 let obj_sym = match object {
-                    Expr::Identifier(s, _) => *s,
+                    Expr::Identifier(s, _,_) => *s,
                     _ => unreachable!("alan erisimi degisken olmali"),
                 };
                 let (obj_ptr, obj_ty) = self.vars.get(obj_sym);

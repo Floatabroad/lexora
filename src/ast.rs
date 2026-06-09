@@ -1,48 +1,57 @@
 use crate::span::Span;
 use crate::symbol::Symbol;
+pub type ExprId = u32;
+
 
 #[derive(Debug, Clone)]
 pub enum Expr<'arena> {
-    Integer(i64, Span),
-    Bool(bool, Span),
-    StringLiteral(&'arena str, Span),
-    Identifier(Symbol, Span),
+    Integer(i64, Span, ExprId),
+    Bool(bool, Span, ExprId),
+    StringLiteral(&'arena str, Span, ExprId),
+    Identifier(Symbol, Span, ExprId),
     BinaryOp {
         left: &'arena Expr<'arena>,
-        op : BinaryOperator,
+        op:   BinaryOperator,
         right: &'arena Expr<'arena>,
         span: Span,
+        id: ExprId,
     },
     UnaryOp {
-        op :        UnaryOperator,
-        operand:    &'arena Expr<'arena>,
-        span:       Span,
+        op: UnaryOperator,
+        operand:  &'arena Expr<'arena>,
+        span: Span,
+        id: ExprId,
     },
     Call {
         name: Symbol,
         args: &'arena [Expr<'arena>],
         span: Span,
+        id: ExprId,
     },
     Cast {
-        expr:   &'arena Expr<'arena>,
+        expr: &'arena Expr<'arena>,
         target_type: Type,
-        span:        Span,
+        span: Span,
+        id: ExprId,
     },
-    ArrayLiteral(&'arena [Expr<'arena>], Span),
+    ArrayLiteral(&'arena [Expr<'arena>], Span, ExprId),
     Index {
         array: &'arena Expr<'arena>,
         index: &'arena Expr<'arena>,
         span: Span,
+        id: ExprId,
     },
-    StructLiteral {
+    StructLiteral{
         name: Symbol,
         fields: &'arena [(Symbol, Expr<'arena>)],
         span: Span,
+        id: ExprId,
     },
     FieldAccess {
         object: &'arena Expr<'arena>,
         field:  Symbol,
         span: Span,
+        id: ExprId,
     },
 }
 
@@ -140,18 +149,34 @@ pub struct Program<'arena> {
 impl<'arena> Expr<'arena> {
     pub fn span(&self) -> Span {
         match self {
-            Expr::Integer(_, s) => *s,
-            Expr::Bool(_, s) => *s,
-            Expr::StringLiteral(_, s) => *s,
-            Expr::Identifier(_, s) => *s,
+            Expr::Integer(_, s, _) => *s,
+            Expr::Bool(_, s, _) => *s,
+            Expr::StringLiteral(_, s,_) => *s,
+            Expr::Identifier(_, s,_) => *s,
             Expr::BinaryOp { span, .. } => *span,
             Expr::UnaryOp { span, .. } => *span,
             Expr::Call { span, .. } => *span,
             Expr::Cast { span, .. } => *span,
-            Expr::ArrayLiteral(_, s) => *s,
+            Expr::ArrayLiteral(_, s,_) => *s,
             Expr::Index { span, .. } => *span,
             Expr::StructLiteral { span, .. } => *span,
             Expr::FieldAccess { span, .. } => *span,
+        }
+    }
+    pub fn id(&self) -> ExprId {
+        match self {
+            Expr::Integer(_, _, id) => *id,
+            Expr::Bool(_, _, id) => *id,
+            Expr::StringLiteral(_, _, id) => *id,
+            Expr::Identifier(_, _, id) => *id,
+            Expr::BinaryOp { id, .. } => *id,
+            Expr::UnaryOp { id, .. } => *id,
+            Expr::Call { id, .. } => *id,
+            Expr::Cast { id, .. } => *id,
+            Expr::ArrayLiteral(_, _, id) => *id,
+            Expr::Index { id, .. } => *id,
+            Expr::StructLiteral { id, .. } => *id,
+            Expr::FieldAccess { id, .. } => *id,
         }
     }
 }

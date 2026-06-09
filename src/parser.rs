@@ -16,16 +16,18 @@ pub struct Parser<'src, 'arena> {
     arena:                &'arena Bump,
     pub interner:         Interner,
     allow_struct_literal: bool,
+    pub next_expr_id: ExprId,
 }
 
 impl<'src, 'arena> Parser<'src, 'arena> {
    pub fn new(lexer: Lexer<'src>, arena: &'arena Bump) -> Result<Self, LexoraError> {
-       Self::with_interner(lexer, arena, Interner::new())
+       Self::with_interner(lexer, arena, Interner::new(), 0)
    }
     pub fn with_interner(
         mut lexer: Lexer<'src>,
         arena: &'arena Bump,
         interner: Interner,
+        start_id: ExprId,
     ) -> Result<Self, LexoraError> {
         let current = lexer.next_token()?;
         let peek    = lexer.next_token()?;
@@ -37,7 +39,13 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             arena,
             interner,
             allow_struct_literal: true,
+            next_expr_id: start_id,
         })
+    }
+    fn next_id(&mut self) -> ExprId {
+        let id = self.next_expr_id;
+        self.next_expr_id += 1;
+        id
     }
     fn advance(&mut self) -> Result<SpannedToken<'src>, LexoraError>{
         let next       = self.lexer.next_token()?;
@@ -327,11 +335,13 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             self.advance()?;
             let right = self.parse_and()?;
             let span = start.merge(right.span());
+            let id = self.next_id();
             left = Expr::BinaryOp {
                 left: self.arena.alloc(left),
                 op:   BinaryOperator::Or,
                 right: self.arena.alloc(right),
                 span,
+                id,
             };
         }
         Ok(left)
@@ -343,11 +353,13 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             self.advance()?;
             let right = self.parse_comparison()?;
             let span = start.merge(right.span());
+            let id = self.next_id();
             left = Expr::BinaryOp {
                 left: self.arena.alloc(left),
                 op:   BinaryOperator::And,
                 right: self.arena.alloc(right),
                 span,
+                id,
             };
         }
         Ok(left)
@@ -369,7 +381,8 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         self.advance()?;
         let right = self.parse_additive()?;
         let span = start.merge(right.span());
-        Ok(Expr::BinaryOp { left: self.arena.alloc(left), op, right: self.arena.alloc(right), span })
+        let id = self.next_id();
+        Ok(Expr::BinaryOp { left: self.arena.alloc(left), op, right: self.arena.alloc(right), span, id})
     }
     fn parse_additive(&mut self) -> Result<Expr<'arena>, LexoraError> {
         let start = self.current.span;
@@ -383,11 +396,13 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             self.advance()?;
             let right = self.parse_multiplicative()?;
             let span = start.merge(right.span());
+            let id = self.next_id();
             left = Expr::BinaryOp {
                 left: self.arena.alloc(left),
                 op,
                 right: self.arena.alloc(right),
                 span,
+                id,
             };
         }
         Ok(left)
@@ -405,7 +420,8 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             self.advance()?;
             let right = self.parse_cast()?;
             let span = start.merge(right.span());
-            left = Expr::BinaryOp { left: self.arena.alloc(left), op, right: self.arena.alloc(right), span };
+            let id = self.next_id();
+            left = Expr::BinaryOp { left: self.arena.alloc(left), op, right: self.arena.alloc(right), span, id};
         }
         Ok(left)
     }
@@ -416,10 +432,12 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             self.advance()?;
             let ty_span = self.current.span;
             let target_type = self.parse_type()?;
+            let id = self.next_id();
             expr = Expr::Cast {
                 expr: self.arena.alloc(expr),
                 target_type,
                 span: start.merge(ty_span),
+                id,
             };
         }
         Ok(expr)
@@ -432,13 +450,15 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 self.advance()?;
                 let operand = self.parse_unary()?;
                 let span = start.merge(operand.span());
-                Ok(Expr::UnaryOp { op: UnaryOperator::Not, operand: self.arena.alloc(operand), span })
+                let id = self.next_id();
+                Ok(Expr::UnaryOp { op: UnaryOperator::Not, operand: self.arena.alloc(operand), span, id })
             }
             Token::Minus => {
                 self.advance()?;
                 let operand = self.parse_unary()?;
                 let span = start.merge(operand.span());
-                Ok(Expr::UnaryOp { op: UnaryOperator::Neg, operand: self.arena.alloc(operand), span })
+                let id = self.next_id();
+                Ok(Expr::UnaryOp { op: UnaryOperator::Neg, operand: self.arena.alloc(operand), span, id })
             }
             _ => self.parse_postfix(),
         }
@@ -453,10 +473,12 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     let index = self.parse_expr()?;
                     let end = self.current.span;
                     self.expect(Token::RightBracket)?;
+                    let id = self.next_id();
                     expr = Expr::Index {
                         array:  self.arena.alloc(expr),
                         index:  self.arena.alloc(index),
                         span:   start.merge(end),
+                        id,
                     };
                 }
                 Token::Dot => {
@@ -464,10 +486,12 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     self.advance()?;
                     let end = self.current.span;
                     let field = self.parse_symbol()?;
+                    let id = self.next_id();
                     expr = Expr::FieldAccess {
                         object: self.arena.alloc(expr),
                         field,
                         span: start.merge(end),
+                        id,
                     };
                 }
                 _ => break,
@@ -480,20 +504,20 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         match self.current.token.clone() {
             Token::Integer(n) => {
                 self.advance()?;
-                Ok(Expr::Integer(n, start))
+                Ok(Expr::Integer(n, start, self.next_id()))
             }
             Token::True => {
                 self.advance()?;
-                Ok(Expr::Bool(true, start))
+                Ok(Expr::Bool(true, start,self.next_id()))
             }
             Token::False => {
                 self.advance()?;
-                Ok(Expr::Bool(false, start))
+                Ok(Expr::Bool(false, start,self.next_id()))
             }
             Token::StringLiteral(s) => {
                 let s = self.arena.alloc_str(s);
                 self.advance()?;
-                Ok(Expr::StringLiteral(s, start))
+                Ok(Expr::StringLiteral(s, start, self.next_id()))
             }
             Token::LeftParen => {
                 self.advance()?;
@@ -513,7 +537,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 let end = self.current.span;
                 self.expect(Token::RightBracket)?;
                 let elems = self.arena.alloc_slice_fill_iter(elems.into_iter());
-                Ok(Expr::ArrayLiteral(elems, start.merge(end)))
+                Ok(Expr::ArrayLiteral(elems, start.merge(end),self.next_id()))
             }
             Token::Identifier(_) => {
                 let name = self.parse_symbol()?;
@@ -529,7 +553,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     let end = self.current.span;
                     self.expect(Token::RightParen)?;
                     let args = self.arena.alloc_slice_fill_iter(args.into_iter());
-                    Ok(Expr::Call { name, args, span: start.merge(end) })
+                    Ok(Expr::Call { name, args, span: start.merge(end), id: self.next_id() })
                 } else if self.allow_struct_literal && self.current.token == Token::LeftBrace {
                     self.advance()?;
                     let mut fields: Vec<(Symbol, Expr<'arena>)> = Vec::new();
@@ -545,9 +569,9 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     let end = self.current.span;
                     self.expect(Token::RightBrace)?;
                     let fields = self.arena.alloc_slice_fill_iter(fields.into_iter());
-                    Ok(Expr::StructLiteral { name, fields, span: start.merge(end) })
+                    Ok(Expr::StructLiteral { name, fields, span: start.merge(end), id: self.next_id() })
                 }else {
-                    Ok(Identifier(name, start))
+                    Ok(Identifier(name, start, self.next_id()))
                 }
             }
             _ => Err(LexoraError::UnexpectedToken {
