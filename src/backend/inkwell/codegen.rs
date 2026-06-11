@@ -163,8 +163,8 @@ impl<'ctx> CodeGen<'ctx> {
     }
     fn gen_statement(&mut self, stmt: &Stmt) -> Result<(), BuilderError> {
         match stmt {
-            Stmt::Let { name, ty, value, .. } => {
-                let llvm_ty = self.llvm_type(ty);
+            Stmt::Let { name, value, .. } => {
+                let llvm_ty = self.llvm_type(&self.types[&value.id()]);
                 let pname = self.interner.resolve(*name);
                 let slot = self.entry_alloca(llvm_ty, pname)?;
 

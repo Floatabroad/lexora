@@ -73,7 +73,7 @@ pub enum UnaryOperator {
 pub enum Stmt<'arena> {
     Let {
         name: Symbol,
-        ty:   Type,
+        ty:   Option<Type>,
         value: Expr<'arena>,
         span: Span,
     },

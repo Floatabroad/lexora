@@ -179,13 +179,17 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             Token::Let => {
                 self.advance()?;
                 let name = self.parse_symbol()?;
-                self.expect(Token::Colon)?;
-                let ty = self.parse_type()?;
+                let ty = if self.current.token == Token::Colon {
+                    self.advance()?;
+                    Some(self.parse_type()?)
+                }else {
+                    None
+                };
                 self.expect(Token::Equals)?;
                 let value = self.parse_expr()?;
                 let end = self.current.span;
                 self.expect(Token::Semicolon)?;
-                Ok(Stmt::Let { name, ty, value, span: start.merge(end) })
+                Ok(Stmt::Let { name, value, ty, span: start.merge(end) })
             }
             Token::Return => {
                 self.advance()?;

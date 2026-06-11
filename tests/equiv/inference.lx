@@ -1,0 +1,27 @@
+fn double(n: i32) -> i32 {
+    return n * 2;
+}
+
+fn main() -> i32 {
+    let a = 21;
+    let b = a + a;
+    print(b);
+
+    let big = 9000000000;
+    let wide = a as i64;
+    print(big + wide);
+
+    let flag = a > b;
+    print(flag);
+
+    let s = "inferred";
+    print(s);
+
+    let arr = [5, 10, 15];
+    print(arr[1]);
+
+    let called = double(a);
+    print(called);
+
+    return 0;
+}

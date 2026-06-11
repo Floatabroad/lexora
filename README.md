@@ -51,6 +51,7 @@ fn main() -> i32 {
 ## Features
 
 - **Types** — `i32`, `i64`, `bool`, `void`, `str`, fixed-size arrays `[T; N]`, and user-defined `struct`s
+- **Type inference** — the annotation on `let` is optional (`let x = 42;`); the type checker infers the variable's type from its initializer. There's no implicit widening, so the inferred type is always unambiguous
 - **Functions** — typed parameters and return values
 - **Control flow** — `if` / `else if` / `else`, `while`, `for i in a..b`
 - **Operators** — arithmetic, comparison, logical (`and` / `or` / `not`), unary negation, explicit `as` casts

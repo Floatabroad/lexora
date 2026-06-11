@@ -99,14 +99,20 @@ impl<'i> TypeChecker<'i> {
         match stmt {
             Stmt::Let{name, ty, value, span }=> {
                 let val_ty = self.check_expr(value)?;
-                if !types_match(ty, &val_ty){
-                    return Err(LexoraError::TypeMismatch {
-                        expected: self.format_type(ty),
-                        found: self.format_type(&val_ty),
-                        span: *span,
-                    });
-                }
-                if !self.variables.define(*name, ty.clone()) {
+                let var_ty = match ty {
+                    Some(declared) => {
+                        if !types_match(declared, &val_ty){
+                            return Err(LexoraError::TypeMismatch {
+                                expected: self.format_type(declared),
+                                found: self.format_type(&val_ty),
+                                span: *span,
+                            });
+                        }
+                        declared.clone()
+                    }
+                    None => val_ty,
+                };
+                if !self.variables.define(*name, var_ty) {
                     return Err(LexoraError::AlreadyDefined {
                         name: self.resolve(*name),
                         span: *span,

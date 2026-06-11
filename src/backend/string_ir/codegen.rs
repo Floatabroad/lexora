@@ -152,8 +152,8 @@ impl<'i> CodeGen<'i> {
                 self.gen_expr(expr)?;
             }
 
-            Stmt::Let { name, ty, value, .. } => {
-                let llvm_ty = self.ast_type_to_llvm(ty);
+            Stmt::Let { name, value, .. } => {
+                let llvm_ty = self.ast_type_to_llvm(&self.types[&value.id()]);
                 let ptr = self.builder.build_alloca(&llvm_ty, "");
                 match value {
                     Expr::ArrayLiteral(elems, _, _) => {
