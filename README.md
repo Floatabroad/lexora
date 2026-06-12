@@ -58,6 +58,7 @@ fn main() -> i32 {
 - **Aggregates** — array literals, indexing, struct literals, field access and assignment
 - **Built-ins** — `print(...)` for integers, booleans, and strings
 - **Runtime safety** — checked division (divide-by-zero), array bounds checks, and overflow-checked `+` / `-` / `*`; a violation prints a diagnostic and exits non-zero instead of misbehaving
+- **Diagnostics** — compile errors are rendered rustc-style: the offending source line, a caret underline, a short inline label, and `note` / `help` lines; locations resolve through a source map, so they stay correct even when the error lives in an imported file
 
 ## Architecture
 
@@ -69,7 +70,7 @@ time, trying to do things the "proper" way rather than the quickest:
 - **String interning** — identifiers are `u32` symbols, so comparison is integer-fast
 - **Scope-stack type checker** — lexically correct shadowing and resolution
 - **Typed expressions** — the type checker records each expression's type once, into a side table keyed by a per-node id, so both backends read one authoritative source instead of separately re-deriving types
-- **Span-based diagnostics** — every node carries its source location
+- **Span-based diagnostics** — every node carries its source location, and a source map turns global byte offsets back into `file:line:column` (correct across imports), feeding a small presentation layer that renders rustc-style errors with caret underlines and labelled `note` / `help` lines
 
 ### Two backends
 
@@ -131,6 +132,8 @@ src/
   ast.rs           Arena-allocated AST
   parser.rs        Recursive-descent parser with precedence climbing
   typechecker.rs   Scope-stack type checker
+  source_map.rs    Global byte offsets → file:line:column
+  diagnostic.rs    Diagnostic presentation layer (rustc-style rendering)
   backend/
     string_ir/     Textual LLVM IR backend (default)
     inkwell/       LLVM in-memory IR backend (--features inkwell)
