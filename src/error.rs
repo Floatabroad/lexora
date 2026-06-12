@@ -40,6 +40,21 @@ pub enum LexoraError {
     }
 }
 
+impl LexoraError {
+    pub fn span(&self) -> Option<Span> {
+        match self {
+            LexoraError::UnexpectedToken {span, ..}
+                | LexoraError::UndefinedVariable {span, ..}
+                | LexoraError::UndefinedFunction {span, ..}
+                | LexoraError::TypeMismatch {span, ..}
+                | LexoraError::AlreadyDefined {span, ..}
+                | LexoraError::InvalidCast {span, ..}
+                | LexoraError::Custom {span, ..} => Some(*span),
+            LexoraError::Codegen { .. } => None
+        }
+    }
+}
+
 impl fmt::Display for LexoraError{
     fn fmt(&self, f: &mut fmt::Formatter<'_> ) -> fmt::Result {
         match self {

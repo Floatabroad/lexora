@@ -6,11 +6,12 @@ use lexora::ast::{Program, ExprId, Type};
 use lexora::symbol::Interner;
 use lexora::error::LexoraError;
 use lexora::span::Span;
+use lexora::source_map::SourceMap;
 use std::collections::{HashSet, VecDeque, HashMap};
 use std::path::{Path, PathBuf};
 use std::env;
 use std::fs;
-
+use std::io::IsTerminal;
 fn main() {
     let args: Vec<String> = env::args().collect();
     let mut file: Option<String> = None;
@@ -43,18 +44,21 @@ fn main() {
         }
     };
 
+    let color = std::io::stderr().is_terminal();
+
     let arena = Bump::new();
-    let (program, interner) = match load_program(&path, &arena) {
+    let mut sources = SourceMap::new();
+    let (program, interner) = match load_program(&path, &arena, &mut sources) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("{}", e);
+            eprint!("{}", lexora::diagnostic::render(&sources, &lexora::diagnostic::to_diagnostic(&e), color));
             std::process::exit(1);
         }
     };
 
     let mut checker = TypeChecker::new(&interner);
     if let Err(e) = checker.check_program(&program) {
-        eprintln!("{}", e);
+        eprint!("{}", lexora::diagnostic::render(&sources, &lexora::diagnostic::to_diagnostic(&e), color));
         std::process::exit(1);
     }
     println!("Ok: tip kontrolu basarili.");
@@ -71,10 +75,12 @@ fn main() {
 fn load_program<'arena> (
     entry: &str,
     arena: &'arena Bump,
+    sources: &mut SourceMap<'arena>,
 ) -> Result<(Program<'arena>, Interner), LexoraError> {
     let entry_path = PathBuf::from(entry);
-    let entry_src = read_source(&entry_path)?;
-    let mut parser = Parser::new(Lexer::new(&entry_src), arena)?;
+    let entry_src = arena.alloc_str(&read_source(&entry_path)?);
+    let base = sources.add(entry_path.display().to_string(), entry_src);
+    let mut parser = Parser::new(Lexer::new(entry_src, base), arena)?;
     let mut program = parser.parse_program()?;
     let mut interner = parser.interner;
     let mut next_id = parser.next_expr_id;
@@ -89,8 +95,10 @@ fn load_program<'arena> (
         if !visited.insert(canonical(&path)){
             continue;
         }
-        let src = read_source(&path)?;
-        let mut sub = Parser::with_interner(Lexer::new(&src), arena, interner, next_id)?;
+        let src = arena.alloc_str(&read_source(&path)?);
+        let base = sources.add(path.display().to_string(), src);
+        let mut sub = Parser::with_interner(Lexer::new(src, base), arena, interner,
+                                            next_id)?;
         let sub_program = sub.parse_program()?;
         interner = sub.interner;
         next_id = sub.next_expr_id;

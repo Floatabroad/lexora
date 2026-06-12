@@ -37,12 +37,16 @@ pub struct SpannedToken<'src> {
 pub struct Lexer<'src> {
     source:   &'src str,
     pos:      usize,
-    pub line: usize
+    pub line: usize,
+    base: u32,
 }
 
 impl<'src> Lexer<'src> {
-    pub fn new(source: &'src str) -> Self {
-        Lexer { source, pos: 0, line: 1}
+    pub fn new(source: &'src str, base: u32) -> Self {
+        Lexer { source, pos: 0, line: 1, base}
+    }
+    fn span(&self, start: u32, end: u32) -> Span {
+        Span::new(self.base + start, self.base + end)
     }
     fn current(&self) -> u8 {
         if self.pos < self.source.len() {
@@ -82,7 +86,7 @@ impl<'src> Lexer<'src> {
         if self.pos >= self.source.len() {
             return Ok(SpannedToken {
                 token: Token::Eof,
-                span: Span::new(start, start),
+                span: self.span(start, start),
             });
         }
         let ch = self.current();
@@ -135,12 +139,12 @@ impl<'src> Lexer<'src> {
             _ => {
                 return Err(LexoraError::Custom {
                     message: format!("Beklenmedik karakter: '{}'", ch as char),
-                    span: Span::new(start, start + 1),
+                    span: self.span(start, start + 1),
                 });
             }
         };
         let end = self.pos as u32;
-        Ok(SpannedToken { token, span: Span::new(start, end) })
+        Ok(SpannedToken { token, span: self.span(start, end) })
     }
 
     fn read_integer(&mut self) -> Token<'src> {
@@ -162,7 +166,7 @@ impl<'src> Lexer<'src> {
         if self.pos >= self.source.len() {
             return Err(LexoraError::Custom {
                 message: "Kapatilmamis string".to_string(),
-                span: Span::new(start, self.pos as u32),
+                span: self.span(start, self.pos as u32),
             });
         }
         let content = &self.source[content_start..self.pos];
