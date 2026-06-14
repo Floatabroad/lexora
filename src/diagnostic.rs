@@ -31,14 +31,26 @@ pub fn to_diagnostic(err: &LexoraError) -> Diagnostic {
             format!("beklenmeyen ifade: {}", found),
             Some(format!("beklenen: {}", expected)),
             ),
-        LexoraError::UndefinedVariable {name, ..} => (
-            format!("tanimsiz degisken: {}", name),
-            Some("bu kapsamda tanimli degil".to_string()),
-            ),
-        LexoraError::UndefinedFunction {name, ..} => (
-            format!("tanimsiz fonksiyon: {}", name),
-            Some("bu isimde bir fonksiyon yok".to_string()),
-            ),
+        LexoraError::UndefinedVariable {name, suggestion, ..} => {
+            if let Some(s) = suggestion {
+                notes.push((NoteKind::Help, format!("bunu mu demek istediniz: `{}`?",
+                                                    s)));
+            }
+            (
+                format!("tanimsiz degisken: {}", name),
+                Some("bu kapsamda tanimli degil".to_string()),
+            )
+        }
+        LexoraError::UndefinedFunction {name, suggestion, ..} => {
+            if let Some(s) = suggestion {
+                notes.push((NoteKind::Help, format!("bunu mu demek istediniz: `{}`?",
+                                                    s)));
+            }
+            (
+                format!("tanimsiz fonksiyon: {}", name),
+                Some("bu isimde bir fonksiyon yok".to_string()),
+            )
+        }
         LexoraError::TypeMismatch {expected, found, ..} => {
             notes.push((NoteKind::Help, format!("beklenen tip: `{}`", expected)));
             (
@@ -71,6 +83,9 @@ pub fn to_diagnostic(err: &LexoraError) -> Diagnostic {
         notes,
     }
 }
+fn disp_width(text: &str, char_count: usize) -> usize {
+    text.chars().take(char_count).map(|c| if c == '\t' { 4 } else { 1 }).sum()
+}
 pub fn render(sources: &SourceMap, diag: &Diagnostic, color: bool) -> String {
     let (red, yellow, bold, blue, reset) = if color {
         ("\x1b[31m", "\x1b[33m", "\x1b[1m", "\x1b[34m", "\x1b[0m")
@@ -93,27 +108,53 @@ pub fn render(sources: &SourceMap, diag: &Diagnostic, color: bool) -> String {
         None => return out,
     };
 
-    let mut pad = String::new();
-    for c in loc.line_text.chars().take(loc.caret_col) {
-        pad.push_str(if c == '\t' { "    " } else { " " });
-    }
-    let line_text = loc.line_text.replace('\t', "    ");
-    let carets = "^".repeat(loc.caret_len);
-    let num = loc.line.to_string();
-    let g = " ".repeat(num.len());
+    let g = " ".repeat(loc.lines.last().unwrap().0.to_string().len());
 
     out.push_str(&format!("{blue}{g}--> {reset}{}:{}:{}\n", loc.name, loc.line,
                           loc.col));
     out.push_str(&format!("{blue}{g} |{reset}\n"));
-    out.push_str(&format!("{blue}{num} |{reset} {line_text}\n"));
 
-    let label = match &diag.label {
-        Some(l) => format!(" {}", l),
-        None => String::new(),
-    };
-    out.push_str(&format!(
-        "{blue}{g} |{reset} {pad}{lvl_color}{carets}{label}{reset}\n"
-    ));
+    if loc.lines.len() == 1 {
+        let (num, text) = loc.lines[0];
+        let line_text = text.replace('\t', "    ");
+        let pad = " ".repeat(disp_width(text, loc.start_char));
+        let carets = "^".repeat((loc.end_char - loc.start_char).max(1));
+        let label = match &diag.label {
+            Some(l) => format!(" {}", l),
+            None => String::new(),
+        };
+        out.push_str(&format!("{blue}{num} |{reset} {line_text}\n"));
+        out.push_str(&format!(
+            "{blue}{g} |{reset} {pad}{lvl_color}{carets}{label}{reset}\n"
+        ));
+    } else {
+        let last = loc.lines.len() - 1;
+        let start_col = 3 + disp_width(loc.lines[0].1, loc.start_char);
+        for (i, (num, text)) in loc.lines.iter().enumerate() {
+            let num_s = num.to_string();
+            let lpad = " ".repeat(g.len() - num_s.len());
+            let line_text = text.replace('\t', "    ");
+            if i == 0 {
+                out.push_str(&format!("{blue}{num_s}{lpad} |{reset}   {line_text}\n"));
+                let unders = "_".repeat(start_col - 1);
+                out.push_str(&format!("{blue}{g} |{reset} {lvl_color}{unders}^{reset}\n"));
+            } else {
+                out.push_str(&format!(
+                    "{blue}{num_s}{lpad} |{reset} {lvl_color}|{reset} {line_text}\n"
+                ));
+            }
+        }
+        let end_col = 3 + disp_width(loc.lines[last].1, loc.end_char).saturating_sub(1);
+        let unders = "_".repeat(end_col.saturating_sub(2));
+        let label = match &diag.label {
+            Some(l) => format!(" {}", l),
+            None => String::new(),
+        };
+        out.push_str(&format!(
+            "{blue}{g} |{reset} {lvl_color}|{unders}^{label}{reset}\n"
+        ));
+    }
+
     if !diag.notes.is_empty() {
         out.push_str(&format!("{blue}{g} |{reset}\n"));
     }
@@ -126,4 +167,12 @@ pub fn render(sources: &SourceMap, diag: &Diagnostic, color: bool) -> String {
     }
 
     out
+}
+pub fn render_summary(count: usize, color: bool) -> String {
+    let (red, bold, reset) = if color {
+        ("\x1b[31m", "\x1b[1m", "\x1b[0m")
+    } else {
+        ("", "", "")
+    };
+    format!("{bold}{red}error{reset}{bold}: {} hata yuzunden durduruldu{reset}\n", count)
 }

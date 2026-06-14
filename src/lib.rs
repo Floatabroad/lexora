@@ -8,3 +8,4 @@ pub mod typechecker;
 pub mod backend;
 pub mod diagnostic;
 pub mod source_map;
+pub mod suggest;

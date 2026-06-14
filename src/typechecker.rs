@@ -27,6 +27,9 @@ impl<T> SymbolTable<T> {
     fn lookup(&self, sym: Symbol) -> Option<&T> {
         self.scopes.iter().rev().find_map(|s| s.get(&sym))
     }
+    fn names(&self) -> impl Iterator<Item = Symbol> + '_ {
+        self.scopes.iter().rev().flat_map(|s| s.keys().copied())
+    }
 }
 
 pub struct TypeChecker<'i> {
@@ -62,6 +65,30 @@ impl<'i> TypeChecker<'i> {
             self.check_function(func)?;
         }
         Ok(())
+    }
+    fn nearest_var(&self, target: Symbol) -> Option<String> {
+        let name = self.interner.resolve(target);
+        crate::suggest::nearest(
+            name,
+            self.variables.names().map(|sym| self.interner.resolve(sym)),
+        )
+    }
+    fn nearest_fn(&self, target: Symbol) -> Option<String> {
+        let name = self.interner.resolve(target);
+        crate::suggest::nearest(
+            name,
+            self.functions
+                .keys()
+                .map(|sym| self.interner.resolve(*sym))
+                .chain(std::iter::once("print")),
+        )
+    }
+    fn nearest_field(&self, target: Symbol, fields: &[(Symbol, Type)]) -> Option<String> {
+        let name = self.interner.resolve(target);
+        crate::suggest::nearest(
+            name,
+            fields.iter().map(|(n, _)| self.interner.resolve(*n)),
+        )
     }
     fn check_function<'arena>(&mut self, func: &Function<'arena>) -> Result<(), LexoraError> {
         self.variables.enter_scope();
@@ -125,6 +152,7 @@ impl<'i> TypeChecker<'i> {
                     Some(t) => t.clone(),
                     None => return Err(LexoraError::UndefinedVariable {
                         name: self.resolve(*name),
+                        suggestion: self.nearest_var(*name),
                         span: *span,
                     }),
                 };
@@ -219,6 +247,7 @@ impl<'i> TypeChecker<'i> {
                     Some(t) => t.clone(),
                     None => return Err(LexoraError::UndefinedVariable {
                         name: self.resolve(*name),
+                        suggestion: self.nearest_var(*name),
                         span: *span,
                     }),
                 };
@@ -252,6 +281,7 @@ impl<'i> TypeChecker<'i> {
                     Some(t) => t.clone(),
                     None => return Err(LexoraError::UndefinedVariable {
                         name: self.resolve(*object),
+                        suggestion: self.nearest_var(*object),
                         span: *span,
                     }),
                 };
@@ -275,6 +305,7 @@ impl<'i> TypeChecker<'i> {
                     Some((_, t)) => t.clone(),
                     None => return Err(LexoraError::UndefinedVariable {
                         name: self.resolve(*field),
+                        suggestion: self.nearest_field(*field, &fields),
                         span: *span,
                     }),
                 };
@@ -312,6 +343,7 @@ impl<'i> TypeChecker<'i> {
                     Some(t) => Ok(t.clone()),
                     None => return Err(LexoraError::UndefinedVariable {
                         name: self.resolve(*sym),
+                        suggestion: self.nearest_var(*sym),
                         span: *span,
                     }),
                 }
@@ -429,6 +461,7 @@ impl<'i> TypeChecker<'i> {
                     }else {
                         Err(LexoraError::UndefinedFunction {
                             name: name_str,
+                            suggestion: self.nearest_fn(*name),
                             span: *span,
                         })
                     }
@@ -485,6 +518,7 @@ impl<'i> TypeChecker<'i> {
                         Some((_, t)) => t.clone(),
                         None => return Err(LexoraError::UndefinedVariable {
                             name: self.resolve(*field_name),
+                            suggestion: self.nearest_field(*field_name, &struct_fields),
                             span: *span,
                         }),
                     };
@@ -519,6 +553,7 @@ impl<'i> TypeChecker<'i> {
                     Some((_, t)) => Ok(t.clone()),
                     None => Err(LexoraError::UndefinedVariable {
                         name: self.resolve(*field),
+                        suggestion: self.nearest_field(*field, &fields),
                         span: *span,
                     }),
                 }

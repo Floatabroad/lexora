@@ -50,16 +50,12 @@ fn main() {
     let mut sources = SourceMap::new();
     let (program, interner) = match load_program(&path, &arena, &mut sources) {
         Ok(v) => v,
-        Err(e) => {
-            eprint!("{}", lexora::diagnostic::render(&sources, &lexora::diagnostic::to_diagnostic(&e), color));
-            std::process::exit(1);
-        }
+        Err(errors) => report(&sources, errors, color),
     };
 
     let mut checker = TypeChecker::new(&interner);
     if let Err(e) = checker.check_program(&program) {
-        eprint!("{}", lexora::diagnostic::render(&sources, &lexora::diagnostic::to_diagnostic(&e), color));
-        std::process::exit(1);
+        report(&sources, vec![e], color);
     }
     println!("Ok: tip kontrolu basarili.");
 
@@ -72,18 +68,28 @@ fn main() {
         }
     }
 }
+fn report(sources: &SourceMap, mut errors: Vec<LexoraError>, color: bool) -> ! {
+    errors.sort_by_key(|e| e.span().map(|s| s.start).unwrap_or(u32::MAX));
+    for e in &errors {
+        eprint!("{}", lexora::diagnostic::render(sources, &lexora::diagnostic::to_diagnostic(e), color));
+    }
+    eprint!("{}", lexora::diagnostic::render_summary(errors.len(), color));
+    std::process::exit(1);
+}
 fn load_program<'arena> (
     entry: &str,
     arena: &'arena Bump,
     sources: &mut SourceMap<'arena>,
-) -> Result<(Program<'arena>, Interner), LexoraError> {
+) -> Result<(Program<'arena>, Interner), Vec<LexoraError>> {
     let entry_path = PathBuf::from(entry);
-    let entry_src = arena.alloc_str(&read_source(&entry_path)?);
+    let entry_src = arena.alloc_str(&read_source(&entry_path).map_err(|e| vec![e])?);
     let base = sources.add(entry_path.display().to_string(), entry_src);
-    let mut parser = Parser::new(Lexer::new(entry_src, base), arena)?;
+    let mut parser = Parser::new(Lexer::new(entry_src, base), arena).map_err(|e|
+        vec![e])?;
     let mut program = parser.parse_program()?;
     let mut interner = parser.interner;
     let mut next_id = parser.next_expr_id;
+    let mut errors: Vec<LexoraError> = Vec::new();
 
     let mut visited: HashSet<PathBuf> = HashSet::new();
     visited.insert(canonical(&entry_path));
@@ -95,19 +101,31 @@ fn load_program<'arena> (
         if !visited.insert(canonical(&path)){
             continue;
         }
-        let src = arena.alloc_str(&read_source(&path)?);
+        let src = match read_source(&path) {
+            Ok(s) => arena.alloc_str(&s),
+            Err(e) => { errors.push(e); continue; }
+        };
         let base = sources.add(path.display().to_string(), src);
         let mut sub = Parser::with_interner(Lexer::new(src, base), arena, interner,
-                                            next_id)?;
-        let sub_program = sub.parse_program()?;
+                                            next_id)
+            .map_err(|e| vec![e])?;
+        match sub.parse_program() {
+            Ok(sub_program) => {
+                enqueue_imports(&mut queue, &path, &sub_program.imports);
+                program.functions.extend(sub_program.functions);
+                program.structs.extend(sub_program.structs);
+            }
+            Err(es) => errors.extend(es),
+        }
         interner = sub.interner;
         next_id = sub.next_expr_id;
-
-        enqueue_imports(&mut queue, &path, &sub_program.imports);
-        program.functions.extend(sub_program.functions);
-        program.structs.extend(sub_program.structs);
     }
-    Ok((program, interner))
+
+    if errors.is_empty() {
+        Ok((program, interner))
+    } else {
+        Err(errors)
+    }
 }
 
 fn read_source(path: &Path) -> Result<String, LexoraError> {

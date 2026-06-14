@@ -1,9 +1,8 @@
 use bumpalo::Bump;
 use std::mem;
-use std::sync::mpsc::RecvError;
 use crate::lexer::{Lexer, Token, SpannedToken};
 use crate::ast::*;
-use crate::ast::Expr::{BinaryOp, Identifier};
+use crate::ast::Expr::Identifier;
 use crate::symbol::{Symbol, Interner};
 use crate::span::Span;
 use crate::error::LexoraError;
@@ -17,6 +16,7 @@ pub struct Parser<'src, 'arena> {
     pub interner:         Interner,
     allow_struct_literal: bool,
     pub next_expr_id: ExprId,
+    errors:               Vec<LexoraError>,
 }
 
 impl<'src, 'arena> Parser<'src, 'arena> {
@@ -40,6 +40,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             interner,
             allow_struct_literal: true,
             next_expr_id: start_id,
+            errors: Vec::new(),
         })
     }
     fn next_id(&mut self) -> ExprId {
@@ -62,6 +63,27 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 found:    format!("{:?}", self.current.token),
                 span:     self.current.span,
             })
+        }
+    }
+
+    fn synchronize(&mut self){
+        let was_semi = self.current.token == Token::Semicolon;
+        if self.advance().is_err() || was_semi {
+            return;
+        }
+        while self.current.token != Token::Eof {
+            match self.current.token {
+                Token::Fn | Token::Struct | Token::Import | Token::RightBrace => return,
+                Token::Semicolon => {
+                    let _ = self.advance();
+                    return;
+                }
+                _ => {
+                    if self.advance().is_err() {
+                        return;
+                    }
+                }
+            }
         }
     }
    fn parse_symbol(&mut self) -> Result<Symbol, LexoraError> {
@@ -116,39 +138,32 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
     }
 
-    pub fn parse_program(&mut self) -> Result<Program<'arena>, LexoraError> {
+    pub fn parse_program(&mut self) -> Result<Program<'arena>, Vec<LexoraError>> {
         let mut functions = Vec::new();
         let mut structs   = Vec::new();
         let mut imports: Vec<&'arena str> = Vec::new();
 
         while self.current.token != Token::Eof {
-            match self.current.token.clone() {
-                Token::Struct => structs.push(self.parse_struct()?),
-                Token::Import => {
-                    self.advance()?;
-                    let path = if let Token::StringLiteral(s) = self.current.token {
-                        let p = self.arena.alloc_str(s);
-                        self.advance()?;
-                        p
-                    } else {
-                        return Err(LexoraError::UnexpectedToken {
-                            expected: "dosya yolu".to_string(),
-                            found:    format!("{:?}", self.current.token),
-                            span:     self.current.span,
-                        });
-                    };
-                    self.expect(Token::Semicolon)?;
-                    imports.push(path);
-                }
-                Token::Fn => functions.push(self.parse_function()?),
-                _ => return Err(LexoraError::UnexpectedToken {
-                    expected: "fn, struct veya import".to_string(),
-                    found:    format!("{:?}", self.current.token),
-                    span:     self.current.span,
+            let result = match self.current.token.clone() {
+                Token::Struct => self.parse_struct().map(|s| structs.push(s)),
+                Token::Import => self.parse_import().map(|p| imports.push(p)),
+                Token::Fn => self.parse_function().map(|f| functions.push(f)),
+                _ =>  Err(LexoraError::UnexpectedToken {
+                    expected: "struct, fn, import".to_string(),
+                    found: format!("{:?}", self.current.token),
+                    span: self.current.span,
                 }),
+            };
+            if let Err(e) = result {
+                self.errors.push(e);
+                self.synchronize();
             }
         }
-        Ok(Program { functions, structs, imports })
+        if self.errors.is_empty(){
+            Ok(Program{functions, structs, imports})
+        }else {
+            Err(std::mem::take(&mut self.errors))
+        }
     }
 
     fn parse_struct(&mut self) -> Result<StructDef, LexoraError> {
@@ -171,7 +186,39 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         self.expect(Token::RightBrace)?;
         Ok(StructDef { name, fields, span: start.merge(end) })
     }
-
+    fn parse_block(&mut self) -> Result<(&'arena [Stmt<'arena>], Span), LexoraError> {
+        self.expect(Token::LeftBrace)?;
+        let mut stmts: Vec<Stmt<'arena>> = Vec::new();
+        while !matches!(self.current.token, Token::RightBrace | Token::Eof | Token::Fn | Token::Struct | Token::Import) {
+            match self.parse_statement(){
+                Ok(s) => stmts.push(s),
+                Err(e) => {
+                    self.errors.push(e);
+                    self.synchronize();
+                }
+            }
+        }
+        let end = self.current.span;
+        self.expect(Token::RightBrace)?;
+        let body = self.arena.alloc_slice_fill_iter(stmts.into_iter());
+        Ok((body, end))
+    }
+    fn parse_import(&mut self) -> Result<&'arena str, LexoraError> {
+        self.expect(Token::Import)?;
+        let path = if let Token::StringLiteral(s) = self.current.token {
+            let p = self.arena.alloc_str(s);
+            self.advance()?;
+            p
+        } else {
+            return Err(LexoraError::UnexpectedToken {
+                expected: "dosya yolu".to_string(),
+                found:    format!("{:?}", self.current.token),
+                span:     self.current.span,
+            });
+        };
+        self.expect(Token::Semicolon)?;
+        Ok(path)
+    }
     fn parse_statement(&mut self) -> Result<Stmt<'arena>, LexoraError>{
 
         let start = self.current.span;
@@ -257,14 +304,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let condition = self.parse_expr()?;
         self.allow_struct_literal = true;
 
-        self.expect(Token::LeftBrace)?;
-        let mut then_stmts: Vec<Stmt<'arena>> = Vec::new();
-        while self.current.token != Token::RightBrace {
-            then_stmts.push(self.parse_statement()?);
-        }
-        let end = self.current.span;
-        self.expect(Token::RightBrace)?;
-        let then_body = self.arena.alloc_slice_fill_iter(then_stmts.into_iter());
+        let (then_body, end) = self.parse_block()?;
 
         let else_branch = if self.current.token == Token::Else {
             self.advance()?;
@@ -272,13 +312,8 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 let else_if = self.parse_if()?;
                 Some(self.arena.alloc_slice_fill_iter(std::iter::once(else_if)) as &[Stmt<'arena>])
             } else {
-                self.expect(Token::LeftBrace)?;
-                let mut else_stmts: Vec<Stmt<'arena>> = Vec::new();
-                while self.current.token != Token::RightBrace {
-                    else_stmts.push(self.parse_statement()?);
-                }
-                self.expect(Token::RightBrace)?;
-                Some(self.arena.alloc_slice_fill_iter(else_stmts.into_iter()) as &[Stmt<'arena>])
+               let (else_body, _) = self.parse_block()?;
+                Some(else_body)
             }
         } else {
             None
@@ -294,14 +329,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let condition = self.parse_expr()?;
         self.allow_struct_literal = true;
 
-        self.expect(Token::LeftBrace)?;
-        let mut body_stmts: Vec<Stmt<'arena>> = Vec::new();
-        while self.current.token != Token::RightBrace {
-            body_stmts.push(self.parse_statement()?);
-        }
-        let end = self.current.span;
-        self.expect(Token::RightBrace)?;
-        let body = self.arena.alloc_slice_fill_iter(body_stmts.into_iter());
+        let (body, end) = self.parse_block()?;
         Ok(Stmt::While { condition, body, span: start.merge(end) })
     }
 
@@ -317,14 +345,8 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let to = self.parse_expr()?;
         self.allow_struct_literal = true;
 
-        self.expect(Token::LeftBrace)?;
-        let mut body_stmts: Vec<Stmt<'arena>> = Vec::new();
-        while self.current.token != Token::RightBrace {
-            body_stmts.push(self.parse_statement()?);
-        }
-        let end = self.current.span;
-        self.expect(Token::RightBrace)?;
-        let body = self.arena.alloc_slice_fill_iter(body_stmts.into_iter());
+
+        let (body, end) = self.parse_block()?;
         Ok(Stmt::For { var, from, to, body, span: start.merge(end) })
     }
 
@@ -395,7 +417,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             let op = match self.current.token {
                 Token::Plus => BinaryOperator::Add,
                 Token::Minus => BinaryOperator::Sub,
-                _ => return Ok(left),
+                _ =>  break,
             };
             self.advance()?;
             let right = self.parse_multiplicative()?;
@@ -605,16 +627,9 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         self.expect(Token::Arrow)?;
         let return_type = self.parse_type()?;
 
-        self.expect(Token::LeftBrace)?;
-        let mut body: Vec<Stmt<'arena>> = Vec::new();
-        while self.current.token != Token::RightBrace {
-            body.push(self.parse_statement()?);
-        }
-        let end = self.current.span;
-        self.expect(Token::RightBrace)?;
-
+        let (body, end) = self.parse_block()?;
         let params = self.arena.alloc_slice_fill_iter(params.into_iter());
-        let body   = self.arena.alloc_slice_fill_iter(body.into_iter());
+
         Ok(Function { name, params, return_type, body, span: start.merge(end) })
     }
 

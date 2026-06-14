@@ -7,7 +7,9 @@ fn check(source: &str) -> Result<(), String> {
     let arena = Bump::new();
     let lexer = Lexer::new(source, 0);
     let mut parser = Parser::new(lexer, &arena).map_err(|e| e.to_string())?;
-    let program = parser.parse_program().map_err(|e| e.to_string())?;
+    let program = parser
+        .parse_program()
+        .map_err(|errs| errs.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("; "))?;
     let interner = &parser.interner;
     let mut checker = TypeChecker::new(interner);
     checker.check_program(&program).map_err(|e| e.to_string())

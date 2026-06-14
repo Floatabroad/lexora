@@ -58,7 +58,7 @@ fn main() -> i32 {
 - **Aggregates** — array literals, indexing, struct literals, field access and assignment
 - **Built-ins** — `print(...)` for integers, booleans, and strings
 - **Runtime safety** — checked division (divide-by-zero), array bounds checks, and overflow-checked `+` / `-` / `*`; a violation prints a diagnostic and exits non-zero instead of misbehaving
-- **Diagnostics** — compile errors are rendered rustc-style: the offending source line, a caret underline, a short inline label, and `note` / `help` lines; locations resolve through a source map, so they stay correct even when the error lives in an imported file
+- **Diagnostics** — compile errors are rendered rustc-style: the offending source line(s), a caret underline (which spans multiple lines when the error does), a short inline label, and `note` / `help` lines. Identifier typos get a Levenshtein-based "did you mean?" suggestion, and the parser recovers from syntax errors to report as many as it can in a single run instead of stopping at the first. Locations resolve through a source map, so they stay correct even when the error lives in an imported file
 
 ## Architecture
 

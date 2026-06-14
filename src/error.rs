@@ -11,10 +11,12 @@ pub enum LexoraError {
     },
     UndefinedVariable {
         name: String,
+        suggestion: Option<String>,
         span: Span,
     },
     UndefinedFunction {
         name: String,
+        suggestion: Option<String>,
         span: Span,
     },
     TypeMismatch {

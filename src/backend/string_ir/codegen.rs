@@ -198,6 +198,7 @@ impl<'i> CodeGen<'i> {
                     Some(v) => v.clone(),
                     None => return Err(LexoraError::UndefinedVariable {
                         name: format!("sym#{}", name.0),
+                        suggestion: None,
                         span: *span,
                     }),
                 };
@@ -300,6 +301,7 @@ impl<'i> CodeGen<'i> {
                     Some(v) => v.clone(),
                     None => return Err(LexoraError::UndefinedVariable {
                         name: format!("sym#{}", name.0),
+                        suggestion: None,
                         span: *span,
                     }),
                 };
@@ -317,6 +319,7 @@ impl<'i> CodeGen<'i> {
                     Some(v) => v.clone(),
                     None => return Err(LexoraError::UndefinedVariable {
                         name: format!("sym#{}", object.0),
+                        suggestion: None,
                         span: *span,
                     }),
                 };
@@ -356,6 +359,7 @@ impl<'i> CodeGen<'i> {
                     }
                     None => Err(LexoraError::UndefinedVariable {
                         name: format!("sym#{}", sym.0),
+                        suggestion: None,
                         span: *span,
                     }),
                 }
@@ -429,6 +433,7 @@ impl<'i> CodeGen<'i> {
                     Some(sig) => sig,
                     None => return Err(LexoraError::UndefinedFunction {
                         name: name_str,
+                        suggestion: None,
                         span: *span,
                     }),
                 };
@@ -451,6 +456,7 @@ impl<'i> CodeGen<'i> {
                     Some(v) => v.clone(),
                     None => return Err(LexoraError::UndefinedVariable {
                         name: format!("sym#{}", arr_sym.0),
+                        suggestion: None,
                         span: *span,
                     }),
                 };
@@ -478,6 +484,7 @@ impl<'i> CodeGen<'i> {
                     Some(v) => v.clone(),
                     None => return Err(LexoraError::UndefinedVariable {
                         name: format!("sym#{}", obj_sym.0),
+                        suggestion: None,
                         span: *span,
                     }),
                 };
