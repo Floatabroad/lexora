@@ -18,7 +18,13 @@ equiv:
 equiv-bless:
 	./scripts/equiv.sh --bless
 
-.PHONY: build run clean equiv equiv-bless
+diag:
+	./scripts/diagnostics.sh
+
+diag-bless:
+	./scripts/diagnostics.sh --bless
+
+.PHONY: build run clean equiv equiv-bless diag diag-bless
 
 
 

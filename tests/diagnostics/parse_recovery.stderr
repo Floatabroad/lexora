@@ -1,0 +1,11 @@
+error: beklenmeyen ifade: Semicolon
+ --> tests/diagnostics/parse_recovery.lx:2:18
+  |
+2 |     let x: i32 = ;
+  |                  ^ beklenen: expression
+error: beklenmeyen ifade: Semicolon
+ --> tests/diagnostics/parse_recovery.lx:3:18
+  |
+3 |     let y: i32 = ;
+  |                  ^ beklenen: expression
+error: 2 hata yuzunden durduruldu

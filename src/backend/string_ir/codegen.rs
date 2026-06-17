@@ -53,6 +53,7 @@ impl<'i> CodeGen<'i> {
             Type::Str => LlvmType::Ptr,
             Type::Array(t, n) => LlvmType::Array(Box::new(self.ast_type_to_llvm(t)), *n),
             Type::Struct(s) => LlvmType::Struct(*s),
+            Type::Error => unreachable!("Type::Error codegen'e ulasti (errors bos degilse codegen yok)"),
         }
     }
     pub fn gen_program<'arena>(
@@ -339,6 +340,9 @@ impl<'i> CodeGen<'i> {
                                                               idx as u32);
                 self.builder.build_store(field_ty, val, field_ptr);
             }
+            Stmt::Error(_) => return Err(LexoraError::Codegen {
+                message: "poison statement codegen'e ulasti".to_string(),
+            }),
         }
         Ok(())
     }
@@ -509,6 +513,9 @@ impl<'i> CodeGen<'i> {
                     span: *span,
                 })
             }
+            Expr::Error(_,_) => Err(LexoraError::Codegen {
+                message: "poison expression codegen'e ulasti".to_string(),
+            }),
         }
     }
     // fn expr_llvm_type<'arena>(&self, expr: &Expr<'arena>) -> LlvmType {

@@ -53,6 +53,7 @@ pub enum Expr<'arena> {
         span: Span,
         id: ExprId,
     },
+    Error(Span, ExprId),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -114,6 +115,7 @@ pub enum Stmt<'arena> {
         value: Expr<'arena>,
         span: Span,
     },
+    Error(Span),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -121,6 +123,7 @@ pub enum Type {
     I32, I64, Bool, Void, Str,
     Array(Box<Type>, usize),
     Struct(Symbol),
+    Error,
 }
 
 #[derive(Debug, Clone)]
@@ -161,6 +164,7 @@ impl<'arena> Expr<'arena> {
             Expr::Index { span, .. } => *span,
             Expr::StructLiteral { span, .. } => *span,
             Expr::FieldAccess { span, .. } => *span,
+            Expr::Error(s, _) => *s,
         }
     }
     pub fn id(&self) -> ExprId {
@@ -177,6 +181,24 @@ impl<'arena> Expr<'arena> {
             Expr::Index { id, .. } => *id,
             Expr::StructLiteral { id, .. } => *id,
             Expr::FieldAccess { id, .. } => *id,
+            Expr::Error(_, id) => *id,
+        }
+    }
+}
+
+impl<'arena> Stmt<'arena> {
+    pub fn span(&self) -> Span {
+        match self {
+            Stmt::Let { span, ..} => *span,
+            Stmt::Return(_, span) => *span,
+            Stmt::Expr(_, span) => *span,
+            Stmt::If { span, .. } => *span,
+            Stmt::Assign { span, .. } => *span,
+            Stmt::While { span, .. } => *span,
+            Stmt::For { span, .. } => *span,
+            Stmt::AssignIndex { span, .. } => *span,
+            Stmt::AssignField { span, .. } => *span,
+            Stmt::Error(span) => *span,
         }
     }
 }

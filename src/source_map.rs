@@ -67,4 +67,7 @@ impl<'a> SourceMap<'a> {
         }
         Some(Resolved{ name: &file.name, line, col, lines, start_char, end_char})
     }
+    pub fn entry_name(&self) -> &str {
+        &self.files[0].name
+    }
 }

@@ -168,11 +168,15 @@ pub fn render(sources: &SourceMap, diag: &Diagnostic, color: bool) -> String {
 
     out
 }
-pub fn render_summary(count: usize, color: bool) -> String {
+pub fn render_summary(total: usize, limit: usize, color: bool) -> String {
     let (red, bold, reset) = if color {
         ("\x1b[31m", "\x1b[1m", "\x1b[0m")
     } else {
         ("", "", "")
     };
-    format!("{bold}{red}error{reset}{bold}: {} hata yuzunden durduruldu{reset}\n", count)
+    if total > limit {
+        format!("{bold}{red}error{reset}{bold}: cok fazla hata; ilk {} gosterildi ({} toplam){reset}\n", limit, total)
+    } else {
+        format!("{bold}{red}error{reset}{bold}: {} hata yuzunden durduruldu{reset}\n", total)
+    }
 }

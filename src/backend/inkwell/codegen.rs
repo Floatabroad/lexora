@@ -8,12 +8,15 @@ use inkwell::types::{BasicTypeEnum, BasicType, BasicMetadataTypeEnum, StructType
 use inkwell::AddressSpace;
 use std::collections::HashMap;
 use inkwell::IntPredicate;
-use inkwell::targets::{Target, TargetMachine, InitializationConfig, RelocMode, CodeModel, FileType};
+use inkwell::targets::{Target, TargetMachine, InitializationConfig, RelocMode, CodeModel, FileType, TargetData};
 use inkwell::OptimizationLevel;
 use inkwell::passes::PassBuilderOptions;
 use std::path::Path;
 use inkwell::intrinsics::Intrinsic;
-
+use inkwell::debug_info::{DebugInfoBuilder, DICompileUnit, DIFile, DISubprogram, DIType,DWARFSourceLanguage, DWARFEmissionKind, DIFlags,DIFlagsConstants, AsDIScope};
+use inkwell::module::FlagBehavior;
+use crate::source_map::SourceMap;
+use crate::span::Span;
 
 struct VarTable<'ctx> {
     scopes: Vec<HashMap<Symbol, (PointerValue<'ctx>, BasicTypeEnum<'ctx>)>>,
@@ -44,6 +47,14 @@ pub struct CodeGen<'ctx> {
     cur_fn: Option<FunctionValue<'ctx>>,
     opt: u8,
     types: &'ctx HashMap<ExprId, Type>,
+    sources: &'ctx SourceMap<'ctx>,
+    debug: bool,
+    dib: Option<DebugInfoBuilder<'ctx>>,
+    di_cu: Option<DICompileUnit<'ctx>>,
+    di_file: Option<DIFile<'ctx>>,
+    di_sp: Option<DISubprogram<'ctx>>,
+    target_data: Option<TargetData>,
+    struct_fields_ast: HashMap<Symbol, Vec<(Symbol, Type)>>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -52,10 +63,59 @@ impl<'ctx> CodeGen<'ctx> {
         interner: &'ctx Interner,
         module_name: &str,
         types: &'ctx HashMap<ExprId, Type>,
+        sources: &'ctx SourceMap<'ctx>,
         opt: u8,
+        debug: bool,
     ) -> Self {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
+
+        let (dib, di_cu, di_file) = if debug{
+            let path = std::path::Path::new(sources.entry_name());
+            let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("<girdi>");
+            let directory = path.parent().and_then(|s| s.to_str()).unwrap_or(".");
+
+            let dbg_ver = context.i32_type().const_int(3, false);
+            module.add_basic_value_flag("Debug Info Version", FlagBehavior::Warning, dbg_ver);
+
+            let (dib, cu) = module.create_debug_info_builder(
+                true,
+                DWARFSourceLanguage::C,
+                filename,
+                directory,
+                "lexora",
+                opt > 0,
+                "",
+                0,
+                "",
+                DWARFEmissionKind::Full,
+                0,
+                false,
+                false,
+                "",
+                "",
+            );
+            let file = dib.create_file(filename, directory);
+            (Some(dib), Some(cu), Some(file))
+        }else {
+            (None, None, None)
+        };
+        let target_data = if debug {
+            Target::initialize_native(&InitializationConfig::default()).ok();
+            let triple = TargetMachine::get_default_triple();
+            Target::from_triple(&triple).ok()
+                .and_then(|t| t.create_target_machine(
+                    &triple,
+                    &TargetMachine::get_host_cpu_name().to_string(),
+                    &TargetMachine::get_host_cpu_features().to_string(),
+                    OptimizationLevel::None,
+                    RelocMode::PIC,
+                    CodeModel::Default,
+                ))
+                .map(|tm| tm.get_target_data())
+        }else {
+            None
+        };
         CodeGen {
             context,
             module,
@@ -66,6 +126,14 @@ impl<'ctx> CodeGen<'ctx> {
             cur_fn: None,
             opt,
             types,
+            sources,
+            debug,
+            dib,
+            di_cu,
+            di_file,
+            di_sp: None,
+            target_data,
+            struct_fields_ast: HashMap::new(),
         }
     }
     fn llvm_type(&self, ty: &Type) -> BasicTypeEnum<'ctx> {
@@ -83,6 +151,56 @@ impl<'ctx> CodeGen<'ctx> {
                 .0.into(),
 
             Type::Void => panic!("void bir deger tipi olarak kullanilamaz"),
+            Type::Error => panic!("Type::Error codegen'e ulasti (errors bos degilse codegen yok)"),
+        }
+    }
+    fn di_type(&self, ty: &Type) -> DIType<'ctx> {
+        let dib = self.dib.as_ref().unwrap();
+        let td = self.target_data.as_ref().unwrap();
+        match ty {
+            Type::I32 => dib.create_basic_type("i32", 32, 0x05,
+                                               DIFlags::ZERO).unwrap().as_type(),
+            Type::I64 => dib.create_basic_type("i64", 64, 0x05,
+                                               DIFlags::ZERO).unwrap().as_type(),
+            Type::Bool => dib.create_basic_type("bool", 8, 0x02,
+                                                DIFlags::ZERO).unwrap().as_type(),
+            Type::Str => {
+                let i8t = dib.create_basic_type("i8", 8, 0x06,
+                                                DIFlags::ZERO).unwrap().as_type();
+                dib.create_pointer_type("str", i8t, 64, 0,
+                                        AddressSpace::default()).as_type()
+        }
+            Type::Array(elem, n) => {
+                let inner = self.di_type(elem);
+                let size = td.get_bit_size(&self.llvm_type(ty));
+                dib.create_array_type(inner, size, 0, &[0..(*n as i64)]).as_type()
+            }
+            Type::Struct(sym) => {
+                let file = self.di_file.unwrap();
+                let scope = self.di_cu.unwrap().as_debug_info_scope();
+                let st = self.structs.get(sym).unwrap().0;
+                let fields = self.struct_fields_ast.get(sym).unwrap().clone();
+                let mut members = Vec::new();
+                for (i, (fname, fty)) in fields.iter().enumerate() {
+                    let fdi = self.di_type(fty);
+                    let fsize = td.get_bit_size(&self.llvm_type(fty));
+                    let foffset = td.offset_of_element(&st, i as u32).unwrap_or(0) * 8;
+                    let m = dib.create_member_type(
+                        scope, self.interner.resolve(*fname), file, 0,
+                        fsize, 0, foffset, DIFlags::ZERO, fdi,
+                    ).as_type();
+                    members.push(m);
+                }
+                let total = td.get_bit_size(&self.llvm_type(ty));
+                let name = self.interner.resolve(*sym);
+                dib.create_struct_type(
+                    scope, name, file, 0, total, 0, DIFlags::ZERO,
+                    None, &members, 0, None, "",
+                ).as_type()
+            }
+
+            Type::Void | Type::Error => unreachable!("debug: void/error tipi di_type'a ulasmaz"),
+
         }
     }
     pub fn compile(&mut self, program: &Program) -> Result<(), BuilderError> {
@@ -93,12 +211,16 @@ impl<'ctx> CodeGen<'ctx> {
         for func in &program.functions{
             self.gen_function(func)?;
         }
+        if let Some(dib) = &self.dib {
+            dib.finalize();
+        }
         Ok(())
     }
     fn register_structs(&mut self, program: &Program) {
         for s in &program.structs {
-            let st = self.context.opaque_struct_type(&format!("struct.{}", s.name.0));
+           let st = self.context.opaque_struct_type(&format!("struct.{}", s.name.0));
             self.structs.insert(s.name, (st, Vec::new()));
+            self.struct_fields_ast.insert(s.name, s.fields.clone());
         }
         for s in &program.structs {
             let mut fields = Vec::new();
@@ -127,7 +249,15 @@ impl<'ctx> CodeGen<'ctx> {
         self.module.get_function(name)
             .unwrap_or_else(|| self.module.add_function(name, fn_type, None))
     }
-
+    fn set_loc(&self, span: Span) {
+        if !self.debug {return;}
+        let dib = match self.dib.as_ref() { Some(d) => d, None => return };
+        let sp = match self.di_sp { Some(s) => s, None => return };
+        if let Some(r) = self.sources.resolve(span) {
+            let loc = dib.create_debug_location(self.context, r.line as u32, r.col as u32, sp.as_debug_info_scope(), None);
+            self.builder.set_current_debug_location(loc);
+        }
+    }
     fn gen_function(&mut self, func: &Function) -> Result<(), BuilderError> {
         let name = self.interner.resolve(func.name);
         let function = self.module.get_function(name).unwrap();
@@ -138,6 +268,23 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.vars = VarTable::new();
         self.vars.enter();
+        if self.debug{
+            let dib= self.dib.as_ref().unwrap();
+            let file = self.di_file.unwrap();
+            let cu = self.di_cu.unwrap();
+            let ret_di = match func.return_type {
+                Type::Void => None,
+                ref t => Some(self.di_type(t)),
+            };
+            let params_di: Vec<DIType> = func.params.iter().map(|(_, t)| self.di_type(t)).collect();
+            let subroutine = dib.create_subroutine_type(file, ret_di, &params_di, DIFlags::ZERO);
+            let line= self.sources.resolve(func.span).map(|r| r.line as u32).unwrap_or(0);
+            let sp = dib.create_function(
+                cu.as_debug_info_scope(), name, None,file,line,subroutine,false,true,line,DIFlags::ZERO,self.opt>0,
+            );
+            function.set_subprogram(sp);
+            self.di_sp = Some(sp);
+        }
 
         for(i, (sym, ty)) in func.params.iter().enumerate() {
             let llvm_ty = self.llvm_type(ty);
@@ -146,6 +293,21 @@ impl<'ctx> CodeGen<'ctx> {
             let arg = function.get_nth_param(i as u32).unwrap();
             self.builder.build_store(slot, arg)?;
             self.vars.insert(*sym, (slot, llvm_ty));
+            if self.debug{
+                let dib = self.dib.as_ref().unwrap();
+                let file = self.di_file.unwrap();
+                let sp = self.di_sp.unwrap();
+                let line = self.sources.resolve(func.span).map(|r| r.line as
+                    u32).unwrap_or(0);
+                let var = dib.create_parameter_variable(
+                    sp.as_debug_info_scope(), pname, (i + 1) as u32, file, line,
+                    self.di_type(ty), true, DIFlags::ZERO,
+                );
+                let loc = dib.create_debug_location(self.context, line, 0,
+                                                    sp.as_debug_info_scope(), None);
+                let block = self.builder.get_insert_block().unwrap();
+                dib.insert_declare_at_end(slot, Some(var), None, loc, block);
+            }
         }
         for stmt in func.body {
             self.gen_statement(stmt)?;
@@ -162,8 +324,9 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
     fn gen_statement(&mut self, stmt: &Stmt) -> Result<(), BuilderError> {
+       self.set_loc(stmt.span());
         match stmt {
-            Stmt::Let { name, value, .. } => {
+            Stmt::Let { name, value, span, .. } => {
                 let llvm_ty = self.llvm_type(&self.types[&value.id()]);
                 let pname = self.interner.resolve(*name);
                 let slot = self.entry_alloca(llvm_ty, pname)?;
@@ -203,6 +366,23 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
                 self.vars.insert(*name, (slot, llvm_ty));
+                if self.debug {
+                    let dib = self.dib.as_ref().unwrap();
+                    let file = self.di_file.unwrap();
+                    let sp = self.di_sp.unwrap();
+                    let dty = &self.types[&value.id()];
+                    let line = self.sources.resolve(*span).map(|r| r.line as
+                        u32).unwrap_or(0);
+                    let var = dib.create_auto_variable(
+                        sp.as_debug_info_scope(), pname, file, line,
+                        self.di_type(dty), true, DIFlags::ZERO, 0,
+                    );
+                    let loc = dib.create_debug_location(self.context, line, 0,
+                                                        sp.as_debug_info_scope(), None);
+                    let block = self.builder.get_insert_block().unwrap();
+                    dib.insert_declare_at_end(slot, Some(var), None, loc, block);
+                }
+
                 Ok(())
             }
             Stmt::Assign {name, value , .. } => {
@@ -348,6 +528,7 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_store(fptr, val)?;
                 Ok(())
             }
+            Stmt::Error(_) => unreachable!("poison statement codegen'e ulasti (errors bos degilse codegen yok)"),
         }
     }
     fn gen_expr(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>, BuilderError> {
@@ -504,6 +685,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let fld_ty = st.get_field_type_at_index(idx).unwrap();
                 Ok(self.builder.build_load(fld_ty, fptr, "fldval")?)
             }
+            Expr::Error(_, _) => unreachable!("poison ifade codegen'e ulasti (errors bos degilse codegen yok)"),
 
             _ => todo!("call/cast/unary/index/struct/array/string sonraki adımlarda"),        }
     }

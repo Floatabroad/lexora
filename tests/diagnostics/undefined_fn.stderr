@@ -1,0 +1,8 @@
+error: tanimsiz fonksiyon: tpla
+ --> tests/diagnostics/undefined_fn.lx:6:12
+  |
+6 |     return tpla(1, 2);
+  |            ^^^^^^^^^^ bu isimde bir fonksiyon yok
+  |
+  = help: bunu mu demek istediniz: `topla`?
+error: 1 hata yuzunden durduruldu

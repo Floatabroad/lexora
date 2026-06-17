@@ -1,0 +1,11 @@
+error: beklenmedik karakter: '@'
+ --> tests/diagnostics/lex_recovery.lx:2:20
+  |
+2 |     let x: i32 = 5 @ 3;
+  |                    ^
+error: beklenmeyen ifade: Integer(3)
+ --> tests/diagnostics/lex_recovery.lx:2:22
+  |
+2 |     let x: i32 = 5 @ 3;
+  |                      ^ beklenen: Semicolon
+error: 2 hata yuzunden durduruldu

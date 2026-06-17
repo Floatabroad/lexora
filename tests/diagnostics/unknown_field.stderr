@@ -1,0 +1,8 @@
+error: tanimsiz degisken: z
+ --> tests/diagnostics/unknown_field.lx:7:20
+  |
+7 |     let p: Point = Point { x: 1, z: 2 };
+  |                    ^^^^^^^^^^^^^^^^^^^^ bu kapsamda tanimli degil
+  |
+  = help: bunu mu demek istediniz: `x`?
+error: 1 hata yuzunden durduruldu

@@ -1,0 +1,9 @@
+error: zaten tanimli: a
+ --> tests/diagnostics/already_defined.lx:1:1
+  |
+1 |   fn f(a: i32, a: i32) -> i32 {
+  | __^
+2 | |     return a;
+3 | | }
+  | |_^ yeniden tanimlandi
+error: 1 hata yuzunden durduruldu

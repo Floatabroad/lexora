@@ -1,0 +1,11 @@
+error: tip uyusmazligi: beklenen bool, bulunan i32
+ --> tests/diagnostics/multiline_span.lx:2:5
+  |
+2 |       if 5 {
+  | ______^
+3 | |         return 1;
+4 | |     }
+  | |_____^ bu ifade `i32` tipinde
+  |
+  = help: beklenen tip: `bool`
+error: 1 hata yuzunden durduruldu

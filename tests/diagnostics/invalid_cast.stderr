@@ -1,0 +1,8 @@
+error: gecersiz cast: bool -> i32
+ --> tests/diagnostics/invalid_cast.lx:3:18
+  |
+3 |     let x: i32 = b as i32;
+  |                  ^^^^^^^^ `bool` -> `i32` desteklenmiyor
+  |
+  = note: gecerli cast'ler: i32 -> i64, i64 -> i32
+error: 1 hata yuzunden durduruldu

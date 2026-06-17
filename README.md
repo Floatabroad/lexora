@@ -58,7 +58,8 @@ fn main() -> i32 {
 - **Aggregates** — array literals, indexing, struct literals, field access and assignment
 - **Built-ins** — `print(...)` for integers, booleans, and strings
 - **Runtime safety** — checked division (divide-by-zero), array bounds checks, and overflow-checked `+` / `-` / `*`; a violation prints a diagnostic and exits non-zero instead of misbehaving
-- **Diagnostics** — compile errors are rendered rustc-style: the offending source line(s), a caret underline (which spans multiple lines when the error does), a short inline label, and `note` / `help` lines. Identifier typos get a Levenshtein-based "did you mean?" suggestion, and the parser recovers from syntax errors to report as many as it can in a single run instead of stopping at the first. Locations resolve through a source map, so they stay correct even when the error lives in an imported file
+- **Diagnostics** — compile errors are rendered rustc-style: the offending source line(s), a caret underline (which spans multiple lines when the error does), a short inline label, and `note` / `help` lines. Identifier typos get a Levenshtein-based "did you mean?" suggestion. The lexer, parser, and type checker all *recover* from errors — bad nodes are poisoned so a single statement can surface several independent errors without spurious cascades, and the compiler reports as many as it can in one run (capped) instead of stopping at the first. Locations resolve through a source map, so they stay correct even when the error lives in an imported file
+- **Debug info** — the `inkwell` backend can emit DWARF (`-g`): line tables, function parameters, locals, and struct types (with named fields and real offsets), so compiled programs are debuggable in `gdb` / `lldb` — breakpoints, single-stepping, and `print` of variables and struct fields all work
 
 ## Architecture
 
@@ -86,7 +87,10 @@ default build needs no LLVM development libraries at all.
 Because both backends share the entire frontend, they must agree byte-for-byte
 on every program. That invariant is enforced by an equivalence harness
 (`make equiv`, or `cargo test --features inkwell`) that compiles each case in
-`tests/equiv/` with both backends and diffs their output.
+`tests/equiv/` with both backends and diffs their output. A second snapshot
+harness (`make diag`) locks down the diagnostic output itself: each case in
+`tests/diagnostics/` is compiled and its rendered errors are diffed against a
+golden `.stderr`, so the rustc-style formatting stays pinned too.
 
 ## Building
 
@@ -119,6 +123,9 @@ cargo run --features inkwell -- --backend inkwell program.lx
 
 # Pick an optimization level for the inkwell backend: -O0 (default) … -O3
 cargo run --features inkwell -- --backend inkwell -O2 program.lx
+
+# Emit DWARF debug info (inkwell backend) and debug in gdb/lldb
+cargo run --features inkwell -- --backend inkwell -g program.lx
 ```
 
 ## Project layout
@@ -154,6 +161,10 @@ Generated code is also runtime-safe: division-by-zero, out-of-bounds indexing,
 and integer overflow are each guarded and routed through a shared panic path
 that prints a diagnostic and exits — and both backends agree byte-for-byte on
 that behaviour too.
+
+The `inkwell` backend can additionally emit DWARF debug info (`-g`), so compiled
+programs can be stepped through in `gdb` / `lldb` with full line, parameter,
+local-variable, and struct information.
 
 It's still a learning project, so expect rough edges, missing features, and the
 occasional `unimplemented!()` — I add things as I get to them.

@@ -1,0 +1,11 @@
+error: tanimsiz degisken: aa
+ --> tests/diagnostics/multi_error_stmt.lx:2:26
+  |
+2 |     let arr: [i32; 2] = [aa, bb];
+  |                          ^^ bu kapsamda tanimli degil
+error: tanimsiz degisken: bb
+ --> tests/diagnostics/multi_error_stmt.lx:2:30
+  |
+2 |     let arr: [i32; 2] = [aa, bb];
+  |                              ^^ bu kapsamda tanimli degil
+error: 2 hata yuzunden durduruldu

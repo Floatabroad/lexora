@@ -1,0 +1,8 @@
+error: tanimsiz degisken: totl
+ --> tests/diagnostics/undefined_var.lx:3:11
+  |
+3 |     print(totl);
+  |           ^^^^ bu kapsamda tanimli degil
+  |
+  = help: bunu mu demek istediniz: `total`?
+error: 1 hata yuzunden durduruldu

@@ -1,0 +1,6 @@
+fn main() -> i32 {
+    if 5 {
+        let q: bool = 99;
+    }
+    return 0;
+}

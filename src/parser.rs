@@ -20,7 +20,7 @@ pub struct Parser<'src, 'arena> {
 }
 
 impl<'src, 'arena> Parser<'src, 'arena> {
-   pub fn new(lexer: Lexer<'src>, arena: &'arena Bump) -> Result<Self, LexoraError> {
+   pub fn new(lexer: Lexer<'src>, arena: &'arena Bump) -> Self {
        Self::with_interner(lexer, arena, Interner::new(), 0)
    }
     pub fn with_interner(
@@ -28,35 +28,43 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         arena: &'arena Bump,
         interner: Interner,
         start_id: ExprId,
-    ) -> Result<Self, LexoraError> {
-        let current = lexer.next_token()?;
-        let peek    = lexer.next_token()?;
-
-        Ok(Parser{
+    ) -> Self {
+        let mut parser = Parser{
             lexer,
-            current,
-            peek,
+            current: SpannedToken{ token: Token::Eof, span: Span::default()},
+            peek: SpannedToken{token: Token::Eof, span: Span::default()},
             arena,
             interner,
             allow_struct_literal: true,
             next_expr_id: start_id,
             errors: Vec::new(),
-        })
+        };
+        parser.current = parser.pull();
+        parser.peek = parser.pull();
+        parser
     }
     fn next_id(&mut self) -> ExprId {
         let id = self.next_expr_id;
         self.next_expr_id += 1;
         id
     }
-    fn advance(&mut self) -> Result<SpannedToken<'src>, LexoraError>{
-        let next       = self.lexer.next_token()?;
+    fn pull(&mut self) -> SpannedToken<'src> {
+       loop {
+           let t = self.lexer.next_token();
+           if t.token != Token::Error {
+               return t;
+           }
+       }
+    }
+    fn advance(&mut self) -> SpannedToken<'src>{
+        let next       = self.pull();
         let prev_peek                = mem::replace(&mut self.peek, next);
-        Ok(mem::replace(&mut self.current, prev_peek))
+        mem::replace(&mut self.current, prev_peek)
     }
 
     fn expect(&mut self, expected: Token<'src>) -> Result<SpannedToken<'src>, LexoraError> {
         if self.current.token == expected {
-            self.advance()
+            Ok(self.advance())
         } else {
             Err(LexoraError::UnexpectedToken{
                 expected: format!("{:?}", expected),
@@ -66,22 +74,21 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
     }
 
-    fn synchronize(&mut self){
+    fn synchronize(&mut self) {
         let was_semi = self.current.token == Token::Semicolon;
-        if self.advance().is_err() || was_semi {
+        self.advance();
+        if was_semi{
             return;
         }
-        while self.current.token != Token::Eof {
+        while self.current.token != Token::Eof{
             match self.current.token {
                 Token::Fn | Token::Struct | Token::Import | Token::RightBrace => return,
                 Token::Semicolon => {
-                    let _ = self.advance();
+                    self.advance();
                     return;
                 }
                 _ => {
-                    if self.advance().is_err() {
-                        return;
-                    }
+                    self.advance();
                 }
             }
         }
@@ -96,24 +103,24 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                span:     self.current.span,
            });
        };
-       self.advance()?;
+       self.advance();
        Ok(sym)
    }
     fn parse_type(&mut self) -> Result<Type, LexoraError> {
         match self.current.token.clone() {
-            Token::I32 => {self.advance()?; Ok(Type::I32)}
-            Token::I64 => { self.advance()?; Ok(Type::I64) }
-            Token::Bool => { self.advance()?; Ok(Type::Bool) }
-            Token::Str => {self.advance()?; Ok(Type::Str)}
-            Token::Void => {self.advance()?; Ok(Type::Void)}
+            Token::I32 => {self.advance(); Ok(Type::I32)}
+            Token::I64 => { self.advance(); Ok(Type::I64) }
+            Token::Bool => { self.advance(); Ok(Type::Bool) }
+            Token::Str => {self.advance(); Ok(Type::Str)}
+            Token::Void => {self.advance(); Ok(Type::Void)}
             Token::LeftBracket => {
-                self.advance()?;
+                self.advance();
                 let elem_ty = self.parse_type()?;
                 self.expect(Token::Semicolon)?;
                 let size = match self.current.token {
                     Token::Integer(n) => {
                         let s = n as usize;
-                        self.advance()?;
+                        self.advance();
                         s
                     }
                     _ => return Err(LexoraError::UnexpectedToken {
@@ -138,7 +145,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
     }
 
-    pub fn parse_program(&mut self) -> Result<Program<'arena>, Vec<LexoraError>> {
+    pub fn parse_program(&mut self) -> Program<'arena> {
         let mut functions = Vec::new();
         let mut structs   = Vec::new();
         let mut imports: Vec<&'arena str> = Vec::new();
@@ -159,11 +166,12 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 self.synchronize();
             }
         }
-        if self.errors.is_empty(){
-            Ok(Program{functions, structs, imports})
-        }else {
-            Err(std::mem::take(&mut self.errors))
-        }
+
+        self.errors.extend(self.lexer.take_errors());
+        Program{ functions, structs, imports}
+    }
+    pub fn take_errors(&mut self) -> Vec<LexoraError> {
+        std::mem::take(&mut self.errors)
     }
 
     fn parse_struct(&mut self) -> Result<StructDef, LexoraError> {
@@ -179,7 +187,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             let field_type = self.parse_type()?;
             fields.push((field_name, field_type));
             if self.current.token == Token::Comma {
-                self.advance()?;
+                self.advance();
             }
         }
         let end = self.current.span;
@@ -193,8 +201,10 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             match self.parse_statement(){
                 Ok(s) => stmts.push(s),
                 Err(e) => {
+                  let span = e.span().unwrap_or(self.current.span);
                     self.errors.push(e);
                     self.synchronize();
+                    stmts.push(Stmt::Error(span));
                 }
             }
         }
@@ -207,7 +217,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         self.expect(Token::Import)?;
         let path = if let Token::StringLiteral(s) = self.current.token {
             let p = self.arena.alloc_str(s);
-            self.advance()?;
+            self.advance();
             p
         } else {
             return Err(LexoraError::UnexpectedToken {
@@ -224,10 +234,10 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let start = self.current.span;
         match self.current.token.clone() {
             Token::Let => {
-                self.advance()?;
+                self.advance();
                 let name = self.parse_symbol()?;
                 let ty = if self.current.token == Token::Colon {
-                    self.advance()?;
+                    self.advance();
                     Some(self.parse_type()?)
                 }else {
                     None
@@ -239,7 +249,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 Ok(Stmt::Let { name, value, ty, span: start.merge(end) })
             }
             Token::Return => {
-                self.advance()?;
+                self.advance();
                 let value = self.parse_expr()?;
                 let end = self.current.span;
                 self.expect(Token::Semicolon)?;
@@ -307,7 +317,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let (then_body, end) = self.parse_block()?;
 
         let else_branch = if self.current.token == Token::Else {
-            self.advance()?;
+            self.advance();
             if self.current.token == Token::If {
                 let else_if = self.parse_if()?;
                 Some(self.arena.alloc_slice_fill_iter(std::iter::once(else_if)) as &[Stmt<'arena>])
@@ -358,7 +368,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let start = self.current.span;
         let mut left = self.parse_and()?;
         while self.current.token == Token::Or {
-            self.advance()?;
+            self.advance();
             let right = self.parse_and()?;
             let span = start.merge(right.span());
             let id = self.next_id();
@@ -376,7 +386,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let start = self.current.span;
         let mut left = self.parse_comparison()?;
         while self.current.token == Token::And {
-            self.advance()?;
+            self.advance();
             let right = self.parse_comparison()?;
             let span = start.merge(right.span());
             let id = self.next_id();
@@ -404,7 +414,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             Token::GreaterEq    => BinaryOperator::GreaterEq,
             _ => return Ok(left),
         };
-        self.advance()?;
+        self.advance();
         let right = self.parse_additive()?;
         let span = start.merge(right.span());
         let id = self.next_id();
@@ -419,7 +429,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 Token::Minus => BinaryOperator::Sub,
                 _ =>  break,
             };
-            self.advance()?;
+            self.advance();
             let right = self.parse_multiplicative()?;
             let span = start.merge(right.span());
             let id = self.next_id();
@@ -443,7 +453,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 Token::Slash    => BinaryOperator::Div,
                 _               => break,
             };
-            self.advance()?;
+            self.advance();
             let right = self.parse_cast()?;
             let span = start.merge(right.span());
             let id = self.next_id();
@@ -455,7 +465,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let mut expr = self.parse_unary()?;
         while self.current.token == Token::As {
             let start = expr.span();
-            self.advance()?;
+            self.advance();
             let ty_span = self.current.span;
             let target_type = self.parse_type()?;
             let id = self.next_id();
@@ -473,14 +483,14 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let start = self.current.span;
         match self.current.token {
             Token::Not => {
-                self.advance()?;
+                self.advance();
                 let operand = self.parse_unary()?;
                 let span = start.merge(operand.span());
                 let id = self.next_id();
                 Ok(Expr::UnaryOp { op: UnaryOperator::Not, operand: self.arena.alloc(operand), span, id })
             }
             Token::Minus => {
-                self.advance()?;
+                self.advance();
                 let operand = self.parse_unary()?;
                 let span = start.merge(operand.span());
                 let id = self.next_id();
@@ -495,7 +505,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             match self.current.token {
                 Token::LeftBracket => {
                     let start = expr.span();
-                    self.advance()?;
+                    self.advance();
                     let index = self.parse_expr()?;
                     let end = self.current.span;
                     self.expect(Token::RightBracket)?;
@@ -509,7 +519,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 }
                 Token::Dot => {
                     let start = expr.span();
-                    self.advance()?;
+                    self.advance();
                     let end = self.current.span;
                     let field = self.parse_symbol()?;
                     let id = self.next_id();
@@ -529,108 +539,126 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let start = self.current.span;
         match self.current.token.clone() {
             Token::Integer(n) => {
-                self.advance()?;
+                self.advance();
                 Ok(Expr::Integer(n, start, self.next_id()))
             }
             Token::True => {
-                self.advance()?;
-                Ok(Expr::Bool(true, start,self.next_id()))
+                self.advance();
+                Ok(Expr::Bool(true, start, self.next_id()))
             }
             Token::False => {
-                self.advance()?;
-                Ok(Expr::Bool(false, start,self.next_id()))
+                self.advance();
+                Ok(Expr::Bool(false, start, self.next_id()))
             }
             Token::StringLiteral(s) => {
                 let s = self.arena.alloc_str(s);
-                self.advance()?;
+                self.advance();
                 Ok(Expr::StringLiteral(s, start, self.next_id()))
             }
             Token::LeftParen => {
-                self.advance()?;
+                self.advance();
                 let expr = self.parse_expr()?;
                 self.expect(Token::RightParen)?;
                 Ok(expr)
             }
             Token::LeftBracket => {
-                self.advance()?;
+                self.advance();
                 let mut elems: Vec<Expr<'arena>> = Vec::new();
                 while self.current.token != Token::RightBracket {
+                    if matches!(self.current.token, Token::Semicolon | Token::RightBrace
+                | Token::RightParen | Token::Eof) {
+                        break;
+                    }
                     elems.push(self.parse_expr()?);
                     if self.current.token == Token::Comma {
-                        self.advance()?;
+                        self.advance();
                     }
                 }
-                let end = self.current.span;
-                self.expect(Token::RightBracket)?;
-                let elems = self.arena.alloc_slice_fill_iter(elems.into_iter());
-                Ok(Expr::ArrayLiteral(elems, start.merge(end),self.next_id()))
-            }
-            Token::Identifier(_) => {
-                let name = self.parse_symbol()?;
-                if self.current.token == Token::LeftParen  {
-                    self.advance()?;
-                    let mut args: Vec<Expr<'arena>> = Vec::new();
-                    while self.current.token != Token::RightParen {
-                        args.push(self.parse_expr()?);
-                        if self.current.token == Token::Comma {
-                            self.advance()?;
-                        }
-                    }
                     let end = self.current.span;
-                    self.expect(Token::RightParen)?;
-                    let args = self.arena.alloc_slice_fill_iter(args.into_iter());
-                    Ok(Expr::Call { name, args, span: start.merge(end), id: self.next_id() })
-                } else if self.allow_struct_literal && self.current.token == Token::LeftBrace {
-                    self.advance()?;
-                    let mut fields: Vec<(Symbol, Expr<'arena>)> = Vec::new();
-                    while self.current.token != Token::RightBrace {
-                        let field_name = self.parse_symbol()?;
-                        self.expect(Token::Colon)?;
-                        let field_val = self.parse_expr()?;
-                        fields.push((field_name, field_val));
-                        if self.current.token == Token::Comma {
-                            self.advance()?;
+                    self.expect(Token::RightBracket)?;
+                    let elems = self.arena.alloc_slice_fill_iter(elems.into_iter());
+                    Ok(Expr::ArrayLiteral(elems, start.merge(end), self.next_id()))
+                }
+                Token::Identifier(_) => {
+                    let name = self.parse_symbol()?;
+                    if self.current.token == Token::LeftParen {
+                        self.advance();
+                        let mut args: Vec<Expr<'arena>> = Vec::new();
+                        while self.current.token != Token::RightParen {
+                            if matches!(self.current.token, Token::Semicolon |
+      Token::RightBrace | Token::RightBracket | Token::Eof) {
+                                break;
+                            }
+                            args.push(self.parse_expr()?);
+                            if self.current.token == Token::Comma {
+                                self.advance();
+                            }
                         }
+                        let end = self.current.span;
+                        self.expect(Token::RightParen)?;
+                        let args = self.arena.alloc_slice_fill_iter(args.into_iter());
+                        Ok(Expr::Call { name, args, span: start.merge(end), id: self.next_id() })
+                    } else if self.allow_struct_literal && self.current.token == Token::LeftBrace {
+                        self.advance();
+                        let mut fields: Vec<(Symbol, Expr<'arena>)> = Vec::new();
+                        while self.current.token != Token::RightBrace {
+                            let field_name = self.parse_symbol()?;
+                            self.expect(Token::Colon)?;
+                            let field_val = self.parse_expr()?;
+                            fields.push((field_name, field_val));
+                            if self.current.token == Token::Comma {
+                                self.advance();
+                            }
+                        }
+                        let end = self.current.span;
+                        self.expect(Token::RightBrace)?;
+                        let fields = self.arena.alloc_slice_fill_iter(fields.into_iter());
+                        Ok(Expr::StructLiteral { name, fields, span: start.merge(end), id: self.next_id() })
+                    } else {
+                        Ok(Identifier(name, start, self.next_id()))
                     }
-                    let end = self.current.span;
-                    self.expect(Token::RightBrace)?;
-                    let fields = self.arena.alloc_slice_fill_iter(fields.into_iter());
-                    Ok(Expr::StructLiteral { name, fields, span: start.merge(end), id: self.next_id() })
-                }else {
-                    Ok(Identifier(name, start, self.next_id()))
+                }
+                _ => {
+                    self.errors.push(LexoraError::UnexpectedToken {
+                        expected: "expression".to_string(),
+                        found: format!("{:?}", self.current.token),
+                        span: start,
+                    });
+                    if !matches!(
+                        self.current.token,
+                        Token::Semicolon | Token::RightBrace | Token::RightParen | Token::RightBracket| Token::Comma
+                        | Token::Eof
+                    ) {
+                        self.advance();
+                    }
+                    Ok(Expr::Error(start, self.next_id()))
                 }
             }
-            _ => Err(LexoraError::UnexpectedToken {
-                expected: "expression".to_string(),
-                found: format!("{:?}", self.current.token),
-                span: start,
-            }),
         }
-    }
-    fn parse_function(&mut self) -> Result<Function<'arena>, LexoraError> {
-        let start = self.current.span;
-        self.expect(Token::Fn)?;
-        let name = self.parse_symbol()?;
-        self.expect(Token::LeftParen)?;
+        fn parse_function(&mut self) -> Result<Function<'arena>, LexoraError> {
+            let start = self.current.span;
+            self.expect(Token::Fn)?;
+            let name = self.parse_symbol()?;
+            self.expect(Token::LeftParen)?;
 
-        let mut params: Vec<(Symbol, Type)> = Vec::new();
-        while self.current.token != Token::RightParen {
-            let param_name = self.parse_symbol()?;
-            self.expect(Token::Colon)?;
-            let param_type = self.parse_type()?;
-            params.push((param_name, param_type));
-            if self.current.token == Token::Comma {
-                self.advance()?;
+            let mut params: Vec<(Symbol, Type)> = Vec::new();
+            while self.current.token != Token::RightParen {
+                let param_name = self.parse_symbol()?;
+                self.expect(Token::Colon)?;
+                let param_type = self.parse_type()?;
+                params.push((param_name, param_type));
+                if self.current.token == Token::Comma {
+                    self.advance();
+                }
             }
+            self.expect(Token::RightParen)?;
+            self.expect(Token::Arrow)?;
+            let return_type = self.parse_type()?;
+
+            let (body, end) = self.parse_block()?;
+            let params = self.arena.alloc_slice_fill_iter(params.into_iter());
+
+            Ok(Function { name, params, return_type, body, span: start.merge(end) })
         }
-        self.expect(Token::RightParen)?;
-        self.expect(Token::Arrow)?;
-        let return_type = self.parse_type()?;
-
-        let (body, end) = self.parse_block()?;
-        let params = self.arena.alloc_slice_fill_iter(params.into_iter());
-
-        Ok(Function { name, params, return_type, body, span: start.merge(end) })
-    }
 
 }

@@ -17,6 +17,7 @@ fn main() {
     let mut file: Option<String> = None;
     let mut backend = String::from("string-ir");
     let mut opt: u8 = 0;
+    let mut debug = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -28,10 +29,12 @@ fn main() {
                 }
                 backend = args[i].clone();
             }
+
             "-O0" => opt = 0,
             "-O1" => opt = 1,
             "-O2" => opt = 2,
             "-O3" => opt = 3,
+            "-g" => debug = true,
             other => file = Some(other.to_string()),
         }
         i += 1;
@@ -48,48 +51,52 @@ fn main() {
 
     let arena = Bump::new();
     let mut sources = SourceMap::new();
-    let (program, interner) = match load_program(&path, &arena, &mut sources) {
+    let (program, interner, mut errors) = match load_program(&path, &arena, &mut sources) {
         Ok(v) => v,
-        Err(errors) => report(&sources, errors, color),
+        Err(e) => report(&sources, e, color),
     };
 
     let mut checker = TypeChecker::new(&interner);
-    if let Err(e) = checker.check_program(&program) {
-        report(&sources, vec![e], color);
+    if let Err(type_errors) = checker.check_program(&program) {
+        errors.extend(type_errors);
+    }
+    if !errors.is_empty() {
+        report(&sources, errors, color);
     }
     println!("Ok: tip kontrolu basarili.");
 
     match backend.as_str() {
         "string-ir" => run_string_ir(&interner, &program, &checker.types),
-        "inkwell" => run_inkwell(&interner, &program, &checker.types, opt),
+        "inkwell" => run_inkwell(&interner, &program, &checker.types, &sources, opt, debug),
         other => {
             eprintln!("bilinmeyen backend: '{}' (string-ir veya inkwell)", other);
             std::process::exit(1);
         }
     }
 }
+const ERROR_LIMIT: usize = 100;
 fn report(sources: &SourceMap, mut errors: Vec<LexoraError>, color: bool) -> ! {
     errors.sort_by_key(|e| e.span().map(|s| s.start).unwrap_or(u32::MAX));
-    for e in &errors {
+    let total = errors.len();
+    for e in errors.iter().take(ERROR_LIMIT) {
         eprint!("{}", lexora::diagnostic::render(sources, &lexora::diagnostic::to_diagnostic(e), color));
     }
-    eprint!("{}", lexora::diagnostic::render_summary(errors.len(), color));
+    eprint!("{}", lexora::diagnostic::render_summary(total, ERROR_LIMIT, color));
     std::process::exit(1);
 }
 fn load_program<'arena> (
     entry: &str,
     arena: &'arena Bump,
     sources: &mut SourceMap<'arena>,
-) -> Result<(Program<'arena>, Interner), Vec<LexoraError>> {
+) -> Result<(Program<'arena>, Interner, Vec<LexoraError>), Vec<LexoraError>> {
     let entry_path = PathBuf::from(entry);
     let entry_src = arena.alloc_str(&read_source(&entry_path).map_err(|e| vec![e])?);
     let base = sources.add(entry_path.display().to_string(), entry_src);
-    let mut parser = Parser::new(Lexer::new(entry_src, base), arena).map_err(|e|
-        vec![e])?;
-    let mut program = parser.parse_program()?;
+    let mut parser = Parser::new(Lexer::new(entry_src, base), arena);
+    let mut program = parser.parse_program();
+    let mut errors: Vec<LexoraError> = parser.take_errors();
     let mut interner = parser.interner;
     let mut next_id = parser.next_expr_id;
-    let mut errors: Vec<LexoraError> = Vec::new();
 
     let mut visited: HashSet<PathBuf> = HashSet::new();
     visited.insert(canonical(&entry_path));
@@ -107,25 +114,17 @@ fn load_program<'arena> (
         };
         let base = sources.add(path.display().to_string(), src);
         let mut sub = Parser::with_interner(Lexer::new(src, base), arena, interner,
-                                            next_id)
-            .map_err(|e| vec![e])?;
-        match sub.parse_program() {
-            Ok(sub_program) => {
-                enqueue_imports(&mut queue, &path, &sub_program.imports);
-                program.functions.extend(sub_program.functions);
-                program.structs.extend(sub_program.structs);
-            }
-            Err(es) => errors.extend(es),
-        }
+                                            next_id);
+        let sub_program = sub.parse_program();
+        errors.extend(sub.take_errors());
+        enqueue_imports(&mut queue, &path, &sub_program.imports);
+        program.functions.extend(sub_program.functions);
+        program.structs.extend(sub_program.structs);
         interner = sub.interner;
         next_id = sub.next_expr_id;
     }
 
-    if errors.is_empty() {
-        Ok((program, interner))
-    } else {
-        Err(errors)
-    }
+    Ok((program, interner, errors))
 }
 
 fn read_source(path: &Path) -> Result<String, LexoraError> {
@@ -165,12 +164,12 @@ fn run_string_ir(interner: &Interner, program: &Program, types: &HashMap<ExprId,
 }
 
 #[cfg(feature = "inkwell")]
-fn run_inkwell(interner: &Interner, program: &Program, types: &HashMap<ExprId, Type>, opt: u8) {
+fn run_inkwell(interner: &Interner, program: &Program, types: &HashMap<ExprId, Type>, sources: &SourceMap, opt: u8, debug: bool) {
     use inkwell::context::Context;
     use lexora::backend::inkwell::codegen::CodeGen;
 
     let context = Context::create();
-    let mut codegen = CodeGen::new(&context, interner, "lexora_module",types, opt);
+    let mut codegen = CodeGen::new(&context, interner, "lexora_module",types, sources, opt, debug);
     if let Err(e) = codegen.compile(program) {
         eprintln!("{}", LexoraError::Codegen { message: e.to_string() });
         std::process::exit(1);
@@ -212,7 +211,7 @@ fn run_inkwell(interner: &Interner, program: &Program, types: &HashMap<ExprId, T
 }
 
 #[cfg(not(feature = "inkwell"))]
-fn run_inkwell(_interner: &Interner, _program: &Program, _types: &HashMap<ExprId, Type>, _opt: u8) {
+fn run_inkwell(_interner: &Interner, _program: &Program, _types: &HashMap<ExprId, Type>, _sources: &SourceMap, _opt: u8, _debug: bool) {
     eprintln!("inkwell backend bu binary'de derlenmemis; `cargo run --features inkwell` ile derle");
     std::process::exit(1);
 }

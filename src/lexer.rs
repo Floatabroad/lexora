@@ -26,6 +26,7 @@ pub enum Token<'src> {
     LeftBracket, RightBracket,
 
     Eof,
+    Error,
 }
 #[derive(Debug, Clone)]
 pub struct SpannedToken<'src> {
@@ -39,11 +40,16 @@ pub struct Lexer<'src> {
     pos:      usize,
     pub line: usize,
     base: u32,
+    errors: Vec<LexoraError>,
 }
 
 impl<'src> Lexer<'src> {
     pub fn new(source: &'src str, base: u32) -> Self {
-        Lexer { source, pos: 0, line: 1, base}
+
+        Lexer { source, pos: 0, line: 1, base, errors: Vec::new()}
+    }
+    pub fn take_errors(&mut self) -> Vec<LexoraError> {
+        std::mem::take(&mut self.errors)
     }
     fn span(&self, start: u32, end: u32) -> Span {
         Span::new(self.base + start, self.base + end)
@@ -79,15 +85,15 @@ impl<'src> Lexer<'src> {
             self.advance();
         }
     }
-    pub fn next_token(&mut self) -> Result<SpannedToken<'src>, LexoraError> {
+    pub fn next_token(&mut self) -> SpannedToken<'src> {
         self.skip_whitespace();
         let start = self.pos as u32;
 
         if self.pos >= self.source.len() {
-            return Ok(SpannedToken {
+            return SpannedToken {
                 token: Token::Eof,
                 span: self.span(start, start),
-            });
+            };
         }
         let ch = self.current();
         let token = match ch {
@@ -134,17 +140,19 @@ impl<'src> Lexer<'src> {
                 else {Token::Bang}
             }
             b'0'..=b'9' => self.read_integer(),
-            b'"'        => self.read_string(start)?,
+            b'"'        => self.read_string(start),
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.read_identifier(),
             _ => {
-                return Err(LexoraError::Custom {
-                    message: format!("Beklenmedik karakter: '{}'", ch as char),
+                self.errors.push(LexoraError::Custom {
+                    message: format!("beklenmedik karakter: '{}'", ch as char),
                     span: self.span(start, start + 1),
                 });
+                self.advance();
+                Token::Error
             }
         };
         let end = self.pos as u32;
-        Ok(SpannedToken { token, span: self.span(start, end) })
+        SpannedToken { token, span: self.span(start, end) }
     }
 
     fn read_integer(&mut self) -> Token<'src> {
@@ -157,21 +165,22 @@ impl<'src> Lexer<'src> {
         let value: i64 = s.parse().unwrap();
         Token::Integer(value)
     }
-    fn read_string(&mut self, start: u32) -> Result<Token<'src>, LexoraError> {
+    fn read_string(&mut self, start: u32) -> Token<'src> {
         self.advance();
         let content_start = self.pos;
         while self.pos < self.source.len() && self.current() != b'"' {
             self.advance();
         }
         if self.pos >= self.source.len() {
-            return Err(LexoraError::Custom {
+            self.errors.push(LexoraError::Custom {
                 message: "Kapatilmamis string".to_string(),
                 span: self.span(start, self.pos as u32),
             });
+            return Token::Error;
         }
         let content = &self.source[content_start..self.pos];
         self.advance();
-        Ok(Token::StringLiteral(content))
+        Token::StringLiteral(content)
     }
     fn read_identifier(&mut self) -> Token<'src> {
         let start = self.pos;
