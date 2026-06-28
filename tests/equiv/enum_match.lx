@@ -1,0 +1,22 @@
+enum Color { Red, Green, Blue }
+
+fn show(c: Color) -> i32 {
+    match c {
+        Color::Red => { print(1); }
+        Color::Green => { print(2); }
+        Color::Blue => { print(3); }
+    }
+    return 0;
+}
+
+fn main() -> i32 {
+    show(Color::Red);
+    show(Color::Blue);
+    show(Color::Green);
+    let x = Color::Green;
+    match x {
+        Color::Red => { print(100); }
+        _ => { print(200); }
+    }
+    return 0;
+}

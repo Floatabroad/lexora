@@ -8,7 +8,9 @@ pub enum LlvmType {
     Void,
     Array(Box<LlvmType>, usize),
     Struct(Symbol),
+    Enum(Symbol),
 }
+
 
 impl LlvmType {
     pub fn to_ir_str(&self) -> String {
@@ -20,6 +22,7 @@ impl LlvmType {
             LlvmType::Void => "void".to_string(),
             LlvmType::Array(t, n) => format!("[{} x {}]", n, t.to_ir_str()),
             LlvmType::Struct(s) => format!("%struct.{}", s.0),
+            LlvmType::Enum(e) => format!("%enum.{}", e.0),
         }
     }
 }

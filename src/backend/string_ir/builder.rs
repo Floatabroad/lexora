@@ -69,7 +69,42 @@ impl<'i> IrBuilder<'i> {
                                        name.0, fields_str.join(", "),
         ));
     }
-    pub fn build_alloca(&mut self, ty: &LlvmType, name: &str) -> Value {
+    pub fn emit_enum_type(&mut self, name: Symbol, payload_slots: usize) {
+        self.globals.push_str(&format!(
+            "%enum.{} = type {{ i32, [{} x i64] }}\n", name.0, payload_slots,
+        ));
+    }
+    pub fn emit_variant_type(&mut self, enum_name: Symbol, variant: Symbol, fields: &[LlvmType]) {
+        let fs: Vec<String> = fields.iter().map(|t| t.to_ir_str()).collect();
+        self.globals.push_str(&format!(
+            "%variant.{}.{} = type {{ {} }}\n", enum_name.0, variant.0, fs.join(", "),
+        ));
+    }
+    pub fn build_gep_enum_tag(&mut self, enum_name: Symbol, ptr: Value) -> Value {
+        let r = self.fresh_temp();
+        self.output.push_str(&format!(
+            "  {} = getelementptr %enum.{}, ptr {}, i32 0, i32 0\n",
+            r.to_ir_str(), enum_name.0, ptr.to_ir_str(),
+        ));
+        r
+    }
+    pub fn build_gep_enum_payload(&mut self, enum_name: Symbol, ptr: Value) -> Value {
+        let r = self.fresh_temp();
+        self.output.push_str(&format!(
+            "  {} = getelementptr %enum.{}, ptr {}, i32 0, i32 1\n",
+            r.to_ir_str(), enum_name.0, ptr.to_ir_str(),
+        ));
+        r
+    }
+    pub fn build_gep_variant_field(&mut self, enum_name: Symbol, variant: Symbol, payload_ptr: Value, idx: u32) -> Value {
+        let r = self.fresh_temp();
+        self.output.push_str(&format!(
+            "  {} = getelementptr %variant.{}.{}, ptr {}, i32 0, i32 {}\n",
+            r.to_ir_str(), enum_name.0, variant.0, payload_ptr.to_ir_str(), idx,
+        ));
+        r
+    }
+    pub fn build_alloca(&mut self, ty: &LlvmType, _name: &str) -> Value {
         let ptr = Value::Temp(self.next_temp);
         self.next_temp += 1;
         self.output.push_str(&format!(
@@ -302,6 +337,19 @@ impl<'i> IrBuilder<'i> {
             result.to_ir_str(), struct_name.0, ptr.to_ir_str(), field_index,
         ));
         result
+    }
+    pub fn build_box(&mut self, pointee: &LlvmType, val: Value) -> Value {
+        let pt = pointee.to_ir_str();
+        let size = self.fresh_temp();
+        self.output.push_str(&format!("  {} = ptrtoint ptr getelementptr ({}, ptr null, i32 1) to i64\n", size.to_ir_str(), pt, ));
+        let raw = self.fresh_temp();
+        self.output.push_str(&format!("  {} = call ptr @lexora_alloc(i64 {})\n", raw.to_ir_str(), size.to_ir_str(), ));
+        self.output.push_str(&format!("  store {} {}, ptr {}\n", pt, val.to_ir_str(), raw.to_ir_str(), ));
+        raw
+    }
+    
+    pub fn build_free(&mut self, ptr: Value) {
+        self.output.push_str(&format!("  call void @lexora_free(ptr {})\n", ptr.to_ir_str(), ));
     }
     pub fn add_string_global(&mut self, s: &str) -> (Value, usize) {
         let id = self.next_global;

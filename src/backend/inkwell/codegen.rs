@@ -6,7 +6,7 @@ use inkwell::builder::{Builder, BuilderError};
 use inkwell::values::{FunctionValue, PointerValue, BasicValueEnum, BasicMetadataValueEnum, ValueKind,IntValue};
 use inkwell::types::{BasicTypeEnum, BasicType, BasicMetadataTypeEnum, StructType};
 use inkwell::AddressSpace;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use inkwell::IntPredicate;
 use inkwell::targets::{Target, TargetMachine, InitializationConfig, RelocMode, CodeModel, FileType, TargetData};
 use inkwell::OptimizationLevel;
@@ -17,6 +17,15 @@ use inkwell::debug_info::{DebugInfoBuilder, DICompileUnit, DIFile, DISubprogram,
 use inkwell::module::FlagBehavior;
 use crate::source_map::SourceMap;
 use crate::span::Span;
+use inkwell::basic_block::BasicBlock;
+
+#[derive(Clone)]
+struct DropLocal<'ctx> {
+    sym: Symbol,
+    slot: PointerValue<'ctx>,
+    flag: PointerValue<'ctx>,
+    pointee: Type,
+}
 
 struct VarTable<'ctx> {
     scopes: Vec<HashMap<Symbol, (PointerValue<'ctx>, BasicTypeEnum<'ctx>)>>,
@@ -55,6 +64,11 @@ pub struct CodeGen<'ctx> {
     di_sp: Option<DISubprogram<'ctx>>,
     target_data: Option<TargetData>,
     struct_fields_ast: HashMap<Symbol, Vec<(Symbol, Type)>>,
+    moves: &'ctx HashSet<ExprId>,
+    drop_scopes: Vec<Vec<DropLocal<'ctx>>>,
+    enums: HashMap<Symbol, Vec<(Symbol, Vec<Type>)>>,
+    enum_types: HashMap<Symbol, StructType<'ctx>>,
+    variant_types: HashMap<(Symbol, Symbol), StructType<'ctx>>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -66,6 +80,8 @@ impl<'ctx> CodeGen<'ctx> {
         sources: &'ctx SourceMap<'ctx>,
         opt: u8,
         debug: bool,
+        moves: &'ctx HashSet<ExprId>,
+
     ) -> Self {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
@@ -134,6 +150,11 @@ impl<'ctx> CodeGen<'ctx> {
             di_sp: None,
             target_data,
             struct_fields_ast: HashMap::new(),
+            moves,
+            drop_scopes: Vec::new(),
+            enums: HashMap::new(),
+            enum_types: HashMap::new(),
+            variant_types: HashMap::new(),
         }
     }
     fn llvm_type(&self, ty: &Type) -> BasicTypeEnum<'ctx> {
@@ -149,7 +170,14 @@ impl<'ctx> CodeGen<'ctx> {
             Type::Struct(s) => self.structs.get(s)
                 .expect("struct kayitli degil, register_structs once calismali")
                 .0.into(),
-
+            Type::Box(_) => self.context.ptr_type(AddressSpace::default()).into(),
+            Type::Enum(s) => {
+                if let Some(et) = self.enum_types.get(s) {
+                    (*et).into()
+                } else {
+                    self.context.i32_type().into()
+                }
+            }
             Type::Void => panic!("void bir deger tipi olarak kullanilamaz"),
             Type::Error => panic!("Type::Error codegen'e ulasti (errors bos degilse codegen yok)"),
         }
@@ -198,13 +226,18 @@ impl<'ctx> CodeGen<'ctx> {
                     None, &members, 0, None, "",
                 ).as_type()
             }
-
+            Type::Box(inner) => {
+                let pointee = self.di_type(inner);
+                dib.create_pointer_type("box", pointee, 64, 0,AddressSpace::default()).as_type()
+            }
+            Type::Enum(_) => dib.create_basic_type("enum", 32, 0x05, DIFlags::ZERO).unwrap().as_type(),
             Type::Void | Type::Error => unreachable!("debug: void/error tipi di_type'a ulasmaz"),
 
         }
     }
     pub fn compile(&mut self, program: &Program) -> Result<(), BuilderError> {
         self.register_structs(program);
+        self.register_enums(program);
         for func in &program.functions {
             self.declare_functions(func);
         }
@@ -234,6 +267,34 @@ impl<'ctx> CodeGen<'ctx> {
             st.set_body(&fields_tys, false);
             self.structs.get_mut(&s.name).unwrap().1 = fields;
         }
+    }
+    fn register_enums(&mut self, program: &Program) {
+        for e in &program.enums {
+            self.enums.insert(e.name, e.variants.clone());
+        }
+        for e in &program.enums {
+            let max_slots = e.variants.iter().map(|(_, t)| t.len()).max().unwrap_or(0);
+            if max_slots == 0 {
+                continue;
+            }
+            let payload = self.context.i64_type().array_type(max_slots as u32);
+            let enum_ty = self.context.struct_type(
+                &[self.context.i32_type().into(), payload.into()], false,
+            );
+            self.enum_types.insert(e.name, enum_ty);
+            for (variant, tys) in e.variants.iter() {
+                let fields: Vec<BasicTypeEnum> = tys.iter().map(|t| self.llvm_type(t)).collect();
+                let vt = self.context.struct_type(&fields, false);
+                self.variant_types.insert((e.name, *variant), vt);
+            }
+        }
+    }
+    fn enum_has_payload(&self, enum_sym: Symbol) -> bool {
+        self.enum_types.contains_key(&enum_sym)
+    }
+    fn variant_tag(&self, enum_sym: Symbol, variant: Symbol) -> u64 {
+        self.enums.get(&enum_sym).unwrap()
+            .iter().position(|(v, _)| *v == variant).unwrap() as u64
     }
     fn declare_functions(&mut self, func: &Function) -> FunctionValue<'ctx> {
         let param_types: Vec<BasicMetadataTypeEnum>  = func.params.iter()
@@ -268,6 +329,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.vars = VarTable::new();
         self.vars.enter();
+        self.drop_enter();
         if self.debug{
             let dib= self.dib.as_ref().unwrap();
             let file = self.di_file.unwrap();
@@ -293,6 +355,11 @@ impl<'ctx> CodeGen<'ctx> {
             let arg = function.get_nth_param(i as u32).unwrap();
             self.builder.build_store(slot, arg)?;
             self.vars.insert(*sym, (slot, llvm_ty));
+            if let Type::Box(inner) = ty {
+                let flag = self.entry_alloca(self.context.bool_type().into(), "dropflag")?;
+                self.builder.build_store(flag, self.context.bool_type().const_int(1, false))?;
+                self.drop_scopes.last_mut().unwrap().push(DropLocal { sym: *sym, slot, flag, pointee: (**inner).clone() });
+            }
             if self.debug{
                 let dib = self.dib.as_ref().unwrap();
                 let file = self.di_file.unwrap();
@@ -312,7 +379,7 @@ impl<'ctx> CodeGen<'ctx> {
         for stmt in func.body {
             self.gen_statement(stmt)?;
         }
-
+        self.drop_exit()?;
         let cur = self.builder.get_insert_block().unwrap();
         if cur.get_terminator().is_none() {
             match func.return_type {
@@ -360,12 +427,37 @@ impl<'ctx> CodeGen<'ctx> {
                             self.builder.build_store(fptr, fval)?;
                         }
                     }
+                    Expr::EnumVariant { enum_name, variant, args, .. }
+                    if self.enum_has_payload(*enum_name) =>
+                        {
+                            let enum_ty = *self.enum_types.get(enum_name).unwrap();
+                            let vt = *self.variant_types.get(&(*enum_name, *variant)).unwrap();
+                            let tag = self.context.i32_type()
+                                .const_int(self.variant_tag(*enum_name, *variant), false);
+                            let tag_ptr = self.builder.build_struct_gep(enum_ty, slot, 0, "tag")?;
+                            self.builder.build_store(tag_ptr, tag)?;
+                            let payload_ptr = self.builder.build_struct_gep(enum_ty, slot, 1, "payload")?;
+                            for (i, arg) in args.iter().enumerate() {
+                                let fval = self.gen_expr(arg)?;
+                                let fptr = self.builder.build_struct_gep(vt, payload_ptr, i as u32, "vfld")?;
+                                self.builder.build_store(fptr, fval)?;
+                            }
+                        }
                     _ => {
                         let val = self.gen_expr(value)?;
                         self.builder.build_store(slot, val)?;
                     }
                 }
                 self.vars.insert(*name, (slot, llvm_ty));
+                let owning_pointee = match self.types.get(&value.id()) {
+                    Some(Type::Box(inner)) => Some((**inner).clone()),
+                    _ => None,
+                };
+                if let Some(pointee) = owning_pointee {
+                    let flag = self.entry_alloca(self.context.bool_type().into(), "dropflag")?;
+                    self.builder.build_store(flag, self.context.bool_type().const_int(1, false))?;
+                    self.drop_scopes.last_mut().unwrap().push(DropLocal { sym: *name, slot, flag, pointee });
+                }
                 if self.debug {
                     let dib = self.dib.as_ref().unwrap();
                     let file = self.di_file.unwrap();
@@ -393,6 +485,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             Stmt::Return(expr, _) => {
                 let val = self.gen_expr(expr)?;
+                self.free_all_live()?;
                 self.builder.build_return(Some(&val))?;
                 Ok(())
             }
@@ -413,7 +506,9 @@ impl<'ctx> CodeGen<'ctx> {
 
                     self.builder.position_at_end(then_bb);
                     self.vars.enter();
+                    self.drop_enter();
                     for stmt in *then_body {self.gen_statement(stmt)?; }
+                    self.drop_exit()?;
                     self.vars.exit();
 
                     if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
@@ -421,7 +516,9 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     self.builder.position_at_end(else_bb);
                     self.vars.enter();
+                    self.drop_enter();
                     for stmt in else_stmts {self.gen_statement(stmt)?; }
+                    self.drop_exit()?;
                     self.vars.exit();
 
                     if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
@@ -434,7 +531,9 @@ impl<'ctx> CodeGen<'ctx> {
 
                     self.builder.position_at_end(then_bb);
                     self.vars.enter();
+                    self.drop_enter();
                     for stmt in *then_body{self.gen_statement(stmt)?;}
+                    self.drop_exit()?;
                     self.vars.exit();
                     if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
                         self.builder.build_unconditional_branch(merge_bb)?;
@@ -458,7 +557,9 @@ impl<'ctx> CodeGen<'ctx> {
 
                 self.builder.position_at_end(body_bb);
                 self.vars.enter();
+                self.drop_enter();
                 for stmt in *body {self.gen_statement(stmt)?;}
+                self.drop_exit()?;
                 self.vars.exit();
                 if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
                     self.builder.build_unconditional_branch(cond_bb)?;
@@ -473,6 +574,7 @@ impl<'ctx> CodeGen<'ctx> {
 
 
                 self.vars.enter();
+
                 let slot = self.entry_alloca(i32t, var_name)?;
                 let from_val = self.gen_expr(from)?;
                 self.builder.build_store(slot, from_val)?;
@@ -491,8 +593,9 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_conditional_branch(cmp, body_bb, after_bb)?;
 
                 self.builder.position_at_end(body_bb);
+                self.drop_enter();
                 for stmt in *body {self.gen_statement(stmt)?;}
-
+                self.drop_exit()?;
                 if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
                     let cur = self.builder.build_load(i32t, slot, var_name)?.into_int_value();
                     let one = self.context.i32_type().const_int(1, false);
@@ -528,6 +631,88 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_store(fptr, val)?;
                 Ok(())
             }
+            Stmt::AssignDeref {target, value, .. } => {
+                let inner = match target {
+                    Expr::Deref {target: inner, ..} => inner,
+                    _ => unreachable!("AssignDeref hedefi deref degil typechecker kacirmali"),
+                };
+                let ptr = self.gen_expr(inner)?.into_pointer_value();
+                let val = self.gen_expr(value)?;
+                self.builder.build_store(ptr, val)?;
+                Ok(())
+            }
+            Stmt::Match { scrutinee, arms, .. } => {
+                let enum_sym = match &self.types[&scrutinee.id()] {
+                    Type::Enum(s) => *s,
+                    _ => unreachable!("match scrutinee enum degil (typechecker kacirmali)"),
+                };
+                let has_payload = self.enum_has_payload(enum_sym);
+
+                let (tag, scrut_ptr) = if has_payload {
+                    let sym = match scrutinee {
+                        Expr::Identifier(s, _, _) => *s,
+                        _ => unreachable!("payload'li match scrutinee degisken olmali"),
+                    };
+                    let (ptr, _) = self.vars.get(sym);
+                    let enum_ty = *self.enum_types.get(&enum_sym).unwrap();
+                    let tag_ptr = self.builder.build_struct_gep(enum_ty, ptr, 0, "tag")?;
+                    let tag = self.builder.build_load(self.context.i32_type(), tag_ptr, "tagval")?.into_int_value();
+                    (tag, Some((ptr, enum_ty)))
+                } else {
+                    (self.gen_expr(scrutinee)?.into_int_value(), None)
+                };
+
+                let function = self.cur_fn.unwrap();
+                let end_bb = self.context.append_basic_block(function, "match_end");
+                let i32t = self.context.i32_type();
+
+                let mut arm_blocks: Vec<BasicBlock> = Vec::new();
+                let mut cases: Vec<(IntValue, BasicBlock)> = Vec::new();
+                let mut default_bb: Option<BasicBlock> = None;
+                for (pat, _body) in arms.iter() {
+                    let bb = self.context.append_basic_block(function, "arm");
+                    arm_blocks.push(bb);
+                    match pat {
+                        Pattern::Variant { enum_name, variant, .. } => {
+                            let idx = self.variant_tag(*enum_name, *variant);
+                            cases.push((i32t.const_int(idx, false), bb));
+                        }
+                        Pattern::Wildcard => {
+                            default_bb = Some(bb);
+                        }
+                    }
+                }
+                let default = default_bb.unwrap_or(end_bb);
+                self.builder.build_switch(tag, default, &cases)?;
+
+                for ((pat, body), bb) in arms.iter().zip(arm_blocks.iter()) {
+                    self.builder.position_at_end(*bb);
+                    self.vars.enter();
+                    self.drop_enter();
+                    if let (Pattern::Variant { enum_name, variant, bindings }, Some((ptr, enum_ty))) = (pat, scrut_ptr) {
+                        let vt = *self.variant_types.get(&(*enum_name, *variant)).unwrap();
+                        let payload_ptr = self.builder.build_struct_gep(enum_ty, ptr, 1, "payload")?;
+                        let field_tys = self.enums.get(enum_name).unwrap()
+                            .iter().find(|(v, _)| v == variant).unwrap().1.clone();
+                        for (i, b) in bindings.iter().enumerate() {
+                            let fty = self.llvm_type(&field_tys[i]);
+                            let fptr = self.builder.build_struct_gep(vt, payload_ptr, i as u32, "vfld")?;
+                            let loaded = self.builder.build_load(fty, fptr, "bind")?;
+                            let bslot = self.entry_alloca(fty, "bindslot")?;
+                            self.builder.build_store(bslot, loaded)?;
+                            self.vars.insert(*b, (bslot, fty));
+                        }
+                    }
+                    for s in body.iter() { self.gen_statement(s)?; }
+                    self.drop_exit()?;
+                    self.vars.exit();
+                    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                        self.builder.build_unconditional_branch(end_bb)?;
+                    }
+                }
+                self.builder.position_at_end(end_bb);
+                Ok(())
+            }
             Stmt::Error(_) => unreachable!("poison statement codegen'e ulasti (errors bos degilse codegen yok)"),
         }
     }
@@ -544,10 +729,12 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Bool(b, _,_) => {
                 Ok(self.context.bool_type().const_int(*b as u64, false).into())
             }
-            Expr::Identifier(sym, _,_) => {
+            Expr::Identifier(sym, _, id) => {
                 let (ptr, pointee_ty) = self.vars.get(*sym);
-                let name =self.interner.resolve(*sym);
-                Ok(self.builder.build_load(pointee_ty, ptr, name)?)
+                let name = self.interner.resolve(*sym);
+                let loaded = self.builder.build_load(pointee_ty, ptr, name)?;
+                self.clear_flag_on_move(*id, *sym)?;
+                Ok(loaded)
             }
             Expr::BinaryOp {left, op, right, ..} => {
                 let l = self.gen_expr(left)?.into_int_value();
@@ -685,9 +872,27 @@ impl<'ctx> CodeGen<'ctx> {
                 let fld_ty = st.get_field_type_at_index(idx).unwrap();
                 Ok(self.builder.build_load(fld_ty, fptr, "fldval")?)
             }
+            Expr::Box {value, ..} => {
+                let pointee = self.llvm_type(&self.types[&value.id()]);
+                let val = self.gen_expr(value)?;
+                Ok(self.build_box(pointee, val)?.into())
+            }
+            Expr::Deref { target, ..} => {
+                let ptr = self.gen_expr(target)?.into_pointer_value();
+                let pointee = self.llvm_type(&self.types[&expr.id()]);
+                Ok(self.builder.build_load(pointee, ptr, "deref")?)
+            }
             Expr::Error(_, _) => unreachable!("poison ifade codegen'e ulasti (errors bos degilse codegen yok)"),
-
-            _ => todo!("call/cast/unary/index/struct/array/string sonraki adımlarda"),        }
+            Expr::EnumVariant { enum_name, variant, .. } => {
+                if self.enum_has_payload(*enum_name) {
+                    panic!("payload'li enum yapimi yalnizca let baslaticisinda desteklenir");
+                }
+                Ok(self.context.i32_type()
+                    .const_int(self.variant_tag(*enum_name, *variant), false).into())
+            }
+            Expr::ArrayLiteral(..) | Expr::StructLiteral { .. } =>
+                unreachable!("array/struct literal yalnizca let baslaticisinda uretilir"),
+                    }
     }
     fn entry_alloca(&self, ty: BasicTypeEnum<'ctx>, name: &str)
         -> Result<PointerValue<'ctx>, BuilderError> {
@@ -738,8 +943,164 @@ impl<'ctx> CodeGen<'ctx> {
 
         let one = self.context.i32_type().const_int(1, false);
         tmp.build_call(self.get_or_build_exit(), &[one.into()], "")?;
+
         tmp.build_unreachable()?;
         Ok(func)
+    }
+    fn get_malloc(&self) -> FunctionValue<'ctx> {
+        if let Some(f) = self.module.get_function("malloc") {
+            return f;
+        }
+        let ptr_t = self.context.ptr_type(AddressSpace::default());
+        let i64t = self.context.i64_type();
+        let fn_type = ptr_t.fn_type(&[i64t.into()], false);
+        self.module.add_function("malloc", fn_type, None)
+    }
+    fn get_free(&self) -> FunctionValue<'ctx> {
+        if let Some(f) = self.module.get_function("free") {
+            return f;
+        }
+       let void_t = self.context.void_type();
+        let ptr_t = self.context.ptr_type(AddressSpace::default());
+        let fn_type = void_t.fn_type(&[ptr_t.into()], false);
+        self.module.add_function("free", fn_type, None)
+    }
+    fn get_lexora_alloc(&self) -> Result<FunctionValue<'ctx>, BuilderError> {
+        if let Some(f) = self.module.get_function("lexora_alloc") {
+            return Ok(f);
+        }
+        let ptr_t = self.context.ptr_type(AddressSpace::default());
+        let i64t = self.context.i64_type();
+        let fn_type = ptr_t.fn_type(&[i64t.into()], false);
+        let func = self.module.add_function("lexora_alloc", fn_type, None);
+
+        let entry = self.context.append_basic_block(func, "entry");
+        let oom= self.context.append_basic_block(func, "oom");
+        let allocok = self.context.append_basic_block(func, "allocok");
+        let tmp = self.context.create_builder();
+
+        tmp.position_at_end(entry);
+        let size = func.get_nth_param(0).unwrap().into_int_value();
+        let call = tmp.build_call(self.get_malloc(), &[size.into()], "p")?;
+        let p = match call.try_as_basic_value() {
+            ValueKind::Basic(v) => v.into_pointer_value(),
+            ValueKind::Instruction(_) => unreachable!("malloc ptr dondurur"),
+        };
+        let isnull = tmp.build_is_null(p, "isnull")?;
+        tmp.build_conditional_branch(isnull, oom, allocok)?;
+
+        tmp.position_at_end(oom);
+        let panic_fn = self.get_or_build_panic()?;
+        let msg = tmp.build_global_string_ptr("lexora: out of memory", ".panicmsg_oom")?.as_pointer_value();
+        tmp.build_call(panic_fn, &[msg.into()], "")?;
+        tmp.build_unreachable()?;
+
+        tmp.position_at_end(allocok);
+        tmp.build_return(Some(&p))?;
+        Ok(func)
+    }
+    fn get_lexora_free(&self) -> Result<FunctionValue<'ctx>, BuilderError> {
+        if let Some(f) = self.module.get_function("lexora_free") {
+            return Ok(f);
+        }
+        let void_t = self.context.void_type();
+        let ptr_t = self.context.ptr_type(AddressSpace::default());
+        let fn_type = void_t.fn_type(&[ptr_t.into()], false);
+        let func = self.module.add_function("lexora_free", fn_type, None);
+
+        let entry = self.context.append_basic_block(func, "entry");
+        let tmp = self.context.create_builder();
+        tmp.position_at_end(entry);
+        let p = func.get_nth_param(0).unwrap().into_pointer_value();
+        tmp.build_call(self.get_free(), &[p.into()], "")?;
+        tmp.build_return(None)?;
+        Ok(func)
+    }
+    fn build_box(&self, pointee: BasicTypeEnum<'ctx>, val: BasicValueEnum<'ctx>)
+        -> Result<PointerValue<'ctx>, BuilderError> {
+        let size = pointee.size_of().expect("box icin sized tip lazim");
+        let alloc = self.get_lexora_alloc()?;
+        let call = self.builder.build_call(alloc, &[size.into()], "box_raw")?;
+        let raw = match call.try_as_basic_value() {
+            ValueKind::Basic(v) => v.into_pointer_value(),
+            ValueKind::Instruction(_) => unreachable!("lexora_alloc ptr dondurur"),
+        };
+        self.builder.build_store(raw, val)?;
+        Ok(raw)
+    }
+    fn build_free(&self, ptr: PointerValue<'ctx>) -> Result<(), BuilderError> {
+        let free = self.get_lexora_free()?;
+        self.builder.build_call(free, &[ptr.into()], "")?;
+        Ok(())
+    }
+
+    fn drop_enter(&mut self) {
+        self.drop_scopes.push(Vec::new());
+    }
+    fn drop_exit(&mut self) -> Result<(), BuilderError> {
+        if let Some(scope) = self.drop_scopes.pop() {
+            let terminated = self.builder.get_insert_block().map(|b| b.get_terminator().is_some()).unwrap_or(true);
+            if !terminated {
+                for d in scope.iter().rev() {
+                    self.build_drop(d.slot, d.flag, &d.pointee)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    fn free_all_live(&mut self) -> Result<(), BuilderError> {
+       let scopes: Vec<Vec<DropLocal>> = self.drop_scopes.clone();
+        for scope in scopes.iter().rev(){
+            for d in scope.iter().rev() {
+                self.build_drop(d.slot, d.flag, &d.pointee)?;
+            }
+        }
+        Ok(())
+    }
+    fn find_flag(&self, sym: Symbol) -> Option<PointerValue<'ctx>> {
+        for scope in self.drop_scopes.iter().rev() {
+            for d in scope.iter().rev() {
+                if d.sym == sym {
+                    return Some(d.flag);
+                }
+            }
+        }
+        None
+    }
+    fn clear_flag_on_move(&mut self, id: ExprId, sym: Symbol) -> Result<(), BuilderError> {
+        if self.moves.contains(&id){
+            if let Some(flag) = self.find_flag(sym) {
+                self.builder.build_store(flag, self.context.bool_type().const_zero())?;
+            }
+        }
+        Ok(())
+    }
+    fn build_drop(&self, slot: PointerValue<'ctx>, flag: PointerValue<'ctx>, pointee: &Type) -> Result<(), BuilderError> {
+        let function = self.cur_fn.unwrap();
+        let i1 = self.context.bool_type();
+        let f = self.builder.build_load(i1, flag, "dropflag")?.into_int_value();
+        let do_bb = self.context.append_basic_block(function, "drop_do");
+        let skip_bb = self.context.append_basic_block(function, "drop_skip");
+        self.builder.build_conditional_branch(f, do_bb, skip_bb)?;
+
+        self.builder.position_at_end(do_bb);
+        let ptr_t = self.context.ptr_type(AddressSpace::default());
+        let p = self.builder.build_load(ptr_t, slot, "boxptr")?.into_pointer_value();
+        self.emit_drop_glue(p, pointee)?;
+        self.builder.build_store(flag, i1.const_zero())?;
+        self.builder.build_unconditional_branch(skip_bb)?;
+
+        self.builder.position_at_end(skip_bb);
+        Ok(())
+    }
+    fn emit_drop_glue(&self, ptr: PointerValue<'ctx>, pointee: &Type) -> Result<(), BuilderError> {
+        if let Type::Box(inner) = pointee {
+            let ptr_t = self.context.ptr_type(AddressSpace::default());
+            let sub = self.builder.build_load(ptr_t, ptr, "subptr")?.into_pointer_value();
+            self.emit_drop_glue(sub, inner)?;
+        }
+        self.build_free(ptr)?;
+        Ok(())
     }
     fn bounds_check(&self, idx: IntValue<'ctx>, len: u32) -> Result<(), BuilderError> {
         let function = self.cur_fn.unwrap();

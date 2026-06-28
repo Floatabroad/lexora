@@ -48,6 +48,32 @@ fn main() -> i32 {
 }
 ```
 
+Heap allocation, enums, and pattern matching:
+
+```rust
+enum Shape {
+    Circle(i32),
+    Rect(i32, i32),
+}
+
+fn area(s: Shape) -> i32 {
+    match s {
+        Shape::Circle(r) => { return r * r * 3; }
+        Shape::Rect(w, h) => { return w * h; }
+    }
+}
+
+fn main() -> i32 {
+    let boxed: Box<i32> = box 41;
+    *boxed = *boxed + 1;
+    print(*boxed);                  // 42 — freed automatically at scope exit
+
+    print(area(Shape::Circle(10))); // 300
+    print(area(Shape::Rect(4, 5))); // 20
+    return 0;
+}
+```
+
 ## Features
 
 - **Types** — `i32`, `i64`, `bool`, `void`, `str`, fixed-size arrays `[T; N]`, and user-defined `struct`s
@@ -56,6 +82,8 @@ fn main() -> i32 {
 - **Control flow** — `if` / `else if` / `else`, `while`, `for i in a..b`
 - **Operators** — arithmetic, comparison, logical (`and` / `or` / `not`), unary negation, explicit `as` casts
 - **Aggregates** — array literals, indexing, struct literals, field access and assignment
+- **Heap & ownership** — `box e` allocates on the heap (`Box<T>`), `*b` reads/writes through it. Values are *moved* rather than copied, and an ownership pass (modelled on rustc's borrow checker) tracks moves across branches and loops at compile time. Drops are elaborated automatically — each owning slot gets a drop flag, scope exit frees what's still live, and nested boxes are freed recursively (drop glue). No leaks, no double-frees; verified leak-free under `valgrind`
+- **Enums & pattern matching** — C-like enums (`enum Color { Red, Green, Blue }`) and data-carrying variants (`enum Shape { Circle(i32), Rect(i32, i32) }`), matched with `match` — including binding the payload (`Shape::Rect(w, h) => ...`), a `_` wildcard, and compile-time exhaustiveness checking
 - **Built-ins** — `print(...)` for integers, booleans, and strings
 - **Runtime safety** — checked division (divide-by-zero), array bounds checks, and overflow-checked `+` / `-` / `*`; a violation prints a diagnostic and exits non-zero instead of misbehaving
 - **Diagnostics** — compile errors are rendered rustc-style: the offending source line(s), a caret underline (which spans multiple lines when the error does), a short inline label, and `note` / `help` lines. Identifier typos get a Levenshtein-based "did you mean?" suggestion. The lexer, parser, and type checker all *recover* from errors — bad nodes are poisoned so a single statement can surface several independent errors without spurious cascades, and the compiler reports as many as it can in one run (capped) instead of stopping at the first. Locations resolve through a source map, so they stay correct even when the error lives in an imported file
@@ -139,6 +167,7 @@ src/
   ast.rs           Arena-allocated AST
   parser.rs        Recursive-descent parser with precedence climbing
   typechecker.rs   Scope-stack type checker
+  move_check.rs    Ownership / move pass (Box<T> move tracking, drop elaboration)
   source_map.rs    Global byte offsets → file:line:column
   diagnostic.rs    Diagnostic presentation layer (rustc-style rendering)
   backend/
@@ -165,6 +194,15 @@ that behaviour too.
 The `inkwell` backend can additionally emit DWARF debug info (`-g`), so compiled
 programs can be stepped through in `gdb` / `lldb` with full line, parameter,
 local-variable, and struct information.
+
+Beyond the stack-only core, the language now has a heap: `Box<T>` with move
+semantics, a compile-time ownership pass, and automatic RAII drops (including
+recursive drop glue for nested boxes) — both backends are byte-identical here and
+the box corpus is leak-free under `valgrind`. On top of that sit `enum`s and
+`match`: C-like enums lower to an `i32` tag, while data-carrying variants use a
+tagged-union layout (`{ tag, payload }` with a per-variant struct view), and
+pattern matching binds payloads with compile-time exhaustiveness checks. Enum
+payloads are currently scalar; richer payloads (boxes, structs) are next.
 
 It's still a learning project, so expect rough edges, missing features, and the
 occasional `unimplemented!()` — I add things as I get to them.

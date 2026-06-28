@@ -39,6 +39,7 @@ pub struct TypeChecker<'i> {
     structs:   HashMap<Symbol, Vec<(Symbol, Type)>>,
     interner: &'i Interner,
     pub types: HashMap<ExprId, Type>,
+    enums: HashMap<Symbol, Vec<(Symbol, Vec<Type>)>>,
     errors: Vec<LexoraError>,
 }
 
@@ -50,6 +51,7 @@ impl<'i> TypeChecker<'i> {
             structs:   HashMap::new(),
             interner,
             types: HashMap::new(),
+            enums: HashMap::new(),
             errors: Vec::new(),
         }
     }
@@ -58,6 +60,9 @@ impl<'i> TypeChecker<'i> {
     }
     pub fn check_program<'arena>(&mut self, program: &Program<'arena>) -> Result<(),
         Vec<LexoraError>> {
+        for e in &program.enums {
+            self.enums.insert(e.name, e.variants.clone());
+        }
         for s in &program.structs {
             self.structs.insert(s.name, s.fields.clone());
         }
@@ -124,6 +129,8 @@ impl<'i> TypeChecker<'i> {
             Type::Str => "str".to_string(),
             Type::Array(elem,n) => format!("[{}; {}]",self.format_type(elem),n),
             Type::Struct(s) => self.resolve(*s),
+            Type::Box(inner) => format!("Box<{}>", self.format_type(inner)),
+            Type::Enum(s) => self.resolve(*s),
             Type::Error => "<hata>".to_string(),
         }
     }
@@ -336,6 +343,94 @@ impl<'i> TypeChecker<'i> {
                         found: self.format_type(&val_ty),
                         span: *span,
                     });
+                }
+            }
+           Stmt::AssignDeref {target, value, span} => {
+               if !matches!(target, Expr::Deref{ .. }) {
+                   self.errors.push(LexoraError::Custom {
+                       message: "gecersiz atama hedefi yalnizca *b yazilabilir".to_string(),
+                       span: *span,
+                   });
+               }
+               let target_ty = self.check_expr(target);
+               let val_ty = self.check_expr(value);
+               if !types_match(&target_ty, &val_ty) {
+                   self.errors.push(LexoraError::TypeMismatch {
+                       expected: self.format_type(&target_ty),
+                       found: self.format_type(&val_ty),
+                       span: *span,
+                   });
+               }
+           }
+            Stmt::Match { scrutinee, arms, span } => {
+                let scrut_ty = self.check_expr(scrutinee);
+                let enum_sym = match &scrut_ty {
+                    Type::Error => None,
+                    Type::Enum(s) => Some(*s),
+                    _ => {
+                        self.errors.push(LexoraError::Custom {
+                            message: format!("match yalnizca enum uzerinde olur, bulunan {}",
+                                             self.format_type(&scrut_ty)),
+                            span: *span,
+                        });
+                        None
+                    }
+                };
+                let all_variants: Option<Vec<(Symbol, Vec<Type>)>> =
+                    enum_sym.and_then(|e| self.enums.get(&e).cloned());
+                let mut covered: Vec<Symbol> = Vec::new();
+                let mut has_wildcard = false;
+                for (pat, body) in arms.iter() {
+                    let mut binds: Vec<(Symbol, Type)> = Vec::new();
+                    match pat {
+                        Pattern::Wildcard => has_wildcard = true,
+                        Pattern::Variant { enum_name, variant, bindings } => {
+                            if let (Some(e), Some(vars)) = (enum_sym, &all_variants) {
+                                if *enum_name != e {
+                                    self.errors.push(LexoraError::Custom {
+                                        message: format!("desen enum'u '{}', scrutinee enum'u '{}' ile uyusmuyor",
+                                                         self.resolve(*enum_name), self.resolve(e)),
+                                        span: *span,
+                                    });
+                                } else if let Some((_, ftys)) = vars.iter().find(|(v, _)| v == variant) {
+                                    covered.push(*variant);
+                                    if bindings.len() != ftys.len() {
+                                        self.errors.push(LexoraError::Custom {
+                                            message: format!("'{}::{}' {} alan baglar, {} desen verildi",
+                                                             self.resolve(e), self.resolve(*variant),
+                                                             ftys.len(), bindings.len()),
+                                            span: *span,
+                                        });
+                                    } for (b, t) in bindings.iter().zip(ftys.iter()) {
+                                        binds.push((*b, t.clone()));
+                                    }
+                                } else {
+                                    self.errors.push(LexoraError::Custom {
+                                        message: format!("'{}' enum'unda '{}' varyanti yok",
+                                                         self.resolve(e), self.resolve(*variant)),
+                                        span: *span,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    self.variables.enter_scope();
+                    for (b, t) in binds {
+                        self.variables.define(b, t);
+                    }
+                    for s in body.iter() { self.check_statement(s, ret_ty); }
+                    self.variables.exit_scope();
+                }
+                if let (Some(vars), false) = (&all_variants, has_wildcard) {
+                    for (v, _) in vars {
+                        if !covered.contains(v) {
+                            self.errors.push(LexoraError::Custom {
+                                message: format!("eksik match: '{}::{}' kapsanmadi",
+                                                 self.resolve(enum_sym.unwrap()), self.resolve(*v)),
+                                span: *span,
+                            });
+                        }
+                    }
                 }
             }
             Stmt::Error(_) => {}
@@ -623,6 +718,68 @@ impl<'i> TypeChecker<'i> {
                     }
                 }
             }
+            Expr::Box {value, ..} => {
+                let inner = self.check_expr(value);
+                Type::Box(Box::new(inner))
+            }
+            Expr::Deref {target, span, ..} => {
+                let target_ty = self.check_expr(target);
+                match target_ty {
+                    Type::Error => Type::Error,
+                    Type::Box(inner) => *inner,
+                    _ => {
+                        self.errors.push(LexoraError::Custom {
+                            message: format!("Box olmayan deger deref edilemez: {}", self.format_type(&target_ty)),
+                            span: *span,
+                        });
+                        Type::Error
+                    }
+                }
+            }
+            Expr::EnumVariant { enum_name, variant, args, span, .. } => {
+                let variants = match self.enums.get(enum_name).cloned() {
+                    Some(v) => v,
+                    None => {
+                        self.errors.push(LexoraError::Custom {
+                            message: format!("tanimsiz enum '{}'", self.resolve(*enum_name)),
+                            span: *span,
+                        });
+                        for a in args.iter() { self.check_expr(a); }
+                        return Type::Error;
+                    }
+                };
+                let field_tys = match variants.iter().find(|(v, _)| v == variant) {
+                    Some((_, tys)) => tys.clone(),
+                    None => {
+                        self.errors.push(LexoraError::Custom {
+                            message: format!("'{}' enum'unda '{}' varyanti yok",
+                                             self.resolve(*enum_name), self.resolve(*variant)),
+                            span: *span,
+                        });
+                        for a in args.iter() { self.check_expr(a); }
+                        return Type::Error;
+                    }
+                };
+                if args.len() != field_tys.len() {
+                    self.errors.push(LexoraError::Custom {
+                        message: format!("'{}::{}' {} alan bekliyor, {} verildi",
+                                         self.resolve(*enum_name), self.resolve(*variant),
+                                         field_tys.len(), args.len()),
+                        span: *span,
+                    });
+                }
+                for (arg, fty) in args.iter().zip(field_tys.iter()) {
+                    let aty = self.check_expr(arg);
+                    if !types_match(&aty, fty) {
+                        self.errors.push(LexoraError::TypeMismatch {
+                            expected: self.format_type(fty),
+                            found: self.format_type(&aty),
+                            span: *span,
+                        });
+                    }
+                }
+                Type::Enum(*enum_name)
+            }
             Expr::Error(_, _) => Type::Error,
         }
     }
@@ -638,6 +795,8 @@ fn types_match(a: &Type, b: &Type) -> bool {
         (Type::Void, Type::Void) => true,
         (Type::Array(t1, n1), Type::Array(t2, n2)) => types_match(t1, t2) && n1 == n2,
         (Type::Struct(s1), Type::Struct(s2)) => s1 == s2,
+        (Type::Box(t1), Type::Box(t2)) => types_match(t1, t2),
+        (Type::Enum(s1), Type::Enum(s2)) => s1 == s2,
         _ => false,
     }
 }

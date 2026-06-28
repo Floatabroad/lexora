@@ -1,0 +1,7 @@
+fn main() -> i32 {
+    let b: Box<i32> = box 42;
+    print(*b);
+    *b = 99;
+    print(*b);
+    return 0;
+}

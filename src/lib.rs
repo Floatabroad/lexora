@@ -9,3 +9,4 @@ pub mod backend;
 pub mod diagnostic;
 pub mod source_map;
 pub mod suggest;
+pub mod move_check;

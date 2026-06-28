@@ -6,6 +6,7 @@ use crate::ast::Expr::Identifier;
 use crate::symbol::{Symbol, Interner};
 use crate::span::Span;
 use crate::error::LexoraError;
+use std::collections::HashSet;
 
 
 pub struct Parser<'src, 'arena> {
@@ -16,15 +17,16 @@ pub struct Parser<'src, 'arena> {
     pub interner:         Interner,
     allow_struct_literal: bool,
     pub next_expr_id: ExprId,
+    enum_names:           HashSet<Symbol>,
     errors:               Vec<LexoraError>,
 }
 
 impl<'src, 'arena> Parser<'src, 'arena> {
    pub fn new(lexer: Lexer<'src>, arena: &'arena Bump) -> Self {
-       Self::with_interner(lexer, arena, Interner::new(), 0)
+       Self::with_interner(lexer, arena, Interner::new(), 0, )
    }
     pub fn with_interner(
-        mut lexer: Lexer<'src>,
+        lexer: Lexer<'src>,
         arena: &'arena Bump,
         interner: Interner,
         start_id: ExprId,
@@ -37,6 +39,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             interner,
             allow_struct_literal: true,
             next_expr_id: start_id,
+            enum_names: HashSet::new(),
             errors: Vec::new(),
         };
         parser.current = parser.pull();
@@ -113,6 +116,13 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             Token::Bool => { self.advance(); Ok(Type::Bool) }
             Token::Str => {self.advance(); Ok(Type::Str)}
             Token::Void => {self.advance(); Ok(Type::Void)}
+            Token::Identifier("Box") => {
+                self.advance();
+                self.expect(Token::Less)?;
+                let inner = self.parse_type()?;
+                self.expect(Token::Greater)?;
+                Ok(Type::Box(Box::new(inner)))
+            }
             Token::LeftBracket => {
                 self.advance();
                 let elem_ty = self.parse_type()?;
@@ -134,7 +144,11 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             }
             Token::Identifier(_) => {
                 let sym = self.parse_symbol()?;
-                Ok(Type::Struct(sym))
+                if self.enum_names.contains(&sym) {
+                    Ok(Type::Enum(sym))
+                } else {
+                    Ok(Type::Struct(sym))
+                }
             }
             _ => Err(LexoraError::UnexpectedToken {
                 expected: "tip(i32, i64, bool, void, str, [T;N], Struct".to_string(),
@@ -149,12 +163,13 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let mut functions = Vec::new();
         let mut structs   = Vec::new();
         let mut imports: Vec<&'arena str> = Vec::new();
-
+        let mut enums = Vec::new();
         while self.current.token != Token::Eof {
             let result = match self.current.token.clone() {
                 Token::Struct => self.parse_struct().map(|s| structs.push(s)),
                 Token::Import => self.parse_import().map(|p| imports.push(p)),
                 Token::Fn => self.parse_function().map(|f| functions.push(f)),
+                Token::Enum => self.parse_enum().map(|e| enums.push(e)),
                 _ =>  Err(LexoraError::UnexpectedToken {
                     expected: "struct, fn, import".to_string(),
                     found: format!("{:?}", self.current.token),
@@ -168,7 +183,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
 
         self.errors.extend(self.lexer.take_errors());
-        Program{ functions, structs, imports}
+        Program{ functions, structs, imports, enums}
     }
     pub fn take_errors(&mut self) -> Vec<LexoraError> {
         std::mem::take(&mut self.errors)
@@ -193,6 +208,36 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let end = self.current.span;
         self.expect(Token::RightBrace)?;
         Ok(StructDef { name, fields, span: start.merge(end) })
+    }
+
+    fn parse_enum(&mut self) -> Result<EnumDef, LexoraError> {
+        let start = self.current.span;
+        self.expect(Token::Enum)?;
+        let name = self.parse_symbol()?;
+        self.enum_names.insert(name);
+        self.expect(Token::LeftBrace)?;
+        let mut variants = Vec::new();
+        while self.current.token != Token::RightBrace {
+            let v = self.parse_symbol()?;
+            let mut fields = Vec::new();
+            if self.current.token == Token::LeftParen {
+                self.advance();
+                while self.current.token != Token::RightParen {
+                    fields.push(self.parse_type()?);
+                    if self.current.token == Token::Comma {
+                        self.advance();
+                    }
+                }
+                self.expect(Token::RightParen)?;
+            }
+            variants.push((v, fields));
+            if self.current.token == Token::Comma {
+                self.advance();
+            }
+        }
+        let end = self.current.span;
+        self.expect(Token::RightBrace)?;
+        Ok(EnumDef { name, variants, span: start.merge(end) })
     }
     fn parse_block(&mut self) -> Result<(&'arena [Stmt<'arena>], Span), LexoraError> {
         self.expect(Token::LeftBrace)?;
@@ -258,6 +303,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             Token::If   => self.parse_if(),
             Token::While => self.parse_while(),
             Token::For  => self.parse_for(),
+            Token::Match => self.parse_match(),
             Token::Identifier(_) => {
                 match self.peek.token.clone() {
                     Token::Equals => {
@@ -289,12 +335,27 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                         self.expect(Token::Semicolon)?;
                         Ok(Stmt::AssignField { object, field, value, span: start.merge(end) })
                     }
+
                     _ => {
                         let expr = self.parse_expr()?;
                         let end = self.current.span;
                         self.expect(Token::Semicolon)?;
                         Ok(Stmt::Expr(expr, start.merge(end)))
                     }
+                }
+            }
+            Token::Star => {
+                let expr = self.parse_expr()?;
+                if self.current.token == Token::Equals {
+                    self.advance();
+                    let value = self.parse_expr()?;
+                    let end = self.current.span;
+                    self.expect(Token::Semicolon)?;
+                    Ok(Stmt::AssignDeref { target: expr, value, span: start.merge(end) })
+                } else {
+                    let end = self.current.span;
+                    self.expect(Token::Semicolon)?;
+                    Ok(Stmt::Expr(expr, start.merge(end)))
                 }
             }
             _ => {
@@ -359,7 +420,50 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let (body, end) = self.parse_block()?;
         Ok(Stmt::For { var, from, to, body, span: start.merge(end) })
     }
-
+    fn parse_match(&mut self) -> Result<Stmt<'arena>, LexoraError> {
+        let start = self.current.span;
+        self.expect(Token::Match)?;
+        self.allow_struct_literal = false;
+        let scrutinee = self.parse_expr()?;
+        self.allow_struct_literal = true;
+        self.expect(Token::LeftBrace)?;
+        let mut arms: Vec<(Pattern<'arena>, &'arena [Stmt<'arena>])> = Vec::new();
+        while self.current.token != Token::RightBrace && self.current.token != Token::Eof {
+            let pat = self.parse_pattern()?;
+            self.expect(Token::FatArrow)?;
+            let (body, _) = self.parse_block()?;
+            arms.push((pat, body));
+            if self.current.token == Token::Comma {
+                self.advance();
+            }
+        }
+        let end = self.current.span;
+        self.expect(Token::RightBrace)?;
+        let arms = self.arena.alloc_slice_fill_iter(arms.into_iter());
+        Ok(Stmt::Match { scrutinee, arms, span: start.merge(end) })
+    }
+    fn parse_pattern(&mut self) -> Result<Pattern<'arena>, LexoraError> {
+        if matches!(self.current.token, Token::Identifier("_")) {
+            self.advance();
+            return Ok(Pattern::Wildcard);
+        }
+        let enum_name = self.parse_symbol()?;
+        self.expect(Token::ColonColon)?;
+        let variant = self.parse_symbol()?;
+        let mut bindings: Vec<Symbol> = Vec::new();
+        if self.current.token == Token::LeftParen {
+            self.advance();
+            while self.current.token != Token::RightParen {
+                bindings.push(self.parse_symbol()?);
+                if self.current.token == Token::Comma {
+                    self.advance();
+                }
+            }
+            self.expect(Token::RightParen)?;
+        }
+        let bindings = self.arena.alloc_slice_fill_iter(bindings.into_iter());
+        Ok(Pattern::Variant { enum_name, variant, bindings })
+    }
 
     pub fn parse_expr(&mut self) -> Result<Expr<'arena>, LexoraError> {
         self.parse_or()
@@ -496,6 +600,20 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 let id = self.next_id();
                 Ok(Expr::UnaryOp { op: UnaryOperator::Neg, operand: self.arena.alloc(operand), span, id })
             }
+            Token::Box => {
+                self.advance();
+                let value = self.parse_unary()?;
+                let span = start.merge(value.span());
+                let id = self.next_id();
+                Ok(Expr::Box { value: self.arena.alloc(value), span, id })
+            }
+            Token::Star => {
+                self.advance();
+                let target = self.parse_unary()?;
+                let span = start.merge(target.span());
+                let id = self.next_id();
+                Ok(Expr::Deref { target: self.arena.alloc(target), span, id })
+            }
             _ => self.parse_postfix(),
         }
     }
@@ -579,8 +697,36 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     let elems = self.arena.alloc_slice_fill_iter(elems.into_iter());
                     Ok(Expr::ArrayLiteral(elems, start.merge(end), self.next_id()))
                 }
-                Token::Identifier(_) => {
-                    let name = self.parse_symbol()?;
+            Token::Identifier(_) => {
+                let name = self.parse_symbol()?;
+                if self.current.token == Token::ColonColon {
+                    self.advance();
+                    let mut var_span = self.current.span;
+                    let variant = self.parse_symbol()?;
+                    let mut args: Vec<Expr<'arena>> = Vec::new();
+                    if self.current.token == Token::LeftParen {
+                        self.advance();
+                        while self.current.token != Token::RightParen {
+                            if matches!(self.current.token, Token::Semicolon | Token::RightBrace | Token::Eof) {
+                                break;
+                            }
+                            args.push(self.parse_expr()?);
+                            if self.current.token == Token::Comma {
+                                self.advance();
+                            }
+                        }
+                        var_span = self.current.span;
+                        self.expect(Token::RightParen)?;
+                    }
+                    let args = self.arena.alloc_slice_fill_iter(args.into_iter());
+                    return Ok(Expr::EnumVariant {
+                        enum_name: name,
+                        variant,
+                        args,
+                        span: start.merge(var_span),
+                        id: self.next_id(),
+                    });
+                }
                     if self.current.token == Token::LeftParen {
                         self.advance();
                         let mut args: Vec<Expr<'arena>> = Vec::new();

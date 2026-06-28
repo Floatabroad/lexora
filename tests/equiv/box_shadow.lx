@@ -1,0 +1,13 @@
+fn main() -> i32 {
+    let b: Box<i32> = box 1;
+    if true {
+        let b: Box<i32> = box 2;
+        let c: Box<i32> = b;
+        print(*c);
+    } else {
+        print(0);
+    }
+    let d: Box<i32> = b;
+    print(*d);
+    return 0;
+}

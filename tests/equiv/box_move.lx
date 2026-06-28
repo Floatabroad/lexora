@@ -1,0 +1,6 @@
+fn main() -> i32 {
+    let b: Box<i32> = box 42;
+    let c: Box<i32> = b;
+    print(*c);
+    return 0;
+}

@@ -10,7 +10,7 @@ pub enum Token<'src> {
 
     Let, Fn, Return, If, Else,
     True, False, While, For, In,
-    And, Or, Not, As, Import, Struct,
+    And, Or, Not, As, Import, Struct, Box, Enum, Match,
 
     I32, I64, Bool, Void, Str,
 
@@ -18,12 +18,14 @@ pub enum Token<'src> {
     Equals, EqualsEquals,
     Bang, BangEquals,
     Less, Greater, LessEq, GreaterEq,
+    FatArrow,
 
     Semicolon, Colon, Comma,
     Arrow, Dot, DotDot,
     LeftParen, RightParen,
     LeftBrace, RightBrace,
     LeftBracket, RightBracket,
+    ColonColon,
 
     Eof,
     Error,
@@ -61,13 +63,7 @@ impl<'src> Lexer<'src> {
             0
         }
     }
-    fn peek(&self) -> u8 {
-        if self.pos + 1 < self.source.len() {
-            self.source.as_bytes()[self.pos + 1]
-        }else {
-            0
-        }
-    }
+   
     fn advance(&mut self) {
         if self.pos < self.source.len() {
             if self.source.as_bytes()[self.pos] == b'\n' {
@@ -106,7 +102,11 @@ impl<'src> Lexer<'src> {
             b'*' => {self.advance(); Token::Star}
             b'/' => {self.advance(); Token::Slash}
             b';' => {self.advance(); Token::Semicolon}
-            b':' => {self.advance(); Token::Colon}
+            b':' => {
+                self.advance();
+                if self.current() == b':' { self.advance(); Token::ColonColon }
+                else { Token::Colon }
+            }
             b',' => {self.advance(); Token::Comma}
             b'(' => {self.advance(); Token::LeftParen}
             b')' => {self.advance(); Token::RightParen}
@@ -131,8 +131,9 @@ impl<'src> Lexer<'src> {
             }
             b'=' => {
                 self.advance();
-                if self.current() == b'=' {self.advance(); Token::EqualsEquals}
-                else {Token::Equals}
+                if self.current() == b'=' { self.advance(); Token::EqualsEquals }
+                else if self.current() == b'>' { self.advance(); Token::FatArrow }
+                else { Token::Equals }
             }
             b'!' => {
                 self.advance();
@@ -207,11 +208,14 @@ impl<'src> Lexer<'src> {
             "as" => Token::As,
             "import" => Token::Import,
             "struct" => Token::Struct,
+            "box" => Token::Box,
             "i32" => Token::I32,
             "i64" => Token::I64,
             "bool" => Token::Bool,
             "void" => Token::Void,
             "str" => Token::Str,
+            "enum" => Token::Enum,
+            "match" => Token::Match,
             _ => Token::Identifier(ident),
         }
     }

@@ -53,6 +53,25 @@ pub enum Expr<'arena> {
         span: Span,
         id: ExprId,
     },
+    Box {
+        value: &'arena Expr<'arena>,
+        span: Span,
+        id: ExprId,
+    },
+
+    Deref {
+        target: &'arena Expr<'arena>,
+        span: Span,
+        id: ExprId,
+    },
+    EnumVariant{
+        enum_name: Symbol,
+        variant: Symbol,
+        args: &'arena [Expr<'arena>],
+        span: Span,
+        id: ExprId,
+    },
+
     Error(Span, ExprId),
 }
 
@@ -115,6 +134,16 @@ pub enum Stmt<'arena> {
         value: Expr<'arena>,
         span: Span,
     },
+    AssignDeref {
+        target: Expr<'arena>,
+        value: Expr<'arena>,
+        span: Span,
+    },
+    Match {
+        scrutinee: Expr<'arena>,
+        arms: &'arena [(Pattern<'arena>, &'arena [Stmt<'arena>])],
+        span: Span,
+    },
     Error(Span),
 }
 
@@ -123,7 +152,9 @@ pub enum Type {
     I32, I64, Bool, Void, Str,
     Array(Box<Type>, usize),
     Struct(Symbol),
+    Box(Box<Type>),
     Error,
+    Enum(Symbol),
 }
 
 #[derive(Debug, Clone)]
@@ -142,11 +173,25 @@ pub struct StructDef {
     pub span: Span,
 }
 
+#[derive(Debug, Clone)]
+pub struct EnumDef {
+    pub name: Symbol,
+    pub variants: Vec<(Symbol, Vec<Type>)>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum Pattern<'arena> {
+    Variant { enum_name: Symbol, variant: Symbol, bindings: &'arena [Symbol] },
+    Wildcard,
+}
+
 #[derive(Debug)]
 pub struct Program<'arena> {
     pub functions: Vec<Function<'arena>>,
     pub structs: Vec<StructDef>,
     pub imports:  Vec<&'arena str>,
+    pub enums: Vec<EnumDef>,
 }
 
 impl<'arena> Expr<'arena> {
@@ -164,7 +209,11 @@ impl<'arena> Expr<'arena> {
             Expr::Index { span, .. } => *span,
             Expr::StructLiteral { span, .. } => *span,
             Expr::FieldAccess { span, .. } => *span,
+            Expr::Box { span, .. } => *span,
+            Expr::Deref { span, .. } => *span,
             Expr::Error(s, _) => *s,
+            Expr::EnumVariant{span, ..} => *span,
+
         }
     }
     pub fn id(&self) -> ExprId {
@@ -181,7 +230,10 @@ impl<'arena> Expr<'arena> {
             Expr::Index { id, .. } => *id,
             Expr::StructLiteral { id, .. } => *id,
             Expr::FieldAccess { id, .. } => *id,
+            Expr::Box { id, .. } => *id,
+            Expr::Deref { id, .. } => *id,
             Expr::Error(_, id) => *id,
+            Expr::EnumVariant{id, ..} => *id,
         }
     }
 }
@@ -198,6 +250,8 @@ impl<'arena> Stmt<'arena> {
             Stmt::For { span, .. } => *span,
             Stmt::AssignIndex { span, .. } => *span,
             Stmt::AssignField { span, .. } => *span,
+            Stmt::AssignDeref { span, .. } => *span,
+            Stmt::Match { span, .. } => *span,
             Stmt::Error(span) => *span,
         }
     }
