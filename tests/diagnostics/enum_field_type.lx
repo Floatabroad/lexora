@@ -1,0 +1,6 @@
+enum List { Cons(i32, List), Nil }
+
+fn main() -> i32 {
+    print(1);
+    return 0;
+}

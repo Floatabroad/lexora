@@ -82,24 +82,73 @@ impl<'i> CodeGen<'i> {
             }
         }
     }
-    fn gen_drop(&mut self, slot: Value, flag: Value, pointee: &Type) {
+    fn gen_drop(&mut self, slot: Value, flag: Value, ty: &Type) {
         let f = self.builder.build_load(&LlvmType::I1, flag.clone());
         let do_label = self.builder.fresh_block("do_drop");
         let skip_label = self.builder.fresh_block("drop_skip");
         self.builder.build_cond_br(f, &do_label, &skip_label);
         self.builder.emit_label(&do_label);
-        let p = self.builder.build_load(&LlvmType::Ptr, slot);
-        self.emit_drop_glue(p, pointee);
+        match ty {
+            Type::Box(inner) => {
+                let p = self.builder.build_load(&LlvmType::Ptr, slot);
+                self.emit_drop_glue(p, inner);
+            }
+            Type::Enum(e) => self.builder.build_call_drop_enum(*e, slot),
+            _ => {}
+        }
         self.builder.build_store(&LlvmType::I1, Value::Const(0), flag);
         self.builder.build_br(&skip_label);
         self.builder.emit_label(&skip_label);
     }
     fn emit_drop_glue(&mut self, ptr: Value, pointee: &Type) {
-        if let Type::Box(inner) = pointee{
-            let sub = self.builder.build_load(&LlvmType::Ptr, ptr.clone());
-            self.emit_drop_glue(sub, inner);
-        }
+       match pointee {
+           Type::Box(inner) => {
+               let sub = self.builder.build_load(&LlvmType::Ptr, ptr.clone());
+               self.emit_drop_glue(sub, inner);
+           }
+           Type::Enum(e) => self.builder.build_call_drop_enum(*e, ptr.clone()),
+           _ => {}
+       }
         self.builder.build_free(ptr);
+    }
+    fn emit_enum_glue(&mut self, slot: Value, enum_sym: Symbol) {
+        let tag_ptr = self.builder.build_gep_enum_tag(enum_sym, slot.clone());
+        let tag = self.builder.build_load(&LlvmType::I32,tag_ptr);
+        let end = self.builder.fresh_block("edrop_end");
+        let variants = self.enums.get(&enum_sym).unwrap().clone();
+        for (variant, ftys) in variants.iter() {
+            let owning: Vec<(usize, Type)> = ftys.iter().enumerate()
+                .filter_map(|(i, t)| match t{
+                Type::Box(inner) => Some((i, (**inner).clone())),
+                _ => None,
+            })
+            .collect();
+            if owning.is_empty() { continue;}
+            let idx = self.variant_tag(enum_sym, *variant);
+            let case = self.builder.fresh_block("edrop_case");
+            let next = self.builder.fresh_block("edrop_next");
+            let c = self.builder.build_icmp("eq", &LlvmType::I32, tag.clone(), Value::Const(idx));
+            self.builder.build_cond_br(c, &case, &next);
+            self.builder.emit_label(&case);
+            let payload_ptr = self.builder.build_gep_enum_payload(enum_sym, slot.clone());
+            for (i, inner) in owning.iter(){
+                let ftpr = self.builder.build_gep_variant_field(enum_sym, *variant, payload_ptr.clone(), *i as u32);
+                let boxptr = self.builder.build_load(&LlvmType::Ptr, ftpr);
+                self.emit_drop_glue(boxptr, inner);
+            }
+            self.builder.build_br(&end);
+            self.builder.emit_label(&next);
+        }
+        self.builder.build_br(&end);
+        self.builder.emit_label(&end);
+
+    }
+    fn gen_drop_function(&mut self, enum_sym: Symbol) {
+        self.builder.emit_drop_function_begin(enum_sym);
+        self.builder.emit_label("entry");
+        self.emit_enum_glue(Value::Named("%s".to_string()), enum_sym);
+        self.builder.build_ret(&LlvmType::Void, Value::Void);
+        self.builder.emit_function_end();
     }
     fn find_flag(&self, sym: Symbol) -> Option<Value> {
         for scope in self.drop_scopes.iter().rev() {
@@ -205,6 +254,11 @@ impl<'i> CodeGen<'i> {
                 self.builder.emit_variant_type(e.name, *variant, &llvm_tys);
             }
         }
+        for e in &program.enums{
+            if self.enum_is_owning(e.name){
+                self.gen_drop_function(e.name);
+            }
+        }
         for s in &program.structs {
             let field_llvm_tys: Vec<(Symbol, LlvmType)> = s.fields.iter()
                 .map(|(sym, ty)| (*sym, self.ast_type_to_llvm(ty)))
@@ -231,6 +285,18 @@ impl<'i> CodeGen<'i> {
         self.enums.get(&enum_sym)
             .map_or(false, |vs| vs.iter().any(|(_, tys)| !tys.is_empty()))
     }
+    fn enum_is_owning(&self, enum_sym: Symbol) -> bool {
+        self.enums.get(&enum_sym).map_or(false, |vs| {
+            vs.iter().any(|(_, ftys)| ftys.iter().any(|t| matches!(t, Type::Box(_))))
+        })
+    }
+    fn is_owning_type(&self, ty: &Type) -> bool{
+        match ty {
+            Type::Box(_) => true,
+            Type::Enum(e) => self.enum_is_owning(*e),
+            _ => false,
+        }
+    }
     fn variant_tag(&self, enum_sym: Symbol, variant: Symbol) -> i64 {
         self.enums.get(&enum_sym).unwrap()
             .iter().position(|(v, _)| *v == variant).unwrap() as i64
@@ -256,18 +322,26 @@ impl<'i> CodeGen<'i> {
             let ptr = self.builder.build_alloca(&llvm_ty, "");
             self.builder.build_store(&llvm_ty, param_val, ptr.clone());
             self.locals.insert(*sym, (llvm_ty, ptr.clone()));
-            if let Type::Box(inner) = ast_ty {
+            if self.is_owning_type(ast_ty) {
                 let flag = self.builder.build_alloca(&LlvmType::I1, "");
                 self.builder.build_store(&LlvmType::I1, Value::Const(1), flag.clone());
                 self.drop_scopes.last_mut().unwrap().push(DropLocal{
                     sym: *sym,
                     slot: ptr,
                     flag,
-                    pointee: (**inner).clone(),
+                    pointee: ast_ty.clone(),
                 });
             }
         }
-        for stmt in func.body.iter() { self.gen_statement(stmt)?; }
+        for stmt in func.body.stmts.iter() { self.gen_statement(stmt)?; }
+        if let Some(tail) = func.body.tail {
+            if !self.builder.is_terminated() {
+                let val = self.gen_expr(tail)?;
+                self.free_all_live();
+                let ty = self.current_ret_ty.clone();
+                self.builder.build_ret(&ty, val);
+            }
+        }
         self.drop_exit();
         if !self.builder.is_terminated() {
             if self.current_ret_ty == LlvmType::Void {
@@ -329,33 +403,18 @@ impl<'i> CodeGen<'i> {
                                                      field_ptr);
                         }
                     }
-                    Expr::EnumVariant { enum_name, variant, args, .. }
-                    if self.enum_has_payload(*enum_name) =>
-                        {
-                            let tag = self.variant_tag(*enum_name, *variant);
-                            let tag_ptr = self.builder.build_gep_enum_tag(*enum_name, ptr.clone());
-                            self.builder.build_store(&LlvmType::I32, Value::Const(tag), tag_ptr);
-                            let payload_ptr = self.builder.build_gep_enum_payload(*enum_name, ptr.clone());
-                            for (i, arg) in args.iter().enumerate() {
-                                let field_ty = self.expr_llvm_type(arg);
-                                let field_val = self.gen_expr(arg)?;
-                                let field_ptr = self.builder.build_gep_variant_field(
-                                    *enum_name, *variant, payload_ptr.clone(), i as u32,
-                                );
-                                self.builder.build_store(&field_ty, field_val, field_ptr);
-                            }
-                        }
+                   
                     _ => {
                         let val = self.gen_expr(value)?;
                         self.builder.build_store(&llvm_ty, val, ptr.clone());
                     }
                 }
                 self.locals.insert(*name, (llvm_ty, ptr.clone()));
-                let owning_pointee = match self.types.get(&value.id()) {
-                    Some(Type::Box(inner)) => Some((**inner).clone()),
+                let owning_ty = match self.types.get(&value.id()) {
+                    Some(t) if self.is_owning_type(t) => Some(t.clone()),
                     _ => None,
                 };
-                if let Some(pointee) = owning_pointee {
+                if let Some(pointee) = owning_ty {
                     let flag = self.builder.build_alloca(&LlvmType::I1, "");
                     self.builder.build_store(&LlvmType::I1, Value::Const(1), flag.clone());
                     self.drop_scopes.last_mut().unwrap().push(DropLocal {
@@ -380,45 +439,7 @@ impl<'i> CodeGen<'i> {
                 self.builder.build_store(&llvm_ty, val, ptr);
             }
 
-            Stmt::If { condition, then_body, else_branch, .. } => {
-                let cond_val = self.gen_expr(condition)?;
-                let then_label = self.builder.fresh_block("then");
-                let merge_label = self.builder.fresh_block("merge");
 
-                if let Some(else_stmts) = else_branch {
-                    let else_label = self.builder.fresh_block("else");
-                    self.builder.build_cond_br(cond_val, &then_label.clone(),
-                                               &else_label.clone());
-
-                    self.builder.emit_label(&then_label);
-                    self.locals.enter();
-                    self.drop_enter();
-                    for s in then_body.iter() { self.gen_statement(s)?; }
-                    self.drop_exit();
-                    self.locals.exit();
-                    self.builder.build_br(&merge_label);
-
-                    self.builder.emit_label(&else_label);
-                    self.locals.enter();
-                    self.drop_enter();
-                    for s in else_stmts.iter() { self.gen_statement(s)?; }
-                    self.drop_exit();
-                    self.locals.exit();
-                    self.builder.build_br(&merge_label);
-                } else {
-                    self.builder.build_cond_br(cond_val, &then_label.clone(),
-                                               &merge_label.clone());
-
-                    self.builder.emit_label(&then_label);
-                    self.locals.enter();
-                    self.drop_enter();
-                    for s in then_body.iter() { self.gen_statement(s)?; }
-                    self.drop_exit();
-                    self.locals.exit();
-                    self.builder.build_br(&merge_label);
-                }
-                self.builder.emit_label(&merge_label);
-            }
 
             Stmt::While { condition, body, .. } => {
                 let cond_label = self.builder.fresh_block("while_cond");
@@ -434,8 +455,12 @@ impl<'i> CodeGen<'i> {
                 self.builder.emit_label(&body_label);
                 self.locals.enter();
                 self.drop_enter();
-                for s in body.iter() { self.gen_statement(s)?; }
-                self.drop_exit();
+                for s in body.stmts.iter() { self.gen_statement(s)?; }
+                if let Some(tail) = body.tail {
+                    if !self.builder.is_terminated() {
+                        self.gen_expr(tail)?;
+                    }
+                }                self.drop_exit();
                 self.locals.exit();
                 self.builder.build_br(&cond_label);
 
@@ -469,7 +494,12 @@ impl<'i> CodeGen<'i> {
                 self.builder.emit_label(&body_label);
                 self.locals.enter();
                 self.drop_enter();
-                for s in body.iter() { self.gen_statement(s)?; }
+                for s in body.stmts.iter() { self.gen_statement(s)?; }
+                if let Some(tail) = body.tail {
+                    if !self.builder.is_terminated() {
+                        self.gen_expr(tail)?;
+                    }
+                }
                 self.drop_exit();
                 self.locals.exit();
                 let cur2 = self.builder.build_load(&LlvmType::I32, ptr.clone());
@@ -538,80 +568,7 @@ impl<'i> CodeGen<'i> {
                 let val = self.gen_expr(value)?;
                 self.builder.build_store(&pointee, val, ptr);
             }
-            Stmt::Match { scrutinee, arms, .. } => {
-                let scrut_ty = self.types[&scrutinee.id()].clone();
-                let enum_sym = match &scrut_ty {
-                    Type::Enum(s) => *s,
-                    _ => return Err(LexoraError::Codegen {
-                        message: "match scrutinee enum degil".to_string(),
-                    }),
-                };
-                let has_payload = self.enum_has_payload(enum_sym);
 
-                let (tag, scrut_ptr) = if has_payload {
-                    let sym = match scrutinee {
-                        Expr::Identifier(s, _, _) => *s,
-                        _ => return Err(LexoraError::Codegen {
-                            message: "payload'li match scrutinee degisken olmali".to_string(),
-                        }),
-                    };
-                    let (_, ptr) = self.locals.get(&sym).unwrap().clone();
-                    let tag_ptr = self.builder.build_gep_enum_tag(enum_sym, ptr.clone());
-                    let tag = self.builder.build_load(&LlvmType::I32, tag_ptr);
-                    (tag, Some(ptr))
-                } else {
-                    (self.gen_expr(scrutinee)?, None)
-                };
-
-                let end_label = self.builder.fresh_block("match_end");
-                for (pat, body) in arms.iter() {
-                    match pat {
-                        Pattern::Variant { enum_name, variant, bindings } => {
-                            let idx = self.variant_tag(*enum_name, *variant);
-                            let body_label = self.builder.fresh_block("arm");
-                            let next_label = self.builder.fresh_block("arm_next");
-                            let c = self.builder.build_icmp("eq", &LlvmType::I32, tag.clone(), Value::Const(idx));
-                            self.builder.build_cond_br(c, &body_label, &next_label);
-
-                            self.builder.emit_label(&body_label);
-                            self.locals.enter();
-                            self.drop_enter();
-                            if let Some(ptr) = &scrut_ptr {
-                                let payload_ptr = self.builder.build_gep_enum_payload(*enum_name, ptr.clone());
-                                let field_tys = self.enums.get(enum_name).unwrap()
-                                    .iter().find(|(v, _)| v == variant).unwrap().1.clone();
-                                for (i, b) in bindings.iter().enumerate() {
-                                    let fty = self.ast_type_to_llvm(&field_tys[i]);
-                                    let fptr = self.builder.build_gep_variant_field(
-                                        *enum_name, *variant, payload_ptr.clone(), i as u32,
-                                    );
-                                    let slot = self.builder.build_alloca(&fty, "");
-                                    let loaded = self.builder.build_load(&fty, fptr);
-                                    self.builder.build_store(&fty, loaded, slot.clone());
-                                    self.locals.insert(*b, (fty, slot));
-                                }
-                            }
-                            for s in body.iter() { self.gen_statement(s)?; }
-                            self.drop_exit();
-                            self.locals.exit();
-                            self.builder.build_br(&end_label);
-
-                            self.builder.emit_label(&next_label);
-                        }
-                        Pattern::Wildcard => {
-                            self.locals.enter();
-                            self.drop_enter();
-                            for s in body.iter() { self.gen_statement(s)?; }
-                            self.drop_exit();
-                            self.locals.exit();
-                            self.builder.build_br(&end_label);
-                            break;
-                        }
-                    }
-                }
-                self.builder.build_br(&end_label);
-                self.builder.emit_label(&end_label);
-            }
             Stmt::Error(_) => return Err(LexoraError::Codegen {
                 message: "poison statement codegen'e ulasti".to_string(),
             }),
@@ -792,22 +749,218 @@ impl<'i> CodeGen<'i> {
                 let val = self.gen_expr(value)?;
                 Ok(self.builder.build_box(&pointee, val))
             }
-            Expr::Deref{ target, ..} => {
+            Expr::Deref{ target,id, ..} => {
                 let ptr = self.gen_expr(target)?;
                 let pointee = self.ast_type_to_llvm(&self.types[&expr.id()]);
-                Ok(self.builder.build_load(&pointee, ptr))
-            }
-            Expr::EnumVariant { enum_name, variant, span, .. } => {
-                if self.enum_has_payload(*enum_name) {
-                    return Err(LexoraError::Custom {
-                        message: "payload'li enum yapimi yalnizca let baslaticisinda desteklenir".to_string(),
-                        span: *span,
-                    });
+               let val = self.builder.build_load(&pointee, ptr.clone());
+                if self.moves.contains(id){
+                    self.builder.build_free(ptr);
                 }
-                Ok(Value::Const(self.variant_tag(*enum_name, *variant)))
+                Ok(val)
+            }
+            Expr::EnumVariant { enum_name, variant, args, .. } => {
+                if !self.enum_has_payload(*enum_name) {
+                    return Ok(Value::Const(self.variant_tag(*enum_name, *variant)));
+                }
+                let enum_ty = LlvmType::Enum(*enum_name);
+                let tmp = self.builder.build_alloca(&enum_ty, "");
+                let tag = self.variant_tag(*enum_name, *variant);
+                let tag_ptr = self.builder.build_gep_enum_tag(*enum_name, tmp.clone());
+                self.builder.build_store(&LlvmType::I32, Value::Const(tag), tag_ptr);
+                let payload_ptr = self.builder.build_gep_enum_payload(*enum_name, tmp.clone());
+                for (i, arg) in args.iter().enumerate() {
+                    let field_ty = self.expr_llvm_type(arg);
+                    let field_val = self.gen_expr(arg)?;
+                    let field_ptr = self.builder.build_gep_variant_field(
+                        *enum_name, *variant, payload_ptr.clone(), i as u32,
+                    );
+                    self.builder.build_store(&field_ty, field_val, field_ptr);
+                }
+                Ok(self.builder.build_load(&enum_ty, tmp))
+            }
+            Expr::Match { scrutinee, arms, .. } => {
+                let scrut_ty = self.types[&scrutinee.id()].clone();
+                let enum_sym = match &scrut_ty {
+                    Type::Enum(s) => *s,
+                    _ => return Err(LexoraError::Codegen {
+                        message: "match scrutinee enum degil".to_string(),
+                    }),
+                };
+                let has_payload = self.enum_has_payload(enum_sym);
+                let (tag, scrut_ptr) = if has_payload {
+                    let enum_ty = LlvmType::Enum(enum_sym);
+                    let val = self.gen_expr(scrutinee)?;
+                    let tmp = self.builder.build_alloca(&enum_ty, "");
+                    self.builder.build_store(&enum_ty, val, tmp.clone());
+                    let tag_ptr = self.builder.build_gep_enum_tag(enum_sym, tmp.clone());
+                    let tag = self.builder.build_load(&LlvmType::I32, tag_ptr);
+                    (tag, Some(tmp))
+                } else {
+                    (self.gen_expr(scrutinee)?, None)
+                };
+                let match_ty = self.types[&expr.id()].clone();
+                let result_slot = if match_ty != Type::Void {
+                    let lt = self.ast_type_to_llvm(&match_ty);
+                    let slot = self.builder.build_alloca(&lt, "");
+                    Some((lt, slot))
+                } else {
+                    None
+                };
+                let end_label = self.builder.fresh_block("match_end");
+                for (pat, body) in arms.iter() {
+                    match pat {
+                        Pattern::Variant { enum_name, variant, bindings } => {
+                            let idx = self.variant_tag(*enum_name, *variant);
+                            let body_label = self.builder.fresh_block("arm");
+                            let next_label = self.builder.fresh_block("arm_next");
+                            let c = self.builder.build_icmp("eq", &LlvmType::I32, tag.clone(), Value::Const(idx));
+                            self.builder.build_cond_br(c, &body_label, &next_label);
+
+                            self.builder.emit_label(&body_label);
+                            self.locals.enter();
+                            self.drop_enter();
+                            if let Some(ptr) = &scrut_ptr {
+                                let payload_ptr = self.builder.build_gep_enum_payload(*enum_name, ptr.clone());
+                                let field_tys = self.enums.get(enum_name).unwrap()
+                                    .iter().find(|(v, _)| v == variant).unwrap().1.clone();
+                                for (i, b) in bindings.iter().enumerate() {
+                                    let fty = self.ast_type_to_llvm(&field_tys[i]);
+                                    let fptr = self.builder.build_gep_variant_field(
+                                        *enum_name, *variant, payload_ptr.clone(), i as u32,
+                                    );
+                                    let slot = self.builder.build_alloca(&fty, "");
+                                    let loaded = self.builder.build_load(&fty, fptr);
+                                    self.builder.build_store(&fty, loaded, slot.clone());
+                                    self.locals.insert(*b, (fty, slot.clone()));
+                                    if self.is_owning_type(&field_tys[i]) {
+                                        let flag = self.builder.build_alloca(&LlvmType::I1, "");
+                                        self.builder.build_store(&LlvmType::I1, Value::Const(1), flag.clone());
+                                        self.drop_scopes.last_mut().unwrap().push(DropLocal {
+                                            sym: *b,
+                                            slot,
+                                            flag,
+                                            pointee: field_tys[i].clone(),
+                                        });
+                                    }
+                                }
+                            }
+                            for s in body.stmts.iter() { self.gen_statement(s)?; }
+                            if let Some(tail) = body.tail {
+                                if !self.builder.is_terminated() {
+                                    let val = self.gen_expr(tail)?;
+                                    if let Some((lt, slot)) = &result_slot {
+                                        self.builder.build_store(lt, val, slot.clone());
+                                    }
+                                }
+                            }
+                            self.drop_exit();
+                            self.locals.exit();
+                            self.builder.build_br(&end_label);
+
+                            self.builder.emit_label(&next_label);
+                        }
+                        Pattern::Wildcard => {
+                            self.locals.enter();
+                            self.drop_enter();
+                            if let Some(ptr) = &scrut_ptr {
+                                if self.enum_is_owning(enum_sym) {
+                                    self.builder.build_call_drop_enum(enum_sym, ptr.clone());
+                                }
+                            }
+                            for s in body.stmts.iter() { self.gen_statement(s)?; }
+                            if let Some(tail) = body.tail {
+                                if !self.builder.is_terminated() {
+                                    let val = self.gen_expr(tail)?;
+                                    if let Some((lt, slot)) = &result_slot {
+                                        self.builder.build_store(lt, val, slot.clone());
+                                    }
+                                }
+                            }
+                            self.drop_exit();
+                            self.locals.exit();
+                            self.builder.build_br(&end_label);
+                            break;
+                        }
+                    }
+                }
+                self.builder.build_br(&end_label);
+                self.builder.emit_label(&end_label);
+                match result_slot {
+                    Some((lt, slot)) => Ok(self.builder.build_load(&lt, slot)),
+                    None => Ok(Value::Void),
+                }
+            }
+            Expr::If { condition, then_body, else_body, .. } => {
+                let if_ty = self.types[&expr.id()].clone();
+                let result_slot = if if_ty != Type::Void {
+                    let lt = self.ast_type_to_llvm(&if_ty);
+                    let slot = self.builder.build_alloca(&lt, "");
+                    Some((lt, slot))
+                } else {
+                    None
+                };
+                let cond_val = self.gen_expr(condition)?;
+                let then_label = self.builder.fresh_block("then");
+                let merge_label = self.builder.fresh_block("merge");
+                if let Some(eb) = else_body {
+                    let else_label = self.builder.fresh_block("else");
+                    self.builder.build_cond_br(cond_val, &then_label, &else_label);
+
+                    self.builder.emit_label(&then_label);
+                    self.locals.enter();
+                    self.drop_enter();
+                    for s in then_body.stmts.iter() { self.gen_statement(s)?; }
+                    if let Some(tail) = then_body.tail {
+                        if !self.builder.is_terminated() {
+                            let val = self.gen_expr(tail)?;
+                            if let Some((lt, slot)) = &result_slot {
+                                self.builder.build_store(lt, val, slot.clone());
+                            }
+                        }
+                    }
+                    self.drop_exit();
+                    self.locals.exit();
+                    self.builder.build_br(&merge_label);
+
+                    self.builder.emit_label(&else_label);
+                    self.locals.enter();
+                    self.drop_enter();
+                    for s in eb.stmts.iter() { self.gen_statement(s)?; }
+                    if let Some(tail) = eb.tail {
+                        if !self.builder.is_terminated() {
+                            let val = self.gen_expr(tail)?;
+                            if let Some((lt, slot)) = &result_slot {
+                                self.builder.build_store(lt, val, slot.clone());
+                            }
+                        }
+                    }
+                    self.drop_exit();
+                    self.locals.exit();
+                    self.builder.build_br(&merge_label);
+                } else {
+                    self.builder.build_cond_br(cond_val, &then_label, &merge_label);
+
+                    self.builder.emit_label(&then_label);
+                    self.locals.enter();
+                    self.drop_enter();
+                    for s in then_body.stmts.iter() { self.gen_statement(s)?; }
+                    if let Some(tail) = then_body.tail {
+                        if !self.builder.is_terminated() {
+                            self.gen_expr(tail)?;
+                        }
+                    }
+                    self.drop_exit();
+                    self.locals.exit();
+                    self.builder.build_br(&merge_label);
+                }
+                self.builder.emit_label(&merge_label);
+                match result_slot {
+                    Some((lt, slot)) => Ok(self.builder.build_load(&lt, slot)),
+                    None => Ok(Value::Void),
+                }
             }
             Expr::Error(_,_) => Err(LexoraError::Codegen {
-                message: "poison expression codegen'e ulasti".to_string(),
+                message: "poison expression codegene ulasti".to_string(),
             }),
         }
     }

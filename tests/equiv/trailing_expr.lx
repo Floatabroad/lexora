@@ -1,0 +1,21 @@
+fn add(a: i32, b: i32) -> i32 { a + b }
+
+fn make() -> Box<i32> { box 42 }
+
+fn say(x: i32) -> void { print(x) }
+
+fn fact(n: i32) -> i32 {
+    if n <= 1 {
+        return 1;
+    }
+    n * fact(n - 1)
+}
+
+fn main() -> i32 {
+    print(add(3, 4));
+    let b: Box<i32> = make();
+    print(*b);
+    say(9);
+    print(fact(5));
+    0
+}

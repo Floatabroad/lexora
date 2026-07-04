@@ -17,15 +17,14 @@ enum BindState {
     Owning(MoveState),
 }
 
-fn is_owning(ty: &Type) -> bool {
-    matches!(ty, Type::Box(_))
-}
+
 
 pub struct MoveChecker<'a> {
     types: &'a HashMap<ExprId, Type>,
     scopes: Vec<HashMap<Symbol, BindState>>,
     moves: HashSet<ExprId>,
     errors: Vec<LexoraError>,
+   enums: HashMap<Symbol, Vec<(Symbol, Vec<Type>)>>,
 }
 
 impl<'a> MoveChecker<'a> {
@@ -35,9 +34,13 @@ impl<'a> MoveChecker<'a> {
             scopes: Vec::new(),
             moves: HashSet::new(),
             errors: Vec::new(),
+            enums: HashMap::new(),
         }
     }
     pub fn check(mut self, program: &Program) -> (HashSet<ExprId>, Vec<LexoraError>) {
+        for e in &program.enums {
+            self.enums.insert(e.name, e.variants.clone());
+        }
         for func in &program.functions {
             self.check_function(func);
         }
@@ -63,16 +66,28 @@ impl<'a> MoveChecker<'a> {
     fn lookup_mut(&mut self, sym: Symbol) -> Option<&mut BindState> {
         self.scopes.iter_mut().rev().find_map(|s| s.get_mut(&sym))
     }
+    fn is_owning(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Box(_) => true,
+            Type::Enum(e) => self.enums.get(e).map_or(false, |vs|{
+                vs.iter().any(|(_, ftys)| ftys.iter().any(|t| self.is_owning(t)))
+            }),
+            _ => false
+        }
+    }
     fn expr_is_owning(&self, expr: &Expr) -> bool {
-        self.types.get(&expr.id()).map_or(false, is_owning)
+        self.types.get(&expr.id()).map_or(false, |t| self.is_owning(t))
     }
     fn check_function(&mut self, func: &Function) {
         self.enter();
         for (sym, ty) in func.params.iter(){
-            self.bind(*sym, is_owning(ty));
+            self.bind(*sym, self.is_owning(ty));
         }
-        for stmt in func.body.iter() {
+        for stmt in func.body.stmts.iter() {
             self.check_stmt(stmt);
+        }
+        if let Some(tail) = func.body.tail {
+            self.consume_expr(tail);
         }
         self.exit();
     }
@@ -102,26 +117,7 @@ impl<'a> MoveChecker<'a> {
                 }
                 self.consume_expr(expr);
             }
-            Stmt::If{ condition, then_body, else_branch, ..} => {
-                self.consume_expr(condition);
-                let entry = self.scopes.clone();
-                self.enter();
-                for s in then_body.iter() {
-                    self.check_stmt(s);
-                }
-                self.exit();
-                let after_then = self.scopes.clone();
-                self.scopes = entry.clone();
-                if let Some(else_stmts) = else_branch {
-                    self.enter();
-                    for s in else_stmts.iter() {
-                        self.check_stmt(s);
-                    }
-                    self.exit();
-                }
-                let after_else = self.scopes.clone();
-                self.scopes = join_scopes(&after_then, &after_else);
-            }
+          
             Stmt::While {condition, body, span} => {
                 self.consume_expr(condition);
                 self.check_loop(body, *span, None);
@@ -136,45 +132,31 @@ impl<'a> MoveChecker<'a> {
                 self.consume_expr(value);
             }
             Stmt::AssignField {value, ..} => self.consume_expr(value),
-            Stmt::AssignDeref {target, value, ..} => {
+            Stmt::AssignDeref {target, value, span} => {
+                if self.expr_is_owning(target) {
+                    self.errors.push(LexoraError::Custom{
+                        message: "owning pointee'ye deref-atama henuz desteklenmiyor (eski deger sizardi)".to_string(),
+                        span: *span,
+                    });
+                }
                 self.read_place(target);
                 self.consume_expr(value);
             }
-            Stmt::Match { scrutinee, arms, .. } => {
-                self.consume_expr(scrutinee);
-                let entry = self.scopes.clone();
-                let mut joined: Option<Vec<HashMap<Symbol, BindState>>> = None;
-                for (pat, body) in arms.iter() {
-                    self.scopes = entry.clone();
-                    self.enter();
-                    if let Pattern::Variant { bindings, .. } = pat {
-                        for b in bindings.iter() {
-                            self.bind(*b, false);
-                        }
-                    }
-                    for s in body.iter() { self.check_stmt(s); }
-                    self.exit();
-                    let after = self.scopes.clone();
-                    joined = Some(match joined {
-                        None => after,
-                        Some(j) => join_scopes(&j, &after),
-                    });
-                }
-                if let Some(j) = joined {
-                    self.scopes = j;
-                }
-            }
+           
             Stmt::Error(_) => {}
         }
     }
-    fn check_loop(&mut self, body: &[Stmt], span: Span, loop_var: Option<Symbol>) {
+    fn check_loop(&mut self, body: &Block, span: Span, loop_var: Option<Symbol>) {
         let entry = self.scopes.clone();
         self.enter();
         if let Some(v) = loop_var {
             self.bind(v, false);
         }
-        for s in body.iter() {
+        for s in body.stmts.iter() {
             self.check_stmt(s);
+        }
+        if let Some(t) = body.tail {
+            self.consume_expr(t);
         }
         self.exit();
         let mut moved_outer = false;
@@ -224,7 +206,22 @@ impl<'a> MoveChecker<'a> {
                 }
             }
             Expr::Box{value,..} =>self.consume_expr(value),
-            Expr::Deref{target, ..} => self.read_place(target),
+            Expr::Deref{target, span, id} => {
+                if self.expr_is_owning(expr) {
+                    if matches!(target, Expr::Identifier(..)) {
+                        self.consume_expr(target);
+                        self.moves.insert(*id);
+                    } else {
+                        self.errors.push(LexoraError::Custom{
+                            message: "Box icinden owning deger deref ile tasinamaz (yalnizca *degisken formunda tasinabilir)".to_string(),
+                            span: *span,
+                        });
+                        self.read_place(target);
+                    }
+                }else{
+                    self.read_place(target);
+                }
+            }
             Expr::Call{args,..} =>{
                 for arg in args.iter() {
                     self.consume_expr(arg);
@@ -253,6 +250,61 @@ impl<'a> MoveChecker<'a> {
             }
             Expr::EnumVariant { args, .. } => {
                 for a in args.iter() { self.consume_expr(a); }
+            }
+            Expr::Match { scrutinee, arms, .. } => {
+                self.consume_expr(scrutinee);
+                let entry = self.scopes.clone();
+                let mut joined: Option<Vec<HashMap<Symbol, BindState>>> = None;
+                for (pat, body) in arms.iter() {
+                    self.scopes = entry.clone();
+                    self.enter();
+                    if let Pattern::Variant { enum_name, variant, bindings } = pat {
+                        let ftys = self.enums.get(enum_name)
+                            .and_then(|vs| vs.iter().find(|(v, _)| v == variant))
+                            .map(|(_, t)| t.clone())
+                            .unwrap_or_default();
+                        for (i, b) in bindings.iter().enumerate() {
+                            let owning = ftys.get(i).map_or(false, |t| self.is_owning(t));
+                            self.bind(*b, owning);
+                        }
+                    }
+                    for s in body.stmts.iter() { self.check_stmt(s); }
+                    if let Some(t) = body.tail {
+                        self.consume_expr(t);
+                    }
+                    self.exit();
+                    let after = self.scopes.clone();
+                    joined = Some(match joined {
+                        None => after,
+                        Some(j) => join_scopes(&j, &after),
+                    });
+                }
+                if let Some(j) = joined {
+                    self.scopes = j;
+                }
+
+            }
+            Expr::If { condition, then_body, else_body, .. } => {
+                self.consume_expr(condition);
+                let entry = self.scopes.clone();
+                self.enter();
+                for s in then_body.stmts.iter() { self.check_stmt(s); }
+                if let Some(t) = then_body.tail {
+                    self.consume_expr(t);
+                }
+                self.exit();
+                let after_then = self.scopes.clone();
+                self.scopes = entry.clone();
+                if let Some(eb) = else_body {
+                    self.enter();
+                    for s in eb.stmts.iter() { self.check_stmt(s); }
+                    if let Some(t) = eb.tail {
+                        self.consume_expr(t);
+                    }
+                    self.exit();
+                }
+                let after_else = self.scopes.clone();
+                self.scopes = join_scopes(&after_then, &after_else);
             }
             Expr::Integer(..) | Expr::Bool(..) | Expr::StringLiteral(..) | Expr::Error(..) => {}
         }

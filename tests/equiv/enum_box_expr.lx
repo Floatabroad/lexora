@@ -1,0 +1,17 @@
+enum E { A(Box<i32>), B }
+
+fn take(e: E) -> i32 {
+    match e {
+        E::A(p) => { return *p; }
+        _ => { return 0; }
+    }
+}
+
+fn main() -> i32 {
+    print(take(E::A(box 42)));
+    print(take(E::B));
+    let b: Box<E> = box E::A(box 7);
+    let d: E = E::A(box 100);
+    print(take(d));
+    return 0;
+}

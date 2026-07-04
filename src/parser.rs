@@ -239,24 +239,93 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         self.expect(Token::RightBrace)?;
         Ok(EnumDef { name, variants, span: start.merge(end) })
     }
-    fn parse_block(&mut self) -> Result<(&'arena [Stmt<'arena>], Span), LexoraError> {
+
+    fn parse_value_block(&mut self) -> Result<Block<'arena>, LexoraError> {
+        let start = self.current.span;
         self.expect(Token::LeftBrace)?;
         let mut stmts: Vec<Stmt<'arena>> = Vec::new();
+        let mut tail: Option<&'arena Expr<'arena>> = None;
         while !matches!(self.current.token, Token::RightBrace | Token::Eof | Token::Fn | Token::Struct | Token::Import) {
-            match self.parse_statement(){
-                Ok(s) => stmts.push(s),
-                Err(e) => {
-                  let span = e.span().unwrap_or(self.current.span);
-                    self.errors.push(e);
-                    self.synchronize();
-                    stmts.push(Stmt::Error(span));
-                }
+            let starts_stmt = matches!(self.current.token,
+                Token::Let | Token::Return | Token::While | Token::For);
+            let result = if starts_stmt {
+                self.parse_statement().map(|s| stmts.push(s))
+            } else {
+                let stmt_start = self.current.span;
+                self.parse_expr().and_then(|expr| {
+                    if self.current.token == Token::Equals {
+                        self.advance();
+                        let value = self.parse_expr()?;
+                        let end = self.current.span;
+                        self.expect(Token::Semicolon)?;
+                        let stmt = self.assign_stmt(expr, value, stmt_start.merge(end))?;
+                        stmts.push(stmt);
+                        Ok(())
+                    } else if self.current.token == Token::RightBrace {
+                        if Self::expr_is_valueless(&expr) {
+                            let end = expr.span();
+                            stmts.push(Stmt::Expr(expr, stmt_start.merge(end)));
+                        } else {
+                            tail = Some(self.arena.alloc(expr));
+                        }
+                        Ok(())
+                    } else if matches!(expr, Expr::Match { .. } | Expr::If { .. }) {
+                        let end = expr.span();
+                        if self.current.token == Token::Semicolon {
+                            self.advance();
+                        }
+                        stmts.push(Stmt::Expr(expr, stmt_start.merge(end)));
+                        Ok(())
+                    } else {
+                        let end = self.current.span;
+                        self.expect(Token::Semicolon)
+                            .map(|_| stmts.push(Stmt::Expr(expr, stmt_start.merge(end))))
+                    }
+                })
+            };
+            if let Err(e) = result {
+                let span = e.span().unwrap_or(self.current.span);
+                self.errors.push(e);
+                self.synchronize();
+                stmts.push(Stmt::Error(span));
             }
         }
         let end = self.current.span;
         self.expect(Token::RightBrace)?;
-        let body = self.arena.alloc_slice_fill_iter(stmts.into_iter());
-        Ok((body, end))
+        let stmts = self.arena.alloc_slice_fill_iter(stmts.into_iter());
+        Ok(Block { stmts, tail, span: start.merge(end) })
+    }
+    fn assign_stmt(&mut self, target: Expr<'arena>, value: Expr<'arena>, span: Span) -> Result<Stmt<'arena>, LexoraError> {
+        match target {
+            Expr::Identifier(name, _, _) =>
+                Ok(Stmt::Assign { name, value, span }),
+            Expr::Index { array: &Expr::Identifier(name, _, _), index, .. } =>
+                Ok(Stmt::AssignIndex { name, index: index.clone(), value, span }),
+            Expr::FieldAccess { object: &Expr::Identifier(object, _, _), field, .. } =>
+                Ok(Stmt::AssignField { object, field, value, span }),
+            Expr::Deref { .. } =>
+                Ok(Stmt::AssignDeref { target, value, span }),
+            other => Err(LexoraError::Custom {
+                message: "gecersiz atama hedefi".to_string(),
+                span: other.span(),
+            }),
+        }
+    }
+    fn expr_is_valueless(expr: &Expr) -> bool {
+        match expr {
+            Expr::Match { arms, .. } => arms.iter().all(|(_, b)| Self::block_is_valueless(b)),
+            Expr::If { then_body, else_body, .. } => match else_body {
+                None => true,
+                Some(eb) => Self::block_is_valueless(then_body) && Self::block_is_valueless(eb),
+            },
+            _ => false,
+        }
+    }
+    fn block_is_valueless(block: &Block) -> bool {
+        match block.tail {
+            None => true,
+            Some(t) => Self::expr_is_valueless(t),
+        }
     }
     fn parse_import(&mut self) -> Result<&'arena str, LexoraError> {
         self.expect(Token::Import)?;
@@ -300,108 +369,57 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 self.expect(Token::Semicolon)?;
                 Ok(Stmt::Return(value, start.merge(end)))
             }
-            Token::If   => self.parse_if(),
+
             Token::While => self.parse_while(),
             Token::For  => self.parse_for(),
-            Token::Match => self.parse_match(),
-            Token::Identifier(_) => {
-                match self.peek.token.clone() {
-                    Token::Equals => {
-                        let name = self.parse_symbol()?;
-                        self.expect(Token::Equals)?;
-                        let value = self.parse_expr()?;
-                        let end = self.current.span;
-                        self.expect(Token::Semicolon)?;
-                        Ok(Stmt::Assign { name, value, span: start.merge(end) })
-                    }
-                    Token::LeftBracket => {
-                        let name = self.parse_symbol()?;
-                        self.expect(Token::LeftBracket)?;
-                        let index = self.parse_expr()?;
-                        self.expect(Token::RightBracket)?;
-                        self.expect(Token::Equals)?;
-                        let value = self.parse_expr()?;
-                        let end = self.current.span;
-                        self.expect(Token::Semicolon)?;
-                        Ok(Stmt::AssignIndex { name, index, value, span: start.merge(end) })
-                    }
-                    Token::Dot => {
-                        let object = self.parse_symbol()?;
-                        self.expect(Token::Dot)?;
-                        let field = self.parse_symbol()?;
-                        self.expect(Token::Equals)?;
-                        let value = self.parse_expr()?;
-                        let end = self.current.span;
-                        self.expect(Token::Semicolon)?;
-                        Ok(Stmt::AssignField { object, field, value, span: start.merge(end) })
-                    }
-
-                    _ => {
-                        let expr = self.parse_expr()?;
-                        let end = self.current.span;
-                        self.expect(Token::Semicolon)?;
-                        Ok(Stmt::Expr(expr, start.merge(end)))
-                    }
-                }
-            }
-            Token::Star => {
-                let expr = self.parse_expr()?;
-                if self.current.token == Token::Equals {
-                    self.advance();
-                    let value = self.parse_expr()?;
-                    let end = self.current.span;
-                    self.expect(Token::Semicolon)?;
-                    Ok(Stmt::AssignDeref { target: expr, value, span: start.merge(end) })
-                } else {
-                    let end = self.current.span;
-                    self.expect(Token::Semicolon)?;
-                    Ok(Stmt::Expr(expr, start.merge(end)))
-                }
-            }
-            _ => {
-                let expr = self.parse_expr()?;
-                let end = self.current.span;
-                self.expect(Token::Semicolon)?;
-                Ok(Stmt::Expr(expr, start.merge(end)))
-            }
+            _ => Err(LexoraError::UnexpectedToken {
+                expected: "statement".to_string(),
+                found: format!("{:?}", self.current.token),
+                span: start,
+            }),
         }
     }
 
-    fn parse_if(&mut self) -> Result<Stmt<'arena>, LexoraError> {
+    fn parse_if_expr(&mut self) -> Result<Expr<'arena>, LexoraError> {
         let start = self.current.span;
         self.expect(Token::If)?;
-
         self.allow_struct_literal = false;
         let condition = self.parse_expr()?;
         self.allow_struct_literal = true;
-
-        let (then_body, end) = self.parse_block()?;
-
-        let else_branch = if self.current.token == Token::Else {
+        let then_body = self.parse_value_block()?;
+        let mut end = then_body.span;
+        let else_body = if self.current.token == Token::Else {
             self.advance();
-            if self.current.token == Token::If {
-                let else_if = self.parse_if()?;
-                Some(self.arena.alloc_slice_fill_iter(std::iter::once(else_if)) as &[Stmt<'arena>])
+            let blk = if self.current.token == Token::If {
+                let else_if = self.parse_if_expr()?;
+                let espan = else_if.span();
+                Block { stmts: &[], tail: Some(self.arena.alloc(else_if)), span: espan }
             } else {
-               let (else_body, _) = self.parse_block()?;
-                Some(else_body)
-            }
+                self.parse_value_block()?
+            };
+            end = blk.span;
+            Some(&*self.arena.alloc(blk))
         } else {
             None
         };
-        Ok(Stmt::If { condition, then_body, else_branch, span: start.merge(end) })
+        Ok(Expr::If {
+            condition: self.arena.alloc(condition),
+            then_body: self.arena.alloc(then_body),
+            else_body,
+            span: start.merge(end),
+            id: self.next_id(),
+        })
     }
 
     fn parse_while(&mut self) -> Result<Stmt<'arena>, LexoraError> {
         let start = self.current.span;
         self.expect(Token::While)?;
-
         self.allow_struct_literal = false;
         let condition = self.parse_expr()?;
         self.allow_struct_literal = true;
-
-        let (body, end) = self.parse_block()?;
-        Ok(Stmt::While { condition, body, span: start.merge(end) })
+        let body = self.parse_value_block()?;
+        let span = start.merge(body.span);
+        Ok(Stmt::While { condition, body, span })
     }
 
     fn parse_for(&mut self) -> Result<Stmt<'arena>, LexoraError> {
@@ -409,29 +427,33 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         self.expect(Token::For)?;
         let var = self.parse_symbol()?;
         self.expect(Token::In)?;
-
         self.allow_struct_literal = false;
         let from = self.parse_expr()?;
         self.expect(Token::DotDot)?;
         let to = self.parse_expr()?;
         self.allow_struct_literal = true;
-
-
-        let (body, end) = self.parse_block()?;
-        Ok(Stmt::For { var, from, to, body, span: start.merge(end) })
+        let body = self.parse_value_block()?;
+        let span = start.merge(body.span);
+        Ok(Stmt::For { var, from, to, body, span })
     }
-    fn parse_match(&mut self) -> Result<Stmt<'arena>, LexoraError> {
+    fn parse_match_expr(&mut self) -> Result<Expr<'arena>, LexoraError> {
         let start = self.current.span;
         self.expect(Token::Match)?;
         self.allow_struct_literal = false;
         let scrutinee = self.parse_expr()?;
         self.allow_struct_literal = true;
         self.expect(Token::LeftBrace)?;
-        let mut arms: Vec<(Pattern<'arena>, &'arena [Stmt<'arena>])> = Vec::new();
+        let mut arms: Vec<(Pattern<'arena>, Block<'arena>)> = Vec::new();
         while self.current.token != Token::RightBrace && self.current.token != Token::Eof {
             let pat = self.parse_pattern()?;
             self.expect(Token::FatArrow)?;
-            let (body, _) = self.parse_block()?;
+            let body = if self.current.token == Token::LeftBrace {
+                self.parse_value_block()?
+            } else {
+                let expr = self.parse_expr()?;
+                let espan = expr.span();
+                Block { stmts: &[], tail: Some(self.arena.alloc(expr)), span: espan }
+            };
             arms.push((pat, body));
             if self.current.token == Token::Comma {
                 self.advance();
@@ -440,7 +462,12 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let end = self.current.span;
         self.expect(Token::RightBrace)?;
         let arms = self.arena.alloc_slice_fill_iter(arms.into_iter());
-        Ok(Stmt::Match { scrutinee, arms, span: start.merge(end) })
+        Ok(Expr::Match {
+            scrutinee: self.arena.alloc(scrutinee),
+            arms,
+            span: start.merge(end),
+            id: self.next_id(),
+        })
     }
     fn parse_pattern(&mut self) -> Result<Pattern<'arena>, LexoraError> {
         if matches!(self.current.token, Token::Identifier("_")) {
@@ -697,6 +724,8 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     let elems = self.arena.alloc_slice_fill_iter(elems.into_iter());
                     Ok(Expr::ArrayLiteral(elems, start.merge(end), self.next_id()))
                 }
+            Token::Match => self.parse_match_expr(),
+           Token::If => self.parse_if_expr(),
             Token::Identifier(_) => {
                 let name = self.parse_symbol()?;
                 if self.current.token == Token::ColonColon {
@@ -801,10 +830,11 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             self.expect(Token::Arrow)?;
             let return_type = self.parse_type()?;
 
-            let (body, end) = self.parse_block()?;
+            let body = self.parse_value_block()?;
             let params = self.arena.alloc_slice_fill_iter(params.into_iter());
+            let span = start.merge(body.span);
 
-            Ok(Function { name, params, return_type, body, span: start.merge(end) })
+            Ok(Function { name, params, return_type, body, span })
         }
 
 }

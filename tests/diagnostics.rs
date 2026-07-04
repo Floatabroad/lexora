@@ -53,4 +53,6 @@ diag_tests!(
     lex_recovery,
     multi_error_stmt,
     cond_recovery,
+    deref_move,
+    enum_field_type,
 );

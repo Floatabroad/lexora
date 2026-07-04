@@ -1,0 +1,20 @@
+enum List { Cons(i32, Box<List>), Nil }
+
+fn sum(l: List) -> i32 {
+    match l {
+        List::Cons(v, rest) => {
+            let tail: List = *rest;
+            return v + sum(tail);
+        }
+        List::Nil => { return 0; }
+    }
+}
+
+fn main() -> i32 {
+    let l: List = List::Cons(1, box List::Cons(2, box List::Cons(3, box List::Nil)));
+    print(sum(l));
+    let b: Box<Box<i32>> = box box 42;
+    let c: Box<i32> = *b;
+    print(*c);
+    return 0;
+}

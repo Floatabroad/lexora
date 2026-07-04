@@ -71,7 +71,19 @@ pub enum Expr<'arena> {
         span: Span,
         id: ExprId,
     },
-
+    Match {
+        scrutinee: &'arena Expr<'arena>,
+        arms: &'arena [(Pattern<'arena>, Block<'arena>)],
+        span: Span,
+        id: ExprId,
+    },
+    If{
+        condition: &'arena Expr<'arena>,
+        then_body: &'arena Block<'arena>,
+        else_body: Option<&'arena Block<'arena>>,
+        span: Span,
+        id: ExprId,
+    },
     Error(Span, ExprId),
 }
 
@@ -99,12 +111,7 @@ pub enum Stmt<'arena> {
     },
     Return(Expr<'arena>, Span),
     Expr(Expr<'arena>, Span),
-    If {
-        condition: Expr<'arena>,
-        then_body: &'arena [Stmt<'arena>],
-        else_branch: Option<&'arena [Stmt<'arena>]>,
-        span: Span,
-    },
+
     Assign {
         name: Symbol,
         value: Expr<'arena>,
@@ -112,14 +119,14 @@ pub enum Stmt<'arena> {
     },
     While {
         condition: Expr<'arena>,
-        body: &'arena [Stmt<'arena>],
+        body: Block<'arena>,
         span: Span,
     },
     For {
         var: Symbol,
         from: Expr<'arena>,
         to: Expr<'arena>,
-        body: &'arena [Stmt<'arena>],
+        body: Block<'arena>,
         span: Span,
     },
     AssignIndex {
@@ -139,11 +146,7 @@ pub enum Stmt<'arena> {
         value: Expr<'arena>,
         span: Span,
     },
-    Match {
-        scrutinee: Expr<'arena>,
-        arms: &'arena [(Pattern<'arena>, &'arena [Stmt<'arena>])],
-        span: Span,
-    },
+
     Error(Span),
 }
 
@@ -158,11 +161,19 @@ pub enum Type {
 }
 
 #[derive(Debug, Clone)]
+pub struct Block<'arena> {
+    pub stmts: &'arena [Stmt<'arena>],
+    pub tail: Option<&'arena Expr<'arena>>,
+    pub span: Span,
+}
+
+
+#[derive(Debug, Clone)]
 pub struct Function<'arena> {
     pub name: Symbol,
     pub params: &'arena [(Symbol, Type)],
     pub return_type: Type,
-    pub body: &'arena [Stmt<'arena>],
+    pub body: Block<'arena>,
     pub span: Span,
 }
 
@@ -213,6 +224,8 @@ impl<'arena> Expr<'arena> {
             Expr::Deref { span, .. } => *span,
             Expr::Error(s, _) => *s,
             Expr::EnumVariant{span, ..} => *span,
+            Expr::Match { span, .. } => *span,
+            Expr::If{span, ..} => *span
 
         }
     }
@@ -234,6 +247,8 @@ impl<'arena> Expr<'arena> {
             Expr::Deref { id, .. } => *id,
             Expr::Error(_, id) => *id,
             Expr::EnumVariant{id, ..} => *id,
+            Expr::Match { id, .. } => *id,
+           Expr::If{id, ..} => *id
         }
     }
 }
@@ -244,14 +259,14 @@ impl<'arena> Stmt<'arena> {
             Stmt::Let { span, ..} => *span,
             Stmt::Return(_, span) => *span,
             Stmt::Expr(_, span) => *span,
-            Stmt::If { span, .. } => *span,
+           
             Stmt::Assign { span, .. } => *span,
             Stmt::While { span, .. } => *span,
             Stmt::For { span, .. } => *span,
             Stmt::AssignIndex { span, .. } => *span,
             Stmt::AssignField { span, .. } => *span,
             Stmt::AssignDeref { span, .. } => *span,
-            Stmt::Match { span, .. } => *span,
+
             Stmt::Error(span) => *span,
         }
     }

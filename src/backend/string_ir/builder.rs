@@ -351,6 +351,12 @@ impl<'i> IrBuilder<'i> {
     pub fn build_free(&mut self, ptr: Value) {
         self.output.push_str(&format!("  call void @lexora_free(ptr {})\n", ptr.to_ir_str(), ));
     }
+    pub fn emit_drop_function_begin(&mut self, enum_name: Symbol) {
+        self.output.push_str(&format!("define void @drop.enum.{}(ptr %s) {{\n", enum_name.0));
+    }
+    pub fn build_call_drop_enum(&mut self, enum_name: Symbol, ptr: Value) {
+        self.output.push_str(&format!("  call void @drop.enum.{}(ptr {})\n", enum_name.0, ptr.to_ir_str()));
+    }
     pub fn add_string_global(&mut self, s: &str) -> (Value, usize) {
         let id = self.next_global;
         self.next_global +=1;

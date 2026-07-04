@@ -1,0 +1,17 @@
+enum List { Cons(i32, Box<List>), Nil }
+
+fn main() -> i32 {
+    let l: List = List::Cons(1, box List::Cons(2, box List::Cons(3, box List::Nil)));
+    match l {
+        List::Cons(v, rest) => { print(v); }
+        List::Nil => { print(0); }
+    }
+    let w: List = List::Cons(7, box List::Nil);
+    match w {
+        List::Nil => { print(200); }
+        _ => { print(300); }
+    }
+    let d: List = List::Cons(9, box List::Nil);
+    print(100);
+    return 0;
+}

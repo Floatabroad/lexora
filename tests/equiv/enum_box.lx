@@ -1,0 +1,47 @@
+enum E {
+    A(Box<i32>),
+    B,
+    C,
+}
+
+fn consume(x: E) -> i32 {
+    match x {
+        E::A(p) => { return *p; }
+        E::B => { return 0; }
+        E::C => { return 0; }
+    }
+}
+
+fn main() -> i32 {
+    let a: E = E::A(box 100);
+    match a {
+        E::A(p) => { print(*p); }
+        E::B => { print(0); }
+        E::C => { print(0); }
+    }
+
+    let b: E = E::A(box 200);
+    match b {
+        E::B => { print(1); }
+        _ => { print(2); }
+    }
+
+    let c: E = E::B;
+    match c {
+        E::A(p) => { print(*p); }
+        _ => { print(3); }
+    }
+
+    let d: E = E::A(box 300);
+    let e: E = d;
+    match e {
+        E::A(p) => { print(*p); }
+        _ => { print(0); }
+    }
+
+    let arg: E = E::A(box 400);
+    let v: i32 = consume(arg);
+    print(v);
+
+    return 0;
+}

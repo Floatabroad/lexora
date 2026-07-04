@@ -37,7 +37,7 @@ fn sum_to(n: i32) -> i32 {
         total = total + i;
         i = i + 1;
     }
-    return total;
+    total
 }
 
 fn main() -> i32 {
@@ -48,7 +48,8 @@ fn main() -> i32 {
 }
 ```
 
-Heap allocation, enums, and pattern matching:
+Enums, pattern matching, and heap-owning recursive types — a linked list that
+builds, traverses, and frees itself:
 
 ```rust
 enum Shape {
@@ -58,18 +59,32 @@ enum Shape {
 
 fn area(s: Shape) -> i32 {
     match s {
-        Shape::Circle(r) => { return r * r * 3; }
-        Shape::Rect(w, h) => { return w * h; }
+        Shape::Circle(r) => r * r * 3,
+        Shape::Rect(w, h) => w * h,
+    }
+}
+
+enum List {
+    Cons(i32, Box<List>),
+    Nil,
+}
+
+fn sum(l: List) -> i32 {
+    match l {
+        List::Cons(v, rest) => v + sum(*rest),
+        List::Nil => 0,
     }
 }
 
 fn main() -> i32 {
-    let boxed: Box<i32> = box 41;
-    *boxed = *boxed + 1;
-    print(*boxed);                  // 42 — freed automatically at scope exit
-
     print(area(Shape::Circle(10))); // 300
     print(area(Shape::Rect(4, 5))); // 20
+
+    let l: List = List::Cons(1, box List::Cons(2, box List::Cons(3, box List::Nil)));
+    print(sum(l));                  // 6 — every node freed, valgrind-clean
+
+    let max: i32 = if 3 > 2 { 3 } else { 2 };
+    print(max);                     // if and match are expressions
     return 0;
 }
 ```
@@ -80,10 +95,11 @@ fn main() -> i32 {
 - **Type inference** — the annotation on `let` is optional (`let x = 42;`); the type checker infers the variable's type from its initializer. There's no implicit widening, so the inferred type is always unambiguous
 - **Functions** — typed parameters and return values
 - **Control flow** — `if` / `else if` / `else`, `while`, `for i in a..b`
+- **Expression-oriented** — blocks produce values: the last expression of a block (no trailing `;`) is its value, so a function body can end in a plain expression instead of `return`. `if` and `match` are expressions too (`let max = if a > b { a } else { b };`), lowered through a shared result-slot pattern that `mem2reg` promotes into SSA phis. Statements are parsed expression-first, rustc-style — an assignment is just an expression followed by `=`, so any place expression works on the left-hand side
 - **Operators** — arithmetic, comparison, logical (`and` / `or` / `not`), unary negation, explicit `as` casts
 - **Aggregates** — array literals, indexing, struct literals, field access and assignment
-- **Heap & ownership** — `box e` allocates on the heap (`Box<T>`), `*b` reads/writes through it. Values are *moved* rather than copied, and an ownership pass (modelled on rustc's borrow checker) tracks moves across branches and loops at compile time. Drops are elaborated automatically — each owning slot gets a drop flag, scope exit frees what's still live, and nested boxes are freed recursively (drop glue). No leaks, no double-frees; verified leak-free under `valgrind`
-- **Enums & pattern matching** — C-like enums (`enum Color { Red, Green, Blue }`) and data-carrying variants (`enum Shape { Circle(i32), Rect(i32, i32) }`), matched with `match` — including binding the payload (`Shape::Rect(w, h) => ...`), a `_` wildcard, and compile-time exhaustiveness checking
+- **Heap & ownership** — `box e` allocates on the heap (`Box<T>`), `*b` reads/writes through it, and `let inner = *b;` *moves out* of a box — the contents transfer to the new owner and the heap block is freed on the spot. Values are *moved* rather than copied, and an ownership pass (modelled on rustc's borrow checker) tracks moves across branches and loops at compile time. Drops are elaborated automatically — each owning slot gets a drop flag, scope exit frees what's still live, and nested boxes are freed recursively (drop glue). No leaks, no double-frees; verified leak-free under `valgrind`
+- **Enums & pattern matching** — C-like enums (`enum Color { Red, Green, Blue }`), data-carrying variants (`enum Shape { Circle(i32), Rect(i32, i32) }`), and heap-owning variants (`Box<T>` fields), which makes recursive types like linked lists possible: `enum List { Cons(i32, Box<List>), Nil }`. Every owning enum gets a generated per-type drop function, so freeing a list recurses at runtime instead of unrolling at compile time. `match` works on any expression, arms are `=> expr` or `=> { ...; expr }` blocks with payload binding (`Shape::Rect(w, h) => w * h`), a `_` wildcard, and compile-time exhaustiveness checking
 - **Built-ins** — `print(...)` for integers, booleans, and strings
 - **Runtime safety** — checked division (divide-by-zero), array bounds checks, and overflow-checked `+` / `-` / `*`; a violation prints a diagnostic and exits non-zero instead of misbehaving
 - **Diagnostics** — compile errors are rendered rustc-style: the offending source line(s), a caret underline (which spans multiple lines when the error does), a short inline label, and `note` / `help` lines. Identifier typos get a Levenshtein-based "did you mean?" suggestion. The lexer, parser, and type checker all *recover* from errors — bad nodes are poisoned so a single statement can surface several independent errors without spurious cascades, and the compiler reports as many as it can in one run (capped) instead of stopping at the first. Locations resolve through a source map, so they stay correct even when the error lives in an imported file
@@ -196,13 +212,21 @@ programs can be stepped through in `gdb` / `lldb` with full line, parameter,
 local-variable, and struct information.
 
 Beyond the stack-only core, the language now has a heap: `Box<T>` with move
-semantics, a compile-time ownership pass, and automatic RAII drops (including
-recursive drop glue for nested boxes) — both backends are byte-identical here and
-the box corpus is leak-free under `valgrind`. On top of that sit `enum`s and
-`match`: C-like enums lower to an `i32` tag, while data-carrying variants use a
-tagged-union layout (`{ tag, payload }` with a per-variant struct view), and
-pattern matching binds payloads with compile-time exhaustiveness checks. Enum
-payloads are currently scalar; richer payloads (boxes, structs) are next.
+semantics, a compile-time ownership pass, deref-moves out of boxes, and
+automatic RAII drops (including recursive drop glue for nested boxes) — both
+backends are byte-identical here and the heap corpus is leak-free under
+`valgrind`. On top of that sit `enum`s and `match`: C-like enums lower to an
+`i32` tag, data-carrying variants use a tagged-union layout (`{ tag, payload }`
+with a per-variant struct view), and variants can own heap data — recursive
+types like `enum List { Cons(i32, Box<List>), Nil }` build, traverse
+(`sum(*rest)` moves each node out of its box), and free themselves through
+generated per-type drop functions.
+
+The language has also completed a full expression-oriented transition: blocks
+have values, function bodies can end in a trailing expression, `if` and `match`
+are expressions, match scrutinees are arbitrary expressions, and statements are
+parsed expression-first — one unified block grammar throughout. Next up:
+`Option` / `Result` and a `?` operator.
 
 It's still a learning project, so expect rough edges, missing features, and the
 occasional `unimplemented!()` — I add things as I get to them.

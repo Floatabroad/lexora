@@ -1,0 +1,6 @@
+error: Box icinden owning deger deref ile tasinamaz (yalnizca *degisken formunda tasinabilir)
+ --> tests/diagnostics/deref_move.lx:3:23
+  |
+3 |     let c: Box<i32> = **b;
+  |                       ^^^
+error: 1 hata yuzunden durduruldu

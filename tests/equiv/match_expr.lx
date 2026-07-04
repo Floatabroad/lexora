@@ -1,0 +1,38 @@
+enum Shape { Circle(i32), Rect(i32, i32), Dot }
+enum List { Cons(i32, Box<List>), Nil }
+
+fn area(s: Shape) -> i32 {
+    match s {
+        Shape::Circle(r) => r * r * 3,
+        Shape::Rect(w, h) => w * h,
+        Shape::Dot => 0,
+    }
+}
+
+fn sum(l: List) -> i32 {
+    match l {
+        List::Cons(v, rest) => v + sum(*rest),
+        List::Nil => 0,
+    }
+}
+
+fn describe(s: Shape) -> i32 {
+    let code: i32 = match s {
+        Shape::Dot => 1,
+        _ => {
+            let base: i32 = 10;
+            base + 5
+        },
+    };
+    code
+}
+
+fn main() -> i32 {
+    print(area(Shape::Rect(3, 4)));
+    print(area(Shape::Circle(5)));
+    let l: List = List::Cons(1, box List::Cons(2, box List::Cons(3, box List::Nil)));
+    print(sum(l));
+    print(describe(Shape::Dot));
+    print(describe(Shape::Rect(9, 9)));
+    return 0;
+}
