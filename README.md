@@ -48,8 +48,8 @@ fn main() -> i32 {
 }
 ```
 
-Enums, pattern matching, and heap-owning recursive types — a linked list that
-builds, traverses, and frees itself:
+Enums, pattern matching, generics, and heap-owning recursive types — a generic
+linked list that builds, traverses, and frees itself:
 
 ```rust
 enum Shape {
@@ -64,12 +64,12 @@ fn area(s: Shape) -> i32 {
     }
 }
 
-enum List {
-    Cons(i32, Box<List>),
+enum List<T> {
+    Cons(T, Box<List<T>>),
     Nil,
 }
 
-fn sum(l: List) -> i32 {
+fn sum(l: List<i32>) -> i32 {
     match l {
         List::Cons(v, rest) => v + sum(*rest),
         List::Nil => 0,
@@ -80,7 +80,7 @@ fn main() -> i32 {
     print(area(Shape::Circle(10))); // 300
     print(area(Shape::Rect(4, 5))); // 20
 
-    let l: List = List::Cons(1, box List::Cons(2, box List::Cons(3, box List::Nil)));
+    let l = List::Cons(1, box List::Cons(2, box List::Cons(3, box List::<i32>::Nil)));
     print(sum(l));                  // 6 — every node freed, valgrind-clean
 
     let max: i32 = if 3 > 2 { 3 } else { 2 };
@@ -100,6 +100,7 @@ fn main() -> i32 {
 - **Aggregates** — array literals, indexing, struct literals, field access and assignment
 - **Heap & ownership** — `box e` allocates on the heap (`Box<T>`), `*b` reads/writes through it, and `let inner = *b;` *moves out* of a box — the contents transfer to the new owner and the heap block is freed on the spot. Values are *moved* rather than copied, and an ownership pass (modelled on rustc's borrow checker) tracks moves across branches and loops at compile time. Drops are elaborated automatically — each owning slot gets a drop flag, scope exit frees what's still live, and nested boxes are freed recursively (drop glue). No leaks, no double-frees; verified leak-free under `valgrind`
 - **Enums & pattern matching** — C-like enums (`enum Color { Red, Green, Blue }`), data-carrying variants (`enum Shape { Circle(i32), Rect(i32, i32) }`), and heap-owning variants (`Box<T>` fields), which makes recursive types like linked lists possible: `enum List { Cons(i32, Box<List>), Nil }`. Every owning enum gets a generated per-type drop function, so freeing a list recurses at runtime instead of unrolling at compile time. `match` works on any expression, arms are `=> expr` or `=> { ...; expr }` blocks with payload binding (`Shape::Rect(w, h) => w * h`), a `_` wildcard, and compile-time exhaustiveness checking
+- **Generic enums (monomorphization)** — enums take type parameters (`enum Option<T> { Some(T), None }`, multi-parameter `enum Pair<A, B>` too), compiled the way rustc does it: the generic definition itself is never lowered — each concrete instantiation gets its own layout and, if it owns heap data, its own drop function, under a mangled name (`Option<i32>` and `Option<Box<i32>>` are two separate types in the emitted IR). Type arguments are inferred from constructor arguments by structural unification — `Option::Some(box 7)` is an `Option<Box<i32>>` with no annotation needed — or written explicitly with a turbofish (`Option::<i32>::None`) when there is nothing to infer from. Recursive generic types work end-to-end: `List<i32>` monomorphizes into a self-recursive drop function
 - **Built-ins** — `print(...)` for integers, booleans, and strings
 - **Runtime safety** — checked division (divide-by-zero), array bounds checks, and overflow-checked `+` / `-` / `*`; a violation prints a diagnostic and exits non-zero instead of misbehaving
 - **Diagnostics** — compile errors are rendered rustc-style: the offending source line(s), a caret underline (which spans multiple lines when the error does), a short inline label, and `note` / `help` lines. Identifier typos get a Levenshtein-based "did you mean?" suggestion. The lexer, parser, and type checker all *recover* from errors — bad nodes are poisoned so a single statement can surface several independent errors without spurious cascades, and the compiler reports as many as it can in one run (capped) instead of stopping at the first. Locations resolve through a source map, so they stay correct even when the error lives in an imported file
@@ -225,8 +226,17 @@ generated per-type drop functions.
 The language has also completed a full expression-oriented transition: blocks
 have values, function bodies can end in a trailing expression, `if` and `match`
 are expressions, match scrutinees are arbitrary expressions, and statements are
-parsed expression-first — one unified block grammar throughout. Next up:
-`Option` / `Result` and a `?` operator.
+parsed expression-first — one unified block grammar throughout.
+
+Most recently, enums went generic — with real monomorphization rather than
+type erasure. The type checker resolves each instantiation (inferring type
+arguments from constructor arguments via structural unification, with a
+turbofish escape hatch), records every concrete instantiation in a table, and
+both backends then emit one layout and one drop function per instantiation
+under mangled names — a generic definition by itself produces no code at all.
+That makes `Option<T>` / `Result<T, E>` plain library-style definitions instead
+of compiler builtins, and both backends stay byte-identical (and valgrind-clean)
+across the generic corpus. Next up: the `?` operator.
 
 It's still a learning project, so expect rough edges, missing features, and the
 occasional `unimplemented!()` — I add things as I get to them.

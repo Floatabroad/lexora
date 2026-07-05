@@ -1,0 +1,11 @@
+error: 'Option::None' icin tip cikarimi yapacak arguman yok; turbofish kullanin: Option::<T>::None
+ --> tests/diagnostics/generic_infer.lx:6:13
+  |
+6 |     let b = Option::None;
+  |             ^^^^^^^^^^^^
+error: 'Result::Ok' icin 'E' tip parametresi cikarilamiyor; turbofish kullanin
+ --> tests/diagnostics/generic_infer.lx:7:13
+  |
+7 |     let c = Result::Ok(5);
+  |             ^^^^^^^^^^^^^
+error: 2 hata yuzunden durduruldu

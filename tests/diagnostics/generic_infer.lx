@@ -1,0 +1,9 @@
+enum Option<T> { Some(T), None }
+enum Result<T, E> { Ok(T), Err(E) }
+
+fn main() -> i32 {
+    let a = Option::Some(box 7);
+    let b = Option::None;
+    let c = Result::Ok(5);
+    return 0;
+}

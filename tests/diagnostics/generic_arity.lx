@@ -1,0 +1,8 @@
+enum Option<T> { Some(T), None }
+enum Color { Red, Green }
+
+fn main() -> i32 {
+    let a: Option = Option::<i32>::None;
+    let b: Color<i32> = Color::Red;
+    return 0;
+}

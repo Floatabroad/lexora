@@ -45,10 +45,11 @@ pub struct CodeGen<'i> {
     types: &'i HashMap<ExprId, Type>,
     moves: &'i HashSet<ExprId>,
     drop_scopes: Vec<Vec<DropLocal>>,
-    enums: HashMap<Symbol, Vec<(Symbol, Vec<Type>)>>,
+    enums: HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>,
+    instances: &'i HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>,
 }
 impl<'i> CodeGen<'i> {
-    pub fn new(builder: IrBuilder<'i>, types: &'i HashMap<ExprId, Type>, moves: &'i HashSet<ExprId>) -> Self {
+    pub fn new(builder: IrBuilder<'i>, types: &'i HashMap<ExprId, Type>, moves: &'i HashSet<ExprId>, instances: &'i HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>) -> Self {
         CodeGen {
             builder,
             locals: VarTable::new(),
@@ -59,6 +60,7 @@ impl<'i> CodeGen<'i> {
             moves,
             drop_scopes: Vec::new(),
             enums: HashMap::new(),
+            instances,
         }
     }
     
@@ -93,7 +95,10 @@ impl<'i> CodeGen<'i> {
                 let p = self.builder.build_load(&LlvmType::Ptr, slot);
                 self.emit_drop_glue(p, inner);
             }
-            Type::Enum(e) => self.builder.build_call_drop_enum(*e, slot),
+            Type::Enum(e, args) => {
+                let name = Self::inst_name(*e, args);
+                self.builder.build_call_drop_enum(&name, slot);
+            }
             _ => {}
         }
         self.builder.build_store(&LlvmType::I1, Value::Const(0), flag);
@@ -106,33 +111,37 @@ impl<'i> CodeGen<'i> {
                let sub = self.builder.build_load(&LlvmType::Ptr, ptr.clone());
                self.emit_drop_glue(sub, inner);
            }
-           Type::Enum(e) => self.builder.build_call_drop_enum(*e, ptr.clone()),
+           Type::Enum(e, args) => {
+               let name = Self::inst_name(*e, args);
+               self.builder.build_call_drop_enum(&name, ptr.clone());
+           }
            _ => {}
        }
         self.builder.build_free(ptr);
     }
-    fn emit_enum_glue(&mut self, slot: Value, enum_sym: Symbol) {
-        let tag_ptr = self.builder.build_gep_enum_tag(enum_sym, slot.clone());
-        let tag = self.builder.build_load(&LlvmType::I32,tag_ptr);
+    fn emit_enum_glue(&mut self, slot: Value, key: &(Symbol, Vec<Type>)) {
+        let name = Self::inst_name(key.0, &key.1);
+        let tag_ptr = self.builder.build_gep_enum_tag(&name, slot.clone());
+        let tag = self.builder.build_load(&LlvmType::I32, tag_ptr);
         let end = self.builder.fresh_block("edrop_end");
-        let variants = self.enums.get(&enum_sym).unwrap().clone();
+        let variants = self.enums.get(key).unwrap().clone();
         for (variant, ftys) in variants.iter() {
             let owning: Vec<(usize, Type)> = ftys.iter().enumerate()
-                .filter_map(|(i, t)| match t{
-                Type::Box(inner) => Some((i, (**inner).clone())),
-                _ => None,
-            })
-            .collect();
-            if owning.is_empty() { continue;}
-            let idx = self.variant_tag(enum_sym, *variant);
+                .filter_map(|(i, t)| match t {
+                    Type::Box(inner) => Some((i, (**inner).clone())),
+                    _ => None,
+                })
+                .collect();
+            if owning.is_empty() { continue; }
+            let idx = self.variant_tag(key, *variant);
             let case = self.builder.fresh_block("edrop_case");
             let next = self.builder.fresh_block("edrop_next");
             let c = self.builder.build_icmp("eq", &LlvmType::I32, tag.clone(), Value::Const(idx));
             self.builder.build_cond_br(c, &case, &next);
             self.builder.emit_label(&case);
-            let payload_ptr = self.builder.build_gep_enum_payload(enum_sym, slot.clone());
-            for (i, inner) in owning.iter(){
-                let ftpr = self.builder.build_gep_variant_field(enum_sym, *variant, payload_ptr.clone(), *i as u32);
+            let payload_ptr = self.builder.build_gep_enum_payload(&name, slot.clone());
+            for (i, inner) in owning.iter() {
+                let ftpr = self.builder.build_gep_variant_field(&name, *variant, payload_ptr.clone(), *i as u32);
                 let boxptr = self.builder.build_load(&LlvmType::Ptr, ftpr);
                 self.emit_drop_glue(boxptr, inner);
             }
@@ -141,14 +150,22 @@ impl<'i> CodeGen<'i> {
         }
         self.builder.build_br(&end);
         self.builder.emit_label(&end);
-
     }
-    fn gen_drop_function(&mut self, enum_sym: Symbol) {
-        self.builder.emit_drop_function_begin(enum_sym);
+    fn gen_drop_function(&mut self, key: &(Symbol, Vec<Type>)) {
+        let name = Self::inst_name(key.0, &key.1);
+        self.builder.emit_drop_function_begin(&name);
         self.builder.emit_label("entry");
-        self.emit_enum_glue(Value::Named("%s".to_string()), enum_sym);
+        self.emit_enum_glue(Value::Named("%s".to_string()), key);
         self.builder.build_ret(&LlvmType::Void, Value::Void);
         self.builder.emit_function_end();
+    }
+    fn inst_name(sym: Symbol, args: &[Type]) -> String {
+        if args.is_empty() {
+            sym.0.to_string()
+        } else {
+            let m: Vec<String> = args.iter().map(|t| t.mangle()).collect();
+            format!("{}.{}", sym.0, m.join("."))
+        }
     }
     fn find_flag(&self, sym: Symbol) -> Option<Value> {
         for scope in self.drop_scopes.iter().rev() {
@@ -177,14 +194,15 @@ impl<'i> CodeGen<'i> {
             Type::Array(t, n) => LlvmType::Array(Box::new(self.ast_type_to_llvm(t)), *n),
             Type::Struct(s) => LlvmType::Struct(*s),
             Type::Box(_) => LlvmType::Ptr,
-            Type::Enum(s) => {
-                if self.enum_has_payload(*s) {
-                    LlvmType::Enum(*s)
+            Type::Enum(e, args) => {
+                if self.enum_has_payload(&(*e, args.clone())) {
+                    LlvmType::Enum(Self::inst_name(*e, args))
                 } else {
                     LlvmType::I32
                 }
             }
             Type::Error => unreachable!("Type::Error codegen'e ulasti (errors bos degilse codegen yok)"),
+            Type::Param(_) => unreachable!("Type::Param codegen'e ulasti (generic enum TC'de reddedilir)"),
         }
     }
     pub fn gen_program<'arena>(
@@ -236,27 +254,38 @@ impl<'i> CodeGen<'i> {
        }\n\n"
         );
         for e in &program.enums {
-            self.enums.insert(e.name, e.variants.clone());
+            if e.params.is_empty() {
+                self.enums.insert((e.name, Vec::new()), e.variants.clone());
+            }
         }
-        for e in &program.enums {
-            let max_slots = e.variants.iter()
-                .map(|(_, tys)| tys.len())
-                .max()
-                .unwrap_or(0);
+        for (key, variants) in self.instances.iter() {
+            self.enums.insert(key.clone(), variants.clone());
+        }
+        let mut inst_keys: Vec<(Symbol, Vec<Type>)> = self.instances.keys().cloned().collect();
+        inst_keys.sort_by_key(|(s, a)| Self::inst_name(*s, a));
+        let mut enum_keys: Vec<(Symbol, Vec<Type>)> = program.enums.iter()
+            .filter(|e| e.params.is_empty())
+            .map(|e| (e.name, Vec::new()))
+            .collect();
+        enum_keys.extend(inst_keys);
+        for key in &enum_keys {
+            let variants = self.enums.get(key).unwrap().clone();
+            let max_slots = variants.iter().map(|(_, tys)| tys.len()).max().unwrap_or(0);
             if max_slots == 0 {
                 continue;
             }
-            self.builder.emit_enum_type(e.name, max_slots);
-            for (variant, tys) in e.variants.iter() {
+            let name = Self::inst_name(key.0, &key.1);
+            self.builder.emit_enum_type(&name, max_slots);
+            for (variant, tys) in variants.iter() {
                 let llvm_tys: Vec<LlvmType> = tys.iter()
                     .map(|t| self.ast_type_to_llvm(t))
                     .collect();
-                self.builder.emit_variant_type(e.name, *variant, &llvm_tys);
+                self.builder.emit_variant_type(&name, *variant, &llvm_tys);
             }
         }
-        for e in &program.enums{
-            if self.enum_is_owning(e.name){
-                self.gen_drop_function(e.name);
+        for key in &enum_keys {
+            if self.enum_is_owning(key) {
+                self.gen_drop_function(key);
             }
         }
         for s in &program.structs {
@@ -281,24 +310,24 @@ impl<'i> CodeGen<'i> {
         }
         Ok(self.builder.finish())
     }
-    fn enum_has_payload(&self, enum_sym: Symbol) -> bool {
-        self.enums.get(&enum_sym)
+    fn enum_has_payload(&self, key: &(Symbol, Vec<Type>)) -> bool {
+        self.enums.get(key)
             .map_or(false, |vs| vs.iter().any(|(_, tys)| !tys.is_empty()))
     }
-    fn enum_is_owning(&self, enum_sym: Symbol) -> bool {
-        self.enums.get(&enum_sym).map_or(false, |vs| {
+    fn enum_is_owning(&self, key: &(Symbol, Vec<Type>)) -> bool {
+        self.enums.get(key).map_or(false, |vs| {
             vs.iter().any(|(_, ftys)| ftys.iter().any(|t| matches!(t, Type::Box(_))))
         })
     }
-    fn is_owning_type(&self, ty: &Type) -> bool{
+    fn is_owning_type(&self, ty: &Type) -> bool {
         match ty {
             Type::Box(_) => true,
-            Type::Enum(e) => self.enum_is_owning(*e),
+            Type::Enum(e, args) => self.enum_is_owning(&(*e, args.clone())),
             _ => false,
         }
     }
-    fn variant_tag(&self, enum_sym: Symbol, variant: Symbol) -> i64 {
-        self.enums.get(&enum_sym).unwrap()
+    fn variant_tag(&self, key: &(Symbol, Vec<Type>), variant: Symbol) -> i64 {
+        self.enums.get(key).unwrap()
             .iter().position(|(v, _)| *v == variant).unwrap() as i64
     }
 
@@ -758,21 +787,29 @@ impl<'i> CodeGen<'i> {
                 }
                 Ok(val)
             }
-            Expr::EnumVariant { enum_name, variant, args, .. } => {
-                if !self.enum_has_payload(*enum_name) {
-                    return Ok(Value::Const(self.variant_tag(*enum_name, *variant)));
+            Expr::EnumVariant { variant, args, .. } => {
+                let (sym, targs) = match &self.types[&expr.id()] {
+                    Type::Enum(s, a) => (*s, a.clone()),
+                    _ => return Err(LexoraError::Codegen {
+                        message: "enum ifadesinin tipi enum degil".to_string(),
+                    }),
+                };
+                let key = (sym, targs);
+                if !self.enum_has_payload(&key) {
+                    return Ok(Value::Const(self.variant_tag(&key, *variant)));
                 }
-                let enum_ty = LlvmType::Enum(*enum_name);
+                let name = Self::inst_name(key.0, &key.1);
+                let enum_ty = LlvmType::Enum(name.clone());
                 let tmp = self.builder.build_alloca(&enum_ty, "");
-                let tag = self.variant_tag(*enum_name, *variant);
-                let tag_ptr = self.builder.build_gep_enum_tag(*enum_name, tmp.clone());
+                let tag = self.variant_tag(&key, *variant);
+                let tag_ptr = self.builder.build_gep_enum_tag(&name, tmp.clone());
                 self.builder.build_store(&LlvmType::I32, Value::Const(tag), tag_ptr);
-                let payload_ptr = self.builder.build_gep_enum_payload(*enum_name, tmp.clone());
+                let payload_ptr = self.builder.build_gep_enum_payload(&name, tmp.clone());
                 for (i, arg) in args.iter().enumerate() {
                     let field_ty = self.expr_llvm_type(arg);
                     let field_val = self.gen_expr(arg)?;
                     let field_ptr = self.builder.build_gep_variant_field(
-                        *enum_name, *variant, payload_ptr.clone(), i as u32,
+                        &name, *variant, payload_ptr.clone(), i as u32,
                     );
                     self.builder.build_store(&field_ty, field_val, field_ptr);
                 }
@@ -780,19 +817,21 @@ impl<'i> CodeGen<'i> {
             }
             Expr::Match { scrutinee, arms, .. } => {
                 let scrut_ty = self.types[&scrutinee.id()].clone();
-                let enum_sym = match &scrut_ty {
-                    Type::Enum(s) => *s,
+                let (enum_sym, enum_args) = match &scrut_ty {
+                    Type::Enum(s, a) => (*s, a.clone()),
                     _ => return Err(LexoraError::Codegen {
                         message: "match scrutinee enum degil".to_string(),
                     }),
                 };
-                let has_payload = self.enum_has_payload(enum_sym);
+                let key = (enum_sym, enum_args);
+                let name = Self::inst_name(key.0, &key.1);
+                let has_payload = self.enum_has_payload(&key);
                 let (tag, scrut_ptr) = if has_payload {
-                    let enum_ty = LlvmType::Enum(enum_sym);
+                    let enum_ty = LlvmType::Enum(name.clone());
                     let val = self.gen_expr(scrutinee)?;
                     let tmp = self.builder.build_alloca(&enum_ty, "");
                     self.builder.build_store(&enum_ty, val, tmp.clone());
-                    let tag_ptr = self.builder.build_gep_enum_tag(enum_sym, tmp.clone());
+                    let tag_ptr = self.builder.build_gep_enum_tag(&name, tmp.clone());
                     let tag = self.builder.build_load(&LlvmType::I32, tag_ptr);
                     (tag, Some(tmp))
                 } else {
@@ -809,8 +848,8 @@ impl<'i> CodeGen<'i> {
                 let end_label = self.builder.fresh_block("match_end");
                 for (pat, body) in arms.iter() {
                     match pat {
-                        Pattern::Variant { enum_name, variant, bindings } => {
-                            let idx = self.variant_tag(*enum_name, *variant);
+                        Pattern::Variant { variant, bindings, .. } => {
+                            let idx = self.variant_tag(&key, *variant);
                             let body_label = self.builder.fresh_block("arm");
                             let next_label = self.builder.fresh_block("arm_next");
                             let c = self.builder.build_icmp("eq", &LlvmType::I32, tag.clone(), Value::Const(idx));
@@ -820,13 +859,13 @@ impl<'i> CodeGen<'i> {
                             self.locals.enter();
                             self.drop_enter();
                             if let Some(ptr) = &scrut_ptr {
-                                let payload_ptr = self.builder.build_gep_enum_payload(*enum_name, ptr.clone());
-                                let field_tys = self.enums.get(enum_name).unwrap()
+                                let payload_ptr = self.builder.build_gep_enum_payload(&name, ptr.clone());
+                                let field_tys = self.enums.get(&key).unwrap()
                                     .iter().find(|(v, _)| v == variant).unwrap().1.clone();
                                 for (i, b) in bindings.iter().enumerate() {
                                     let fty = self.ast_type_to_llvm(&field_tys[i]);
                                     let fptr = self.builder.build_gep_variant_field(
-                                        *enum_name, *variant, payload_ptr.clone(), i as u32,
+                                        &name, *variant, payload_ptr.clone(), i as u32,
                                     );
                                     let slot = self.builder.build_alloca(&fty, "");
                                     let loaded = self.builder.build_load(&fty, fptr);
@@ -863,8 +902,8 @@ impl<'i> CodeGen<'i> {
                             self.locals.enter();
                             self.drop_enter();
                             if let Some(ptr) = &scrut_ptr {
-                                if self.enum_is_owning(enum_sym) {
-                                    self.builder.build_call_drop_enum(enum_sym, ptr.clone());
+                                if self.enum_is_owning(&key) {
+                                    self.builder.build_call_drop_enum(&name, ptr.clone());
                                 }
                             }
                             for s in body.stmts.iter() { self.gen_statement(s)?; }

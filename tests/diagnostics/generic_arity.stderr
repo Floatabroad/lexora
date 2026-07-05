@@ -1,0 +1,25 @@
+error: 'Option' 1 tip parametresi bekliyor, 0 verildi
+ --> tests/diagnostics/generic_arity.lx:5:5
+  |
+5 |     let a: Option = Option::<i32>::None;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: tip uyusmazligi: beklenen Option, bulunan Option<i32>
+ --> tests/diagnostics/generic_arity.lx:5:5
+  |
+5 |     let a: Option = Option::<i32>::None;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ bu ifade `Option<i32>` tipinde
+  |
+  = help: beklenen tip: `Option`
+error: 'Color' 0 tip parametresi bekliyor, 1 verildi
+ --> tests/diagnostics/generic_arity.lx:6:5
+  |
+6 |     let b: Color<i32> = Color::Red;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: tip uyusmazligi: beklenen Color<i32>, bulunan Color
+ --> tests/diagnostics/generic_arity.lx:6:5
+  |
+6 |     let b: Color<i32> = Color::Red;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ bu ifade `Color` tipinde
+  |
+  = help: beklenen tip: `Color<i32>`
+error: 4 hata yuzunden durduruldu

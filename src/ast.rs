@@ -1,7 +1,7 @@
 use crate::span::Span;
 use crate::symbol::Symbol;
 pub type ExprId = u32;
-
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum Expr<'arena> {
@@ -68,6 +68,7 @@ pub enum Expr<'arena> {
         enum_name: Symbol,
         variant: Symbol,
         args: &'arena [Expr<'arena>],
+        type_args: Vec<Type>,
         span: Span,
         id: ExprId,
     },
@@ -150,14 +151,48 @@ pub enum Stmt<'arena> {
     Error(Span),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     I32, I64, Bool, Void, Str,
     Array(Box<Type>, usize),
     Struct(Symbol),
     Box(Box<Type>),
     Error,
-    Enum(Symbol),
+    Enum(Symbol, Vec<Type>),
+    Param(Symbol),
+}
+
+impl Type {
+    pub fn substitute(&self, map: &HashMap<Symbol, Type>) -> Type {
+        match self {
+            Type::Param(p) => map.get(p).cloned().unwrap_or_else(|| self.clone()),
+            Type::Array(elem, n) => Type::Array(Box::new(elem.substitute(map)), *n),
+            Type::Box(inner) => Type::Box(Box::new(inner.substitute(map))),
+            Type::Enum(s, args) => Type::Enum(*s, args.iter().map(|t| t.substitute(map)).collect()),
+            other => other.clone(),
+        }
+    }
+    pub fn mangle(&self) -> String {
+        match self {
+            Type::I32 => "i32".to_string(),
+            Type::I64 => "i64".to_string(),
+            Type::Bool => "bool".to_string(),
+            Type::Str => "str".to_string(),
+            Type::Void => "void".to_string(),
+            Type::Box(inner) => format!("box.{}", inner.mangle()),
+            Type::Array(elem, n) => format!("arr{}.{}", n, elem.mangle()),
+            Type::Struct(s) => format!("s{}", s.0),
+            Type::Enum(s, args) => {
+                let mut out = format!("e{}", s.0);
+                for a in args {
+                    out.push('.');
+                    out.push_str(&a.mangle());
+                }
+                out
+            }
+            Type::Param(_) | Type::Error => unreachable!("somut olmayan tip mangle edilemez"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -187,6 +222,7 @@ pub struct StructDef {
 #[derive(Debug, Clone)]
 pub struct EnumDef {
     pub name: Symbol,
+    pub params: Vec<Symbol>,
     pub variants: Vec<(Symbol, Vec<Type>)>,
     pub span: Span,
 }

@@ -55,4 +55,7 @@ diag_tests!(
     cond_recovery,
     deref_move,
     enum_field_type,
+    generic_arity,
+    generic_infer,
+    generic_field,
 );

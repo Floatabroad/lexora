@@ -3,7 +3,7 @@ use lexora::lexer::Lexer;
 use lexora::parser::Parser;
 use lexora::typechecker::TypeChecker;
 use lexora::ast::{Program, ExprId, Type};
-use lexora::symbol::Interner;
+use lexora::symbol::{Interner, Symbol};
 use lexora::error::LexoraError;
 use lexora::span::Span;
 use lexora::source_map::SourceMap;
@@ -71,8 +71,8 @@ fn main() {
     println!("Ok: tip kontrolu basarili.");
 
     match backend.as_str() {
-        "string-ir" => run_string_ir(&interner, &program, &checker.types, &moves),
-        "inkwell" => run_inkwell(&interner, &program, &checker.types, &sources, opt, debug, &moves),
+        "string-ir" => run_string_ir(&interner, &program, &checker.types, &moves, &checker.instances),
+        "inkwell" => run_inkwell(&interner, &program, &checker.types, &sources, opt, debug, &moves, &checker.instances),
         other => {
             eprintln!("bilinmeyen backend: '{}' (string-ir veya inkwell)", other);
             std::process::exit(1);
@@ -125,6 +125,7 @@ fn load_program<'arena> (
         enqueue_imports(&mut queue, &path, &sub_program.imports);
         program.functions.extend(sub_program.functions);
         program.structs.extend(sub_program.structs);
+        program.enums.extend(sub_program.enums);
         interner = sub.interner;
         next_id = sub.next_expr_id;
     }
@@ -149,11 +150,11 @@ fn enqueue_imports(queue: &mut VecDeque<PathBuf>, importer: &Path, imports: &[&s
         queue.push_back(base.join(imp));
     }
 }
-fn run_string_ir(interner: &Interner, program: &Program, types: &HashMap<ExprId, Type>, moves: &HashSet<ExprId>) {
+fn run_string_ir(interner: &Interner, program: &Program, types: &HashMap<ExprId, Type>, moves: &HashSet<ExprId>, instances: &HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>) {
     use lexora::backend::string_ir::builder::IrBuilder;
     use lexora::backend::string_ir::codegen::CodeGen;
     let ir_builder = IrBuilder::new(interner);
-    let mut codegen = CodeGen::new(ir_builder, types, moves);
+    let mut codegen = CodeGen::new(ir_builder, types, moves, instances);
     let ir = match codegen.gen_program(program) {
         Ok(s) => s,
         Err(e) => {
@@ -169,12 +170,12 @@ fn run_string_ir(interner: &Interner, program: &Program, types: &HashMap<ExprId,
 }
 
 #[cfg(feature = "inkwell")]
-fn run_inkwell(interner: &Interner, program: &Program, types: &HashMap<ExprId, Type>, sources: &SourceMap, opt: u8, debug: bool,moves: &HashSet<ExprId>) {
+fn run_inkwell(interner: &Interner, program: &Program, types: &HashMap<ExprId, Type>, sources: &SourceMap, opt: u8, debug: bool, moves: &HashSet<ExprId>, instances: &HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>) {
     use inkwell::context::Context;
     use lexora::backend::inkwell::codegen::CodeGen;
 
     let context = Context::create();
-    let mut codegen = CodeGen::new(&context, interner, "lexora_module",types, sources, opt, debug,moves);
+    let mut codegen = CodeGen::new(&context, interner, "lexora_module", types, sources, opt, debug, moves, instances);
     if let Err(e) = codegen.compile(program) {
         eprintln!("{}", LexoraError::Codegen { message: e.to_string() });
         std::process::exit(1);
@@ -216,7 +217,7 @@ fn run_inkwell(interner: &Interner, program: &Program, types: &HashMap<ExprId, T
 }
 
 #[cfg(not(feature = "inkwell"))]
-fn run_inkwell(_interner: &Interner, _program: &Program, _types: &HashMap<ExprId, Type>, _sources: &SourceMap, _opt: u8, _debug: bool, _moves: &HashSet<ExprId>) {
+fn run_inkwell(_interner: &Interner, _program: &Program, _types: &HashMap<ExprId, Type>, _sources: &SourceMap, _opt: u8, _debug: bool, _moves: &HashSet<ExprId>, _instances: &HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>) {
     eprintln!("inkwell backend bu binary'de derlenmemis; `cargo run --features inkwell` ile derle");
     std::process::exit(1);
 }

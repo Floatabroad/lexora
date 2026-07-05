@@ -1,0 +1,7 @@
+struct Point { x: i32 }
+enum Option<T> { Some(T), None }
+
+fn main() -> i32 {
+    let a: Option<Point> = Option::<Point>::None;
+    return 0;
+}

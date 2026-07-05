@@ -1,0 +1,27 @@
+enum Pair<A, B> { P(A, B), Empty }
+enum Msg { S(str), N }
+
+fn main() -> i32 {
+    let p = Pair::P(3, true);
+    match p {
+        Pair::P(x, f) => {
+            print(x);
+            print(f);
+        }
+        Pair::Empty => print(0),
+    }
+    let q = Pair::P(9000000000, box 4);
+    match q {
+        Pair::P(n, b) => {
+            print(n);
+            print(*b);
+        }
+        _ => print(1),
+    }
+    let m = Msg::S("selam");
+    match m {
+        Msg::S(t) => print(t),
+        Msg::N => print(2),
+    }
+    0
+}

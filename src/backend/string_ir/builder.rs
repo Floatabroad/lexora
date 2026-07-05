@@ -69,38 +69,38 @@ impl<'i> IrBuilder<'i> {
                                        name.0, fields_str.join(", "),
         ));
     }
-    pub fn emit_enum_type(&mut self, name: Symbol, payload_slots: usize) {
+    pub fn emit_enum_type(&mut self, name: &str, payload_slots: usize) {
         self.globals.push_str(&format!(
-            "%enum.{} = type {{ i32, [{} x i64] }}\n", name.0, payload_slots,
+            "%enum.{} = type {{ i32, [{} x i64] }}\n", name, payload_slots,
         ));
     }
-    pub fn emit_variant_type(&mut self, enum_name: Symbol, variant: Symbol, fields: &[LlvmType]) {
+    pub fn emit_variant_type(&mut self, enum_inst: &str, variant: Symbol, fields: &[LlvmType]) {
         let fs: Vec<String> = fields.iter().map(|t| t.to_ir_str()).collect();
         self.globals.push_str(&format!(
-            "%variant.{}.{} = type {{ {} }}\n", enum_name.0, variant.0, fs.join(", "),
+            "%variant.{}.{} = type {{ {} }}\n", enum_inst, variant.0, fs.join(", "),
         ));
     }
-    pub fn build_gep_enum_tag(&mut self, enum_name: Symbol, ptr: Value) -> Value {
+    pub fn build_gep_enum_tag(&mut self, enum_inst: &str, ptr: Value) -> Value {
         let r = self.fresh_temp();
         self.output.push_str(&format!(
             "  {} = getelementptr %enum.{}, ptr {}, i32 0, i32 0\n",
-            r.to_ir_str(), enum_name.0, ptr.to_ir_str(),
+            r.to_ir_str(), enum_inst, ptr.to_ir_str(),
         ));
         r
     }
-    pub fn build_gep_enum_payload(&mut self, enum_name: Symbol, ptr: Value) -> Value {
+    pub fn build_gep_enum_payload(&mut self, enum_inst: &str, ptr: Value) -> Value {
         let r = self.fresh_temp();
         self.output.push_str(&format!(
             "  {} = getelementptr %enum.{}, ptr {}, i32 0, i32 1\n",
-            r.to_ir_str(), enum_name.0, ptr.to_ir_str(),
+            r.to_ir_str(), enum_inst, ptr.to_ir_str(),
         ));
         r
     }
-    pub fn build_gep_variant_field(&mut self, enum_name: Symbol, variant: Symbol, payload_ptr: Value, idx: u32) -> Value {
+    pub fn build_gep_variant_field(&mut self, enum_inst: &str, variant: Symbol, payload_ptr: Value, idx: u32) -> Value {
         let r = self.fresh_temp();
         self.output.push_str(&format!(
             "  {} = getelementptr %variant.{}.{}, ptr {}, i32 0, i32 {}\n",
-            r.to_ir_str(), enum_name.0, variant.0, payload_ptr.to_ir_str(), idx,
+            r.to_ir_str(), enum_inst, variant.0, payload_ptr.to_ir_str(), idx,
         ));
         r
     }
@@ -351,11 +351,11 @@ impl<'i> IrBuilder<'i> {
     pub fn build_free(&mut self, ptr: Value) {
         self.output.push_str(&format!("  call void @lexora_free(ptr {})\n", ptr.to_ir_str(), ));
     }
-    pub fn emit_drop_function_begin(&mut self, enum_name: Symbol) {
-        self.output.push_str(&format!("define void @drop.enum.{}(ptr %s) {{\n", enum_name.0));
+    pub fn emit_drop_function_begin(&mut self, enum_inst: &str) {
+        self.output.push_str(&format!("define void @drop.enum.{}(ptr %s) {{\n", enum_inst));
     }
-    pub fn build_call_drop_enum(&mut self, enum_name: Symbol, ptr: Value) {
-        self.output.push_str(&format!("  call void @drop.enum.{}(ptr {})\n", enum_name.0, ptr.to_ir_str()));
+    pub fn build_call_drop_enum(&mut self, enum_inst: &str, ptr: Value) {
+        self.output.push_str(&format!("  call void @drop.enum.{}(ptr {})\n", enum_inst, ptr.to_ir_str()));
     }
     pub fn add_string_global(&mut self, s: &str) -> (Value, usize) {
         let id = self.next_global;

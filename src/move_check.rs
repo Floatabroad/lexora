@@ -24,7 +24,7 @@ pub struct MoveChecker<'a> {
     scopes: Vec<HashMap<Symbol, BindState>>,
     moves: HashSet<ExprId>,
     errors: Vec<LexoraError>,
-   enums: HashMap<Symbol, Vec<(Symbol, Vec<Type>)>>,
+    enums: HashMap<Symbol, (Vec<Symbol>, Vec<(Symbol, Vec<Type>)>)>,
 }
 
 impl<'a> MoveChecker<'a> {
@@ -39,7 +39,7 @@ impl<'a> MoveChecker<'a> {
     }
     pub fn check(mut self, program: &Program) -> (HashSet<ExprId>, Vec<LexoraError>) {
         for e in &program.enums {
-            self.enums.insert(e.name, e.variants.clone());
+            self.enums.insert(e.name, (e.params.clone(), e.variants.clone()));
         }
         for func in &program.functions {
             self.check_function(func);
@@ -66,10 +66,20 @@ impl<'a> MoveChecker<'a> {
     fn lookup_mut(&mut self, sym: Symbol) -> Option<&mut BindState> {
         self.scopes.iter_mut().rev().find_map(|s| s.get_mut(&sym))
     }
+    fn variants_for(&self, sym: Symbol, args: &[Type]) -> Option<Vec<(Symbol, Vec<Type>)>> {
+        let (params, variants) = self.enums.get(&sym)?;
+        if params.is_empty() || args.is_empty() {
+            return Some(variants.clone());
+        }
+        let map: HashMap<Symbol, Type> = params.iter().copied().zip(args.iter().cloned()).collect();
+        Some(variants.iter()
+            .map(|(v, ftys)| (*v, ftys.iter().map(|t| t.substitute(&map)).collect()))
+            .collect())
+    }
     fn is_owning(&self, ty: &Type) -> bool {
         match ty {
             Type::Box(_) => true,
-            Type::Enum(e) => self.enums.get(e).map_or(false, |vs|{
+            Type::Enum(e, args) => self.variants_for(*e, args).map_or(false, |vs| {
                 vs.iter().any(|(_, ftys)| ftys.iter().any(|t| self.is_owning(t)))
             }),
             _ => false
@@ -253,15 +263,19 @@ impl<'a> MoveChecker<'a> {
             }
             Expr::Match { scrutinee, arms, .. } => {
                 self.consume_expr(scrutinee);
+                let scrut_args = match self.types.get(&scrutinee.id()) {
+                    Some(Type::Enum(_, a)) => a.clone(),
+                    _ => Vec::new(),
+                };
                 let entry = self.scopes.clone();
                 let mut joined: Option<Vec<HashMap<Symbol, BindState>>> = None;
                 for (pat, body) in arms.iter() {
                     self.scopes = entry.clone();
                     self.enter();
                     if let Pattern::Variant { enum_name, variant, bindings } = pat {
-                        let ftys = self.enums.get(enum_name)
-                            .and_then(|vs| vs.iter().find(|(v, _)| v == variant))
-                            .map(|(_, t)| t.clone())
+                        let ftys = self.variants_for(*enum_name, &scrut_args)
+                            .and_then(|vs| vs.iter().find(|(v, _)| v == variant)
+                                .map(|(_, t)| t.clone()))
                             .unwrap_or_default();
                         for (i, b) in bindings.iter().enumerate() {
                             let owning = ftys.get(i).map_or(false, |t| self.is_owning(t));

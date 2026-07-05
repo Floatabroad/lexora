@@ -18,6 +18,7 @@ pub struct Parser<'src, 'arena> {
     allow_struct_literal: bool,
     pub next_expr_id: ExprId,
     enum_names:           HashSet<Symbol>,
+    type_params: Vec<Symbol>,
     errors:               Vec<LexoraError>,
 }
 
@@ -40,7 +41,9 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             allow_struct_literal: true,
             next_expr_id: start_id,
             enum_names: HashSet::new(),
+            type_params: Vec::new(),
             errors: Vec::new(),
+
         };
         parser.current = parser.pull();
         parser.peek = parser.pull();
@@ -144,8 +147,11 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             }
             Token::Identifier(_) => {
                 let sym = self.parse_symbol()?;
-                if self.enum_names.contains(&sym) {
-                    Ok(Type::Enum(sym))
+                if self.type_params.contains(&sym) {
+                    Ok(Type::Param(sym))
+                } else if self.enum_names.contains(&sym) {
+                    let args = self.parse_type_args()?;
+                    Ok(Type::Enum(sym, args))
                 } else {
                     Ok(Type::Struct(sym))
                 }
@@ -158,13 +164,28 @@ impl<'src, 'arena> Parser<'src, 'arena> {
 
         }
     }
-
+    fn parse_type_args(&mut self) -> Result<Vec<Type>, LexoraError> {
+        let mut args = Vec::new();
+        if self.current.token != Token::Less {
+            return Ok(args);
+        }
+        self.advance();
+        while self.current.token != Token::Greater {
+            args.push(self.parse_type()?);
+            if self.current.token == Token::Comma {
+                self.advance();
+            }
+        }
+        self.expect(Token::Greater)?;
+        Ok(args)
+    }
     pub fn parse_program(&mut self) -> Program<'arena> {
         let mut functions = Vec::new();
         let mut structs   = Vec::new();
         let mut imports: Vec<&'arena str> = Vec::new();
         let mut enums = Vec::new();
         while self.current.token != Token::Eof {
+           self.type_params.clear();
             let result = match self.current.token.clone() {
                 Token::Struct => self.parse_struct().map(|s| structs.push(s)),
                 Token::Import => self.parse_import().map(|p| imports.push(p)),
@@ -215,6 +236,17 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         self.expect(Token::Enum)?;
         let name = self.parse_symbol()?;
         self.enum_names.insert(name);
+        if self.current.token == Token::Less {
+            self.advance();
+            while self.current.token != Token::Greater {
+                let p = self.parse_symbol()?;
+                self.type_params.push(p);
+                if self.current.token == Token::Comma {
+                    self.advance();
+                }
+            }
+            self.expect(Token::Greater)?;
+        }
         self.expect(Token::LeftBrace)?;
         let mut variants = Vec::new();
         while self.current.token != Token::RightBrace {
@@ -237,7 +269,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
         let end = self.current.span;
         self.expect(Token::RightBrace)?;
-        Ok(EnumDef { name, variants, span: start.merge(end) })
+        Ok(EnumDef { name, params: mem::take(&mut self.type_params), variants, span: start.merge(end) })
     }
 
     fn parse_value_block(&mut self) -> Result<Block<'arena>, LexoraError> {
@@ -730,6 +762,13 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 let name = self.parse_symbol()?;
                 if self.current.token == Token::ColonColon {
                     self.advance();
+                    let type_args = if self.current.token == Token::Less {
+                        let targs = self.parse_type_args()?;
+                        self.expect(Token::ColonColon)?;
+                        targs
+                    } else {
+                        Vec::new()
+                    };
                     let mut var_span = self.current.span;
                     let variant = self.parse_symbol()?;
                     let mut args: Vec<Expr<'arena>> = Vec::new();
@@ -752,6 +791,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                         enum_name: name,
                         variant,
                         args,
+                        type_args,
                         span: start.merge(var_span),
                         id: self.next_id(),
                     });

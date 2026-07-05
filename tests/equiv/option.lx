@@ -1,0 +1,21 @@
+enum Option<T> { Some(T), None }
+
+fn unwrap_or(o: Option<i32>, d: i32) -> i32 {
+    match o {
+        Option::Some(v) => v,
+        Option::None => d,
+    }
+}
+
+fn main() -> i32 {
+    let a = Option::Some(5);
+    print(unwrap_or(a, 0));
+    let b: Option<i32> = Option::<i32>::None;
+    print(unwrap_or(b, 42));
+    let big = Option::Some(9000000000);
+    match big {
+        Option::Some(v) => print(v),
+        Option::None => print(0),
+    }
+    0
+}

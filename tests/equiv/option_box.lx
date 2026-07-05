@@ -1,0 +1,17 @@
+enum Option<T> { Some(T), None }
+
+fn main() -> i32 {
+    let a = Option::Some(box 7);
+    match a {
+        Option::Some(p) => print(*p),
+        Option::None => print(0),
+    }
+    let b: Option<Box<i32>> = Option::<Box<i32>>::None;
+    match b {
+        Option::Some(p) => print(*p),
+        _ => print(100),
+    }
+    let c = Option::Some(box 9);
+    print(200);
+    0
+}
