@@ -1,0 +1,6 @@
+fn main() -> i32 {
+    let a = string(5);
+    let b: String = "x";
+    let c = string("a", "b");
+    0
+}

@@ -1,0 +1,20 @@
+error: tip uyusmazligi: beklenen str, bulunan i32
+ --> tests/diagnostics/string_bad.lx:2:20
+  |
+2 |     let a = string(5);
+  |                    ^ bu ifade `i32` tipinde
+  |
+  = help: beklenen tip: `str`
+error: tip uyusmazligi: beklenen String, bulunan str
+ --> tests/diagnostics/string_bad.lx:3:5
+  |
+3 |     let b: String = "x";
+  |     ^^^^^^^^^^^^^^^^^^^^ bu ifade `str` tipinde
+  |
+  = help: beklenen tip: `String`
+error: string bir str arguman alir
+ --> tests/diagnostics/string_bad.lx:4:13
+  |
+4 |     let c = string("a", "b");
+  |             ^^^^^^^^^^^^^^^^
+error: 3 hata yuzunden durduruldu

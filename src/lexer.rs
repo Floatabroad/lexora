@@ -25,7 +25,7 @@ pub enum Token<'src> {
     LeftParen, RightParen,
     LeftBrace, RightBrace,
     LeftBracket, RightBracket,
-    ColonColon,
+    ColonColon,Question,
 
     Eof,
     Error,
@@ -73,12 +73,23 @@ impl<'src> Lexer<'src> {
         }
     }
     fn skip_whitespace(&mut self) {
-        while self.pos < self.source.len()
-            && (self.current() == b' '
-             || self.current() == b'\t'
-             || self.current() == b'\r'
-             || self.current() == b'\n') {
-            self.advance();
+        loop {
+            while self.pos < self.source.len()
+                && (self.current() == b' '
+                || self.current() == b'\t'
+                || self.current() == b'\r'
+                || self.current() == b'\n') {
+                self.advance();
+            }
+            if self.current() == b'/'
+                && self.pos + 1 < self.source.len()
+                && self.source.as_bytes()[self.pos + 1] == b'/' {
+                while self.pos < self.source.len() && self.current() != b'\n' {
+                    self.advance();
+                }
+            } else {
+                return;
+            }
         }
     }
     pub fn next_token(&mut self) -> SpannedToken<'src> {
@@ -140,15 +151,17 @@ impl<'src> Lexer<'src> {
                 if self.current() == b'=' {self.advance(); Token::BangEquals}
                 else {Token::Bang}
             }
+           b'?' => {self.advance(); Token::Question}
             b'0'..=b'9' => self.read_integer(),
             b'"'        => self.read_string(start),
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.read_identifier(),
             _ => {
+                let c = self.source[self.pos..].chars().next().unwrap();
                 self.errors.push(LexoraError::Custom {
-                    message: format!("beklenmedik karakter: '{}'", ch as char),
-                    span: self.span(start, start + 1),
+                    message: format!("beklenmedik karakter: '{}'", c),
+                    span: self.span(start, start + c.len_utf8() as u32),
                 });
-                self.advance();
+                self.pos += c.len_utf8();
                 Token::Error
             }
         };

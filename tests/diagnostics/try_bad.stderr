@@ -1,0 +1,18 @@
+error: '?' yalnizca Result uzerinde kullanilabilir, bulunan i32
+ --> tests/diagnostics/try_bad.lx:8:5
+  |
+8 |     x?
+  |     ^^
+error: '?' yalnizca Result donduren fonksiyonda kullanilabilir (donus tipi i32)
+  --> tests/diagnostics/try_bad.lx:12:13
+   |
+12 |     let h = half(x)?;
+   |             ^^^^^^^^
+error: tip uyusmazligi: beklenen i32, bulunan str
+  --> tests/diagnostics/try_bad.lx:17:13
+   |
+17 |     let h = half(x)?;
+   |             ^^^^^^^^ bu ifade `str` tipinde
+   |
+   = help: beklenen tip: `i32`
+error: 3 hata yuzunden durduruldu

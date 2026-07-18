@@ -1,0 +1,20 @@
+fn shout(s: String) -> void {
+    print(s);
+}
+
+fn make_greet() -> String {
+    string("selam dunya")
+}
+
+fn main() -> i32 {
+    let s: String = string("merhaba");
+    print(s);
+    print(s);
+    let t = make_greet();
+    print(t);
+    let b = box string("kutuda");
+    let inner = *b;
+    print(inner);
+    shout(s);
+    0
+}

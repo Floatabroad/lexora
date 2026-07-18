@@ -1,0 +1,41 @@
+enum Result<T, E> { Ok(T), Err(E) }
+
+fn half(x: i32) -> Result<i32, str> {
+    if x / 2 * 2 == x {
+        Result::<i32, str>::Ok(x / 2)
+    } else {
+        Result::<i32, str>::Err("tek sayi")
+    }
+}
+
+fn quarter(x: i32) -> Result<i32, str> {
+    let h = half(x)?;
+    half(h)
+}
+
+fn iseven(x: i32) -> Result<bool, str> {
+    let h = half(x)?;
+    Result::<bool, str>::Ok(h * 2 == x)
+}
+
+fn show(r: Result<i32, str>) -> void {
+    match r {
+        Result::Ok(v) => print(v),
+        Result::Err(m) => print(m),
+    }
+}
+
+fn main() -> i32 {
+    show(quarter(8));
+    show(quarter(6));
+    show(quarter(5));
+    match iseven(10) {
+        Result::Ok(b) => print(b),
+        Result::Err(m) => print(m),
+    }
+    match iseven(7) {
+        Result::Ok(b) => print(b),
+        Result::Err(m) => print(m),
+    }
+    0
+}

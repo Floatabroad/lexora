@@ -89,9 +89,44 @@ fn main() -> i32 {
 }
 ```
 
+Error handling with a real generic `Result` and the `?` operator, plus
+heap-allocated owned strings:
+
+```rust
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+fn half(x: i32) -> Result<i32, str> {
+    if x / 2 * 2 == x {
+        Result::<i32, str>::Ok(x / 2)
+    } else {
+        Result::<i32, str>::Err("odd number")
+    }
+}
+
+fn quarter(x: i32) -> Result<i32, str> {
+    let h = half(x)?;               // Err short-circuits out of the function
+    half(h)
+}
+
+fn main() -> i32 {
+    match quarter(8) {
+        Result::Ok(v) => print(v),  // 2
+        Result::Err(m) => print(m),
+    }
+    let s: String = string("heap-allocated, owned, freed automatically");
+    print(s);
+    print(s);                       // printing borrows — no move, no copy
+    return 0;
+}
+```
+
 ## Features
 
-- **Types** — `i32`, `i64`, `bool`, `void`, `str`, fixed-size arrays `[T; N]`, and user-defined `struct`s
+- **Types** — `i32`, `i64`, `bool`, `void`, `str`, heap-owned `String`, fixed-size arrays `[T; N]`, and user-defined `struct`s
+- **Comments** — `//` line comments, treated as whitespace by the lexer
 - **Type inference** — the annotation on `let` is optional (`let x = 42;`); the type checker infers the variable's type from its initializer. There's no implicit widening, so the inferred type is always unambiguous
 - **Functions** — typed parameters and return values
 - **Control flow** — `if` / `else if` / `else`, `while`, `for i in a..b`
@@ -101,7 +136,9 @@ fn main() -> i32 {
 - **Heap & ownership** — `box e` allocates on the heap (`Box<T>`), `*b` reads/writes through it, and `let inner = *b;` *moves out* of a box — the contents transfer to the new owner and the heap block is freed on the spot. Values are *moved* rather than copied, and an ownership pass (modelled on rustc's borrow checker) tracks moves across branches and loops at compile time. Drops are elaborated automatically — each owning slot gets a drop flag, scope exit frees what's still live, and nested boxes are freed recursively (drop glue). No leaks, no double-frees; verified leak-free under `valgrind`
 - **Enums & pattern matching** — C-like enums (`enum Color { Red, Green, Blue }`), data-carrying variants (`enum Shape { Circle(i32), Rect(i32, i32) }`), and heap-owning variants (`Box<T>` fields), which makes recursive types like linked lists possible: `enum List { Cons(i32, Box<List>), Nil }`. Every owning enum gets a generated per-type drop function, so freeing a list recurses at runtime instead of unrolling at compile time. `match` works on any expression, arms are `=> expr` or `=> { ...; expr }` blocks with payload binding (`Shape::Rect(w, h) => w * h`), a `_` wildcard, and compile-time exhaustiveness checking
 - **Generic enums (monomorphization)** — enums take type parameters (`enum Option<T> { Some(T), None }`, multi-parameter `enum Pair<A, B>` too), compiled the way rustc does it: the generic definition itself is never lowered — each concrete instantiation gets its own layout and, if it owns heap data, its own drop function, under a mangled name (`Option<i32>` and `Option<Box<i32>>` are two separate types in the emitted IR). Type arguments are inferred from constructor arguments by structural unification — `Option::Some(box 7)` is an `Option<Box<i32>>` with no annotation needed — or written explicitly with a turbofish (`Option::<i32>::None`) when there is nothing to infer from. Recursive generic types work end-to-end: `List<i32>` monomorphizes into a self-recursive drop function
-- **Built-ins** — `print(...)` for integers, booleans, and strings
+- **Error handling — the `?` operator** — works on any two-variant `Ok`/`Err` enum named `Result` (a plain library definition, not a builtin): `Ok(v)` unwraps to the value, `Err(e)` returns early from the enclosing function. The error is *rebuilt* in the caller's own `Result` instantiation, so using a `Result<i32, str>?` inside a function returning `Result<bool, str>` is legal — those are two different monomorphized layouts, and the early-return path constructs the right one. The error types must match exactly (no implicit `From` conversion), and live heap values are freed before the early return
+- **Heap strings** — `str` literals stay static and freely copyable; `String` (created with `string("...")`) is a heap-allocated, *owned* value carrying a hidden length header in front of NUL-terminated bytes. It moves and drops through the same ownership machinery as `Box<T>` — and `print` only borrows its argument, so printing a `String` twice is fine, while handing `print` an unbound owning temporary is a compile error (nothing would ever free it)
+- **Built-ins** — `print(...)` for integers, booleans, and strings; `string(...)` to build an owned `String` from a literal
 - **Runtime safety** — checked division (divide-by-zero), array bounds checks, and overflow-checked `+` / `-` / `*`; a violation prints a diagnostic and exits non-zero instead of misbehaving
 - **Diagnostics** — compile errors are rendered rustc-style: the offending source line(s), a caret underline (which spans multiple lines when the error does), a short inline label, and `note` / `help` lines. Identifier typos get a Levenshtein-based "did you mean?" suggestion. The lexer, parser, and type checker all *recover* from errors — bad nodes are poisoned so a single statement can surface several independent errors without spurious cascades, and the compiler reports as many as it can in one run (capped) instead of stopping at the first. Locations resolve through a source map, so they stay correct even when the error lives in an imported file
 - **Debug info** — the `inkwell` backend can emit DWARF (`-g`): line tables, function parameters, locals, and struct types (with named fields and real offsets), so compiled programs are debuggable in `gdb` / `lldb` — breakpoints, single-stepping, and `print` of variables and struct fields all work
@@ -135,7 +172,9 @@ on every program. That invariant is enforced by an equivalence harness
 `tests/equiv/` with both backends and diffs their output. A second snapshot
 harness (`make diag`) locks down the diagnostic output itself: each case in
 `tests/diagnostics/` is compiled and its rendered errors are diffed against a
-golden `.stderr`, so the rustc-style formatting stays pinned too.
+golden `.stderr`, so the rustc-style formatting stays pinned too. A third gate
+(`make dbg-smoke`) compiles a handful of cases with `-g` to keep the DWARF
+emission path honest.
 
 ## Building
 
@@ -236,7 +275,17 @@ both backends then emit one layout and one drop function per instantiation
 under mangled names — a generic definition by itself produces no code at all.
 That makes `Option<T>` / `Result<T, E>` plain library-style definitions instead
 of compiler builtins, and both backends stay byte-identical (and valgrind-clean)
-across the generic corpus. Next up: the `?` operator.
+across the generic corpus.
+
+Since then the error-handling chain has closed: the `?` operator desugars to a
+match-like early return, and because `Result` is monomorphized per
+instantiation, the `Err` path rebuilds the error inside the *enclosing
+function's* `Result` type — cross-`T` uses compile to two distinct layouts and
+still work. The language also grew its first real heap string: `String` values
+are length-prefixed, NUL-terminated heap blocks addressed by a data pointer
+(so `printf`-style printing needs no conversion), owned and freed by the same
+move/drop machinery as `Box<T>`. Next up: string concatenation and content
+comparison.
 
 It's still a learning project, so expect rough edges, missing features, and the
 occasional `unimplemented!()` — I add things as I get to them.

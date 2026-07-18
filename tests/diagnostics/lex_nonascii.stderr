@@ -1,0 +1,16 @@
+error: beklenmedik karakter: '—'
+ --> tests/diagnostics/lex_nonascii.lx:2:15
+  |
+2 |     let x = 5 — 3;
+  |               ^
+error: beklenmeyen ifade: Integer(3)
+ --> tests/diagnostics/lex_nonascii.lx:2:17
+  |
+2 |     let x = 5 — 3;
+  |                 ^ beklenen: Semicolon
+error: tanimsiz degisken: x
+ --> tests/diagnostics/lex_nonascii.lx:3:11
+  |
+3 |     print(x);
+  |           ^ bu kapsamda tanimli degil
+error: 3 hata yuzunden durduruldu

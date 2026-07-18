@@ -64,7 +64,7 @@ fn main() {
         report(&sources, errors, color);
     }
     let (moves, move_errors) =
-        lexora::move_check::MoveChecker::new(&checker.types).check(&program);
+        lexora::move_check::MoveChecker::new(&checker.types, &interner).check(&program);
     if !move_errors.is_empty() {
         report(&sources, move_errors, color);
     }

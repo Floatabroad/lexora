@@ -1,7 +1,7 @@
 use crate::ast::*;
 use crate::error::LexoraError;
 use crate::span::Span;
-use crate::symbol::Symbol;
+use crate::symbol::{Symbol, Interner};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -21,6 +21,7 @@ enum BindState {
 
 pub struct MoveChecker<'a> {
     types: &'a HashMap<ExprId, Type>,
+    interner: &'a Interner,
     scopes: Vec<HashMap<Symbol, BindState>>,
     moves: HashSet<ExprId>,
     errors: Vec<LexoraError>,
@@ -28,9 +29,10 @@ pub struct MoveChecker<'a> {
 }
 
 impl<'a> MoveChecker<'a> {
-    pub fn new(types: &'a HashMap<ExprId, Type>) -> Self {
+    pub fn new(types: &'a HashMap<ExprId, Type>, interner: &'a Interner) -> Self {
         MoveChecker {
             types,
+            interner,
             scopes: Vec::new(),
             moves: HashSet::new(),
             errors: Vec::new(),
@@ -79,6 +81,7 @@ impl<'a> MoveChecker<'a> {
     fn is_owning(&self, ty: &Type) -> bool {
         match ty {
             Type::Box(_) => true,
+            Type::String => true,
             Type::Enum(e, args) => self.variants_for(*e, args).map_or(false, |vs| {
                 vs.iter().any(|(_, ftys)| ftys.iter().any(|t| self.is_owning(t)))
             }),
@@ -232,9 +235,21 @@ impl<'a> MoveChecker<'a> {
                     self.read_place(target);
                 }
             }
-            Expr::Call{args,..} =>{
-                for arg in args.iter() {
-                    self.consume_expr(arg);
+            Expr::Call{name, args,..} =>{
+                if self.interner.resolve(*name) == "print" {
+                    for arg in args.iter() {
+                        if self.expr_is_owning(arg) && !matches!(arg, Expr::Identifier(..)) {
+                            self.errors.push(LexoraError::Custom{
+                                message: "print'e owning gecici deger verilemez; once bir degiskene baglayin".to_string(),
+                                span: arg.span(),
+                            });
+                        }
+                        self.read_place(arg);
+                    }
+                } else {
+                    for arg in args.iter() {
+                        self.consume_expr(arg);
+                    }
                 }
             }
             Expr::BinaryOp {left, right, ..} => {
@@ -261,6 +276,7 @@ impl<'a> MoveChecker<'a> {
             Expr::EnumVariant { args, .. } => {
                 for a in args.iter() { self.consume_expr(a); }
             }
+           Expr::Try { expr, .. } => self.consume_expr(expr),
             Expr::Match { scrutinee, arms, .. } => {
                 self.consume_expr(scrutinee);
                 let scrut_args = match self.types.get(&scrutinee.id()) {

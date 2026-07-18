@@ -1,0 +1,36 @@
+enum Result<T, E> { Ok(T), Err(E) }
+
+fn make(x: i32) -> Result<Box<i32>, str> {
+    if x > 0 {
+        Result::<Box<i32>, str>::Ok(box x)
+    } else {
+        Result::<Box<i32>, str>::Err("negatif")
+    }
+}
+
+fn double(x: i32) -> Result<i32, str> {
+    let b = make(x)?;
+    Result::<i32, str>::Ok(*b * 2)
+}
+
+fn via_local(x: i32) -> Result<i32, str> {
+    let r = make(x);
+    let b = r?;
+    Result::<i32, str>::Ok(*b)
+}
+
+fn main() -> i32 {
+    match double(21) {
+        Result::Ok(v) => print(v),
+        Result::Err(m) => print(m),
+    }
+    match double(-5) {
+        Result::Ok(v) => print(v),
+        Result::Err(m) => print(m),
+    }
+    match via_local(9) {
+        Result::Ok(v) => print(v),
+        Result::Err(m) => print(m),
+    }
+    0
+}

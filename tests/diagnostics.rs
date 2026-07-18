@@ -51,6 +51,7 @@ diag_tests!(
     already_defined,
     parse_recovery,
     lex_recovery,
+    lex_nonascii,
     multi_error_stmt,
     cond_recovery,
     deref_move,
@@ -58,4 +59,7 @@ diag_tests!(
     generic_arity,
     generic_infer,
     generic_field,
+    try_bad,
+    string_bad,
+    string_move,
 );

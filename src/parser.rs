@@ -126,6 +126,10 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 self.expect(Token::Greater)?;
                 Ok(Type::Box(Box::new(inner)))
             }
+           Token::Identifier("String") => {
+               self.advance();
+               Ok(Type::String)
+           }
             Token::LeftBracket => {
                 self.advance();
                 let elem_ty = self.parse_type()?;
@@ -707,6 +711,16 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                         id,
                     };
                 }
+               Token::Question => {
+                   let start = expr.span();
+                   let end = self.current.span;
+                   self.advance();
+                   expr = Expr::Try{
+                       expr: self.arena.alloc(expr),
+                       span: start.merge(end),
+                       id: self.next_id(),
+                   };
+               }
                 _ => break,
             }
         }

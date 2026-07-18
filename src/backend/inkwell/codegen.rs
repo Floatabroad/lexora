@@ -3,7 +3,7 @@ use crate::symbol::{Symbol, Interner};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::builder::{Builder, BuilderError};
-use inkwell::values::{FunctionValue, PointerValue, BasicValueEnum, BasicMetadataValueEnum, ValueKind,IntValue};
+use inkwell::values::{FunctionValue, PointerValue, BasicValueEnum, BasicMetadataValueEnum, ValueKind,IntValue, AsValueRef};
 use inkwell::types::{BasicTypeEnum, BasicType, BasicMetadataTypeEnum, StructType};
 use inkwell::AddressSpace;
 use std::collections::{HashMap, HashSet};
@@ -13,12 +13,12 @@ use inkwell::OptimizationLevel;
 use inkwell::passes::PassBuilderOptions;
 use std::path::Path;
 use inkwell::intrinsics::Intrinsic;
-use inkwell::debug_info::{DebugInfoBuilder, DICompileUnit, DIFile, DISubprogram, DIType,DWARFSourceLanguage, DWARFEmissionKind, DIFlags,DIFlagsConstants, AsDIScope};
+use inkwell::debug_info::{DebugInfoBuilder, DICompileUnit, DIFile, DISubprogram, DIType,DWARFSourceLanguage, DWARFEmissionKind, DIFlags,DIFlagsConstants, AsDIScope, DILocalVariable,DILocation};
 use inkwell::module::FlagBehavior;
 use crate::source_map::SourceMap;
 use crate::span::Span;
 use inkwell::basic_block::BasicBlock;
-
+use inkwell::llvm_sys::debuginfo::LLVMDIBuilderInsertDeclareRecordAtEnd;
 #[derive(Clone)]
 struct DropLocal<'ctx> {
     sym: Symbol,
@@ -54,6 +54,7 @@ pub struct CodeGen<'ctx> {
     vars: VarTable<'ctx>,
     structs: HashMap<Symbol, (StructType<'ctx>, Vec<(Symbol, BasicTypeEnum<'ctx>)>)>,
     cur_fn: Option<FunctionValue<'ctx>>,
+    cur_ret: Option<Type>,
     opt: u8,
     types: &'ctx HashMap<ExprId, Type>,
     sources: &'ctx SourceMap<'ctx>,
@@ -142,6 +143,7 @@ impl<'ctx> CodeGen<'ctx> {
             vars: VarTable::new(),
             structs: HashMap::new(),
             cur_fn: None,
+            cur_ret: None,
             opt,
             types,
             sources,
@@ -174,6 +176,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .expect("struct kayitli degil, register_structs once calismali")
                 .0.into(),
             Type::Box(_) => self.context.ptr_type(AddressSpace::default()).into(),
+            Type::String => self.context.ptr_type(AddressSpace::default()).into(),
             Type::Enum(s, args) => {
                 if let Some(et) = self.enum_types.get(&(*s, args.clone())) {
                     (*et).into()
@@ -233,6 +236,12 @@ impl<'ctx> CodeGen<'ctx> {
             Type::Box(inner) => {
                 let pointee = self.di_type(inner);
                 dib.create_pointer_type("box", pointee, 64, 0,AddressSpace::default()).as_type()
+            }
+            Type::String => {
+                let i8t = dib.create_basic_type("i8", 8, 0x06,
+                                                DIFlags::ZERO).unwrap().as_type();
+                dib.create_pointer_type("String", i8t, 64, 0,
+                                        AddressSpace::default()).as_type()
             }
             Type::Enum(..) => dib.create_basic_type("enum", 32, 0x05, DIFlags::ZERO).unwrap().as_type(),
             Type::Void | Type::Error | Type::Param(_) => unreachable!("debug: void/error tipi di_type'a ulasmaz"),
@@ -313,6 +322,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn is_owning_type(&self, ty: &Type) -> bool {
         match ty {
             Type::Box(_) => true,
+            Type::String => true,
             Type::Enum(e, args) => self.enum_is_owning(&(*e, args.clone())),
             _ => false,
         }
@@ -320,6 +330,12 @@ impl<'ctx> CodeGen<'ctx> {
     fn variant_tag(&self, key: &(Symbol, Vec<Type>), variant: Symbol) -> u64 {
         self.enums.get(key).unwrap()
             .iter().position(|(v, _)| *v == variant).unwrap() as u64
+    }
+    fn result_variants(&self, key: &(Symbol, Vec<Type>)) -> (Symbol, Type, Symbol, Type) {
+        let variants = self.enums.get(key).unwrap();
+        let ok = variants.iter().find(|(v, _)| self.interner.resolve(*v) == "Ok").unwrap();
+        let err = variants.iter().find(|(v, _)| self.interner.resolve(*v) == "Err").unwrap();
+        (ok.0, ok.1[0].clone(), err.0, err.1[0].clone())
     }
     fn inst_name(sym: Symbol, args: &[Type]) -> String {
         if args.is_empty() {
@@ -352,13 +368,34 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder.set_current_debug_location(loc);
         }
     }
+    fn insert_declare(
+        &self,
+        slot: PointerValue<'ctx>,
+        var: DILocalVariable<'ctx>,
+        loc: DILocation<'ctx>,
+        block: BasicBlock<'ctx>,
+    ) {
+        let dib = self.dib.as_ref().unwrap();
+        let expr = dib.create_expression(vec![]);
+        unsafe {
+            LLVMDIBuilderInsertDeclareRecordAtEnd(
+                dib.as_mut_ptr(),
+                slot.as_value_ref(),
+                var.as_mut_ptr(),
+                expr.as_mut_ptr(),
+                loc.as_mut_ptr(),
+                block.as_mut_ptr(),
+            );
+        }
+    }
     fn gen_function(&mut self, func: &Function) -> Result<(), BuilderError> {
         let name = self.interner.resolve(func.name);
         let function = self.module.get_function(name).unwrap();
         self.cur_fn = Some(function);
-
+        self.cur_ret = Some(func.return_type.clone());
         let entry = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry);
+        self.builder.unset_current_debug_location();
 
         self.vars = VarTable::new();
         self.vars.enter();
@@ -406,7 +443,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let loc = dib.create_debug_location(self.context, line, 0,
                                                     sp.as_debug_info_scope(), None);
                 let block = self.builder.get_insert_block().unwrap();
-                dib.insert_declare_at_end(slot, Some(var), None, loc, block);
+                self.insert_declare(slot, var, loc, block);
             }
         }
         for stmt in func.body.stmts {
@@ -501,7 +538,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let loc = dib.create_debug_location(self.context, line, 0,
                                                         sp.as_debug_info_scope(), None);
                     let block = self.builder.get_insert_block().unwrap();
-                    dib.insert_declare_at_end(slot, Some(var), None, loc, block);
+                    self.insert_declare(slot, var, loc, block);
                 }
 
                 Ok(())
@@ -705,7 +742,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                     let (fmt_ptr, print_arg): (PointerValue, BasicMetadataValueEnum) =
                         match &self.types[&args[0].id()] {
-                            Type::Str => (self.fmt_global(".fmt_s", "%s\n")?, arg.into()),
+                            Type::Str | Type::String => (self.fmt_global(".fmt_s", "%s\n")?, arg.into()),
                             Type::I64 => (self.fmt_global(".fmt_lld", "%lld\n")?,
                                           arg.into()),
                             Type::Bool => {
@@ -720,7 +757,16 @@ impl<'ctx> CodeGen<'ctx> {
                     self.builder.build_call(printf, &[fmt_ptr.into(), print_arg],
                                             "printf_call")?;
                     Ok(self.context.i32_type().const_int(0, false).into())
-                } else {
+                }else if fname == "string" {
+                    let arg = self.gen_expr(&args[0])?;
+                    let f = self.get_lexora_str_new()?;
+                    let call = self.builder.build_call(f, &[arg.into()], "strnew")?;
+                    match call.try_as_basic_value() {
+                        ValueKind::Basic(v) => Ok(v),
+                        ValueKind::Instruction(_) => unreachable!("lexora_str_new ptr dondurur"),
+                    }
+                }
+                else {
                     let function = self.module.get_function(fname).unwrap();
                     let mut argv: Vec<BasicMetadataValueEnum> = Vec::new();
                     for a in args.iter() {
@@ -805,7 +851,58 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 Ok(val)
             }
-            Expr::Error(_, _) => unreachable!("poison ifade codegen'e ulasti (errors bos degilse codegen yok)"),
+            Expr::Try { expr: inner, .. } => {
+                let (sym, targs) = match &self.types[&inner.id()] {
+                    Type::Enum(s, a) => (*s, a.clone()),
+                    _ => unreachable!("'?' ifadesinin tipi Result degil (typechecker kacirmali)"),
+                };
+                let key = (sym, targs);
+                let enum_ty = *self.enum_types.get(&key).unwrap();
+                let (ok_sym, ok_fty, err_sym, err_fty) = self.result_variants(&key);
+                let ret_key = match self.cur_ret.clone() {
+                    Some(Type::Enum(s, a)) => (s, a),
+                    _ => unreachable!("'?' kullanan fonksiyonun donus tipi Result degil (typechecker kacirmali)"),
+                };
+                let ret_enum_ty = *self.enum_types.get(&ret_key).unwrap();
+                let (_, _, ret_err_sym, _) = self.result_variants(&ret_key);
+
+                let val = self.gen_expr(inner)?;
+                let tmp = self.entry_alloca(enum_ty.into(), "tryres")?;
+                self.builder.build_store(tmp, val)?;
+                let tag_ptr = self.builder.build_struct_gep(enum_ty, tmp, 0, "tag")?;
+                let tag = self.builder.build_load(self.context.i32_type(), tag_ptr, "tagval")?.into_int_value();
+                let err_tag = self.context.i32_type().const_int(self.variant_tag(&key, err_sym), false);
+                let is_err = self.builder.build_int_compare(IntPredicate::EQ, tag, err_tag, "iserr")?;
+                let function = self.cur_fn.unwrap();
+                let err_bb = self.context.append_basic_block(function, "try_err");
+                let ok_bb = self.context.append_basic_block(function, "try_ok");
+               
+                self.builder.build_conditional_branch(is_err, err_bb, ok_bb)?;
+
+                self.builder.position_at_end(err_bb);
+                let evt = *self.variant_types.get(&(key.0, key.1.clone(), err_sym)).unwrap();
+                let payload_ptr = self.builder.build_struct_gep(enum_ty, tmp, 1, "payload")?;
+                let efld = self.builder.build_struct_gep(evt, payload_ptr, 0, "vfld")?;
+                let e_val = self.builder.build_load(self.llvm_type(&err_fty), efld, "errval")?;
+                let ret_tmp = self.entry_alloca(ret_enum_ty.into(), "tryret")?;
+                let rtag = self.context.i32_type().const_int(self.variant_tag(&ret_key, ret_err_sym), false);
+                let rtag_ptr = self.builder.build_struct_gep(ret_enum_ty, ret_tmp, 0, "tag")?;
+                self.builder.build_store(rtag_ptr, rtag)?;
+                let rvt = *self.variant_types.get(&(ret_key.0, ret_key.1.clone(), ret_err_sym)).unwrap();
+                let rpayload = self.builder.build_struct_gep(ret_enum_ty, ret_tmp, 1, "payload")?;
+                let rfld = self.builder.build_struct_gep(rvt, rpayload, 0, "vfld")?;
+                self.builder.build_store(rfld, e_val)?;
+                let ret_val = self.builder.build_load(ret_enum_ty, ret_tmp, "retval")?;
+                self.free_all_live()?;
+                self.builder.build_return(Some(&ret_val))?;
+
+                self.builder.position_at_end(ok_bb);
+                let ovt = *self.variant_types.get(&(key.0, key.1.clone(), ok_sym)).unwrap();
+                let payload_ptr = self.builder.build_struct_gep(enum_ty, tmp, 1, "payload")?;
+                let ofld = self.builder.build_struct_gep(ovt, payload_ptr, 0, "vfld")?;
+                Ok(self.builder.build_load(self.llvm_type(&ok_fty), ofld, "okval")?)
+            }
+                Expr::Error(_, _) => unreachable!("poison ifade codegen'e ulasti (errors bos degilse codegen yok)"),
             Expr::EnumVariant { variant, args, .. } => {
                 let (sym, targs) = match &self.types[&expr.id()] {
                     Type::Enum(s, a) => (*s, a.clone()),
@@ -1132,6 +1229,72 @@ impl<'ctx> CodeGen<'ctx> {
         tmp.build_return(None)?;
         Ok(func)
     }
+    fn get_strlen(&self) -> FunctionValue<'ctx> {
+        if let Some(f) = self.module.get_function("strlen") {
+            return f;
+        }
+        let i64t = self.context.i64_type();
+        let ptr_t = self.context.ptr_type(AddressSpace::default());
+        self.module.add_function("strlen", i64t.fn_type(&[ptr_t.into()], false), None)
+    }
+    fn get_strcpy(&self) -> FunctionValue<'ctx> {
+        if let Some(f) = self.module.get_function("strcpy") {
+            return f;
+        }
+        let ptr_t = self.context.ptr_type(AddressSpace::default());
+        self.module.add_function("strcpy", ptr_t.fn_type(&[ptr_t.into(), ptr_t.into()], false), None)
+    }
+    fn get_lexora_str_new(&self) -> Result<FunctionValue<'ctx>, BuilderError> {
+        if let Some(f) = self.module.get_function("lexora_str_new") {
+            return Ok(f);
+        }
+        let ptr_t = self.context.ptr_type(AddressSpace::default());
+        let i64t = self.context.i64_type();
+        let i8t = self.context.i8_type();
+        let func = self.module.add_function("lexora_str_new", ptr_t.fn_type(&[ptr_t.into()], false), None);
+        let entry = self.context.append_basic_block(func, "entry");
+        let tmp = self.context.create_builder();
+        tmp.position_at_end(entry);
+        let src = func.get_nth_param(0).unwrap().into_pointer_value();
+        let call = tmp.build_call(self.get_strlen(), &[src.into()], "len")?;
+        let len = match call.try_as_basic_value() {
+            ValueKind::Basic(v) => v.into_int_value(),
+            ValueKind::Instruction(_) => unreachable!("strlen i64 dondurur"),
+        };
+        let total = tmp.build_int_add(len, i64t.const_int(9, false), "total")?;
+        let call = tmp.build_call(self.get_lexora_alloc()?, &[total.into()], "blk")?;
+        let blk = match call.try_as_basic_value() {
+            ValueKind::Basic(v) => v.into_pointer_value(),
+            ValueKind::Instruction(_) => unreachable!("lexora_alloc ptr dondurur"),
+        };
+        tmp.build_store(blk, len)?;
+        let data = unsafe {
+            tmp.build_in_bounds_gep(i8t, blk, &[i64t.const_int(8, false)], "data")?
+        };
+        tmp.build_call(self.get_strcpy(), &[data.into(), src.into()], "")?;
+        tmp.build_return(Some(&data))?;
+        Ok(func)
+    }
+    fn get_lexora_str_free(&self) -> Result<FunctionValue<'ctx>, BuilderError> {
+        if let Some(f) = self.module.get_function("lexora_str_free") {
+            return Ok(f);
+        }
+        let void_t = self.context.void_type();
+        let ptr_t = self.context.ptr_type(AddressSpace::default());
+        let i64t = self.context.i64_type();
+        let i8t = self.context.i8_type();
+        let func = self.module.add_function("lexora_str_free", void_t.fn_type(&[ptr_t.into()], false), None);
+        let entry = self.context.append_basic_block(func, "entry");
+        let tmp = self.context.create_builder();
+        tmp.position_at_end(entry);
+        let s = func.get_nth_param(0).unwrap().into_pointer_value();
+        let blk = unsafe {
+            tmp.build_in_bounds_gep(i8t, s, &[i64t.const_int((-8i64) as u64, true)], "blk")?
+        };
+        tmp.build_call(self.get_lexora_free()?, &[blk.into()], "")?;
+        tmp.build_return(None)?;
+        Ok(func)
+    }
     fn build_box(&self, pointee: BasicTypeEnum<'ctx>, val: BasicValueEnum<'ctx>)
         -> Result<PointerValue<'ctx>, BuilderError> {
         let size = pointee.size_of().expect("box icin sized tip lazim");
@@ -1206,6 +1369,12 @@ impl<'ctx> CodeGen<'ctx> {
                 let p = self.builder.build_load(ptr_t, slot, "boxptr")?.into_pointer_value();
                 self.emit_drop_glue(p, inner)?;
             }
+            Type::String => {
+                let ptr_t = self.context.ptr_type(AddressSpace::default());
+                let p = self.builder.build_load(ptr_t, slot, "strptr")?.into_pointer_value();
+                self.builder.build_call(self.get_lexora_str_free()?, &[p.into()], "")?;
+            }
+
             Type::Enum(e, args) => { self.builder.build_call(self.drop_fn(&(*e, args.clone())), &[slot.into()], "")?; }
             _ => {}
         }
@@ -1220,6 +1389,11 @@ impl<'ctx> CodeGen<'ctx> {
                 let ptr_t = self.context.ptr_type(AddressSpace::default());
                 let sub = self.builder.build_load(ptr_t, ptr, "subptr")?.into_pointer_value();
                 self.emit_drop_glue(sub, inner)?;
+            }
+            Type::String => {
+                let ptr_t = self.context.ptr_type(AddressSpace::default());
+                let sub = self.builder.build_load(ptr_t, ptr, "strsub")?.into_pointer_value();
+                self.builder.build_call(self.get_lexora_str_free()?, &[sub.into()], "")?;
             }
             Type::Enum(e, args) => { self.builder.build_call(self.drop_fn(&(*e, args.clone())), &[ptr.into()], "")?; }            _ => {}
         }

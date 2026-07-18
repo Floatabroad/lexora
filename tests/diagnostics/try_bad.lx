@@ -1,0 +1,23 @@
+enum Result<T, E> { Ok(T), Err(E) }
+
+fn half(x: i32) -> Result<i32, str> {
+    Result::<i32, str>::Ok(x / 2)
+}
+
+fn scalar(x: i32) -> i32 {
+    x?
+}
+
+fn wrongfn(x: i32) -> i32 {
+    let h = half(x)?;
+    h
+}
+
+fn wronge(x: i32) -> Result<i32, i32> {
+    let h = half(x)?;
+    Result::<i32, i32>::Ok(h)
+}
+
+fn main() -> i32 {
+    0
+}

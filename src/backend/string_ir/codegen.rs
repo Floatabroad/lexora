@@ -42,6 +42,7 @@ pub struct CodeGen<'i> {
     functions: HashMap<Symbol, (Vec<LlvmType>, LlvmType)>,
     structs: HashMap<Symbol, Vec<(Symbol, LlvmType)>>,
     current_ret_ty: LlvmType,
+    cur_ret_ast: Type,
     types: &'i HashMap<ExprId, Type>,
     moves: &'i HashSet<ExprId>,
     drop_scopes: Vec<Vec<DropLocal>>,
@@ -56,6 +57,7 @@ impl<'i> CodeGen<'i> {
             functions: HashMap::new(),
             structs: HashMap::new(),
             current_ret_ty: LlvmType::Void,
+            cur_ret_ast: Type::Void,
             types,
             moves,
             drop_scopes: Vec::new(),
@@ -95,6 +97,10 @@ impl<'i> CodeGen<'i> {
                 let p = self.builder.build_load(&LlvmType::Ptr, slot);
                 self.emit_drop_glue(p, inner);
             }
+            Type::String => {
+                let p = self.builder.build_load(&LlvmType::Ptr, slot);
+                self.builder.build_call_str_free(p);
+            }
             Type::Enum(e, args) => {
                 let name = Self::inst_name(*e, args);
                 self.builder.build_call_drop_enum(&name, slot);
@@ -110,6 +116,10 @@ impl<'i> CodeGen<'i> {
            Type::Box(inner) => {
                let sub = self.builder.build_load(&LlvmType::Ptr, ptr.clone());
                self.emit_drop_glue(sub, inner);
+           }
+           Type::String => {
+               let sub = self.builder.build_load(&LlvmType::Ptr, ptr.clone());
+               self.builder.build_call_str_free(sub);
            }
            Type::Enum(e, args) => {
                let name = Self::inst_name(*e, args);
@@ -192,6 +202,7 @@ impl<'i> CodeGen<'i> {
             Type::Void => LlvmType::Void,
             Type::Str => LlvmType::Ptr,
             Type::Array(t, n) => LlvmType::Array(Box::new(self.ast_type_to_llvm(t)), *n),
+           Type::String => LlvmType::Ptr,
             Type::Struct(s) => LlvmType::Struct(*s),
             Type::Box(_) => LlvmType::Ptr,
             Type::Enum(e, args) => {
@@ -250,6 +261,24 @@ impl<'i> CodeGen<'i> {
        }\n\
        define void @lexora_free(ptr %p) {\n\
        call void @free(ptr %p)\n\
+       ret void\n\
+       }\n\n"
+        );
+        self.builder.globals.push_str(
+            "declare i64 @strlen(ptr)\n\
+       declare ptr @strcpy(ptr, ptr)\n\
+       define ptr @lexora_str_new(ptr %src) {\n\
+       %len = call i64 @strlen(ptr %src)\n\
+       %total = add i64 %len, 9\n\
+       %blk = call ptr @lexora_alloc(i64 %total)\n\
+       store i64 %len, ptr %blk\n\
+       %data = getelementptr i8, ptr %blk, i64 8\n\
+       %copy = call ptr @strcpy(ptr %data, ptr %src)\n\
+       ret ptr %data\n\
+       }\n\
+       define void @lexora_str_free(ptr %s) {\n\
+       %blk = getelementptr i8, ptr %s, i64 -8\n\
+       call void @lexora_free(ptr %blk)\n\
        ret void\n\
        }\n\n"
         );
@@ -322,6 +351,7 @@ impl<'i> CodeGen<'i> {
     fn is_owning_type(&self, ty: &Type) -> bool {
         match ty {
             Type::Box(_) => true,
+            Type::String => true,
             Type::Enum(e, args) => self.enum_is_owning(&(*e, args.clone())),
             _ => false,
         }
@@ -330,6 +360,12 @@ impl<'i> CodeGen<'i> {
         self.enums.get(key).unwrap()
             .iter().position(|(v, _)| *v == variant).unwrap() as i64
     }
+    fn result_variants(&self, key: &(Symbol, Vec<Type>)) -> (Symbol, Type, Symbol, Type) {
+        let variants = self.enums.get(key).unwrap();
+        let ok = variants.iter().find(|(v, _)| self.builder.resolve(*v) == "Ok").unwrap();
+        let err = variants.iter().find(|(v, _)| self.builder.resolve(*v) == "Err").unwrap();
+        (ok.0, ok.1[0].clone(), err.0, err.1[0].clone())
+    }
 
     fn gen_function<'arena>(&mut self, func: &Function<'arena>) -> Result<(), LexoraError> {
         self.locals = VarTable::new();
@@ -337,7 +373,7 @@ impl<'i> CodeGen<'i> {
         self.drop_enter();
 
         self.current_ret_ty = self.ast_type_to_llvm(&func.return_type);
-
+        self.cur_ret_ast = func.return_type.clone();
         let params_ir: Vec<(Symbol, LlvmType)> = func.params.iter()
             .map(|(sym, ty)| (*sym, self.ast_type_to_llvm(ty)))
             .collect();
@@ -693,6 +729,10 @@ impl<'i> CodeGen<'i> {
                     ));
                     return Ok(Value::Void);
                 }
+                if name_str == "string" {
+                    let val = self.gen_expr(&args[0])?;
+                    return Ok(self.builder.build_call_str_new(val));
+                }
                 let (params_tys, ret_ty) = match self.functions.get(name).cloned() {
                     Some(sig) => sig,
                     None => return Err(LexoraError::UndefinedFunction {
@@ -997,6 +1037,62 @@ impl<'i> CodeGen<'i> {
                     Some((lt, slot)) => Ok(self.builder.build_load(&lt, slot)),
                     None => Ok(Value::Void),
                 }
+            }
+
+            Expr::Try { expr: inner, .. } => {
+                let (sym, targs) = match &self.types[&inner.id()] {
+                    Type::Enum(s, a) => (*s, a.clone()),
+                    _ => return Err(LexoraError::Codegen {
+                        message: "'?' ifadesinin tipi Result degil".to_string(),
+                    }),
+                };
+                let key = (sym, targs);
+                let name = Self::inst_name(key.0, &key.1);
+                let enum_ty = LlvmType::Enum(name.clone());
+                let (ok_sym, ok_fty, err_sym, err_fty) = self.result_variants(&key);
+                let ret_key = match &self.cur_ret_ast {
+                    Type::Enum(s, a) => (*s, a.clone()),
+                    _ => return Err(LexoraError::Codegen {
+                        message: "'?' kullanan fonksiyonun donus tipi Result degil".to_string(),
+                    }),
+                };
+                let ret_name = Self::inst_name(ret_key.0, &ret_key.1);
+                let ret_enum_ty = LlvmType::Enum(ret_name.clone());
+                let (_, _, ret_err_sym, _) = self.result_variants(&ret_key);
+
+                let val = self.gen_expr(inner)?;
+                let tmp = self.builder.build_alloca(&enum_ty, "");
+                self.builder.build_store(&enum_ty, val, tmp.clone());
+                let tag_ptr = self.builder.build_gep_enum_tag(&name, tmp.clone());
+                let tag = self.builder.build_load(&LlvmType::I32, tag_ptr);
+                let err_tag = self.variant_tag(&key, err_sym);
+                let is_err = self.builder.build_icmp("eq", &LlvmType::I32, tag, Value::Const(err_tag));
+                let err_label = self.builder.fresh_block("try_err");
+                let ok_label = self.builder.fresh_block("try_ok");
+                self.builder.build_cond_br(is_err, &err_label, &ok_label);
+
+                self.builder.emit_label(&err_label);
+                let e_llvm = self.ast_type_to_llvm(&err_fty);
+                let payload_ptr = self.builder.build_gep_enum_payload(&name, tmp.clone());
+                let efld_ptr = self.builder.build_gep_variant_field(&name, err_sym, payload_ptr, 0);
+                let e_val = self.builder.build_load(&e_llvm, efld_ptr);
+                let ret_tmp = self.builder.build_alloca(&ret_enum_ty, "");
+                let ret_tag = self.variant_tag(&ret_key, ret_err_sym);
+                let rtag_ptr = self.builder.build_gep_enum_tag(&ret_name, ret_tmp.clone());
+                self.builder.build_store(&LlvmType::I32, Value::Const(ret_tag), rtag_ptr);
+                let rpayload_ptr = self.builder.build_gep_enum_payload(&ret_name, ret_tmp.clone());
+                let rfld_ptr = self.builder.build_gep_variant_field(&ret_name, ret_err_sym, rpayload_ptr, 0);
+                self.builder.build_store(&e_llvm, e_val, rfld_ptr);
+                let ret_val = self.builder.build_load(&ret_enum_ty, ret_tmp);
+                self.free_all_live();
+                let rt = self.current_ret_ty.clone();
+                self.builder.build_ret(&rt, ret_val);
+
+                self.builder.emit_label(&ok_label);
+                let payload_ptr = self.builder.build_gep_enum_payload(&name, tmp);
+                let ofld_ptr = self.builder.build_gep_variant_field(&name, ok_sym, payload_ptr, 0);
+                let ok_llvm = self.ast_type_to_llvm(&ok_fty);
+                Ok(self.builder.build_load(&ok_llvm, ofld_ptr))
             }
             Expr::Error(_,_) => Err(LexoraError::Codegen {
                 message: "poison expression codegene ulasti".to_string(),

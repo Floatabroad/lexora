@@ -24,7 +24,10 @@ diag:
 diag-bless:
 	./scripts/diagnostics.sh --bless
 
-.PHONY: build run clean equiv equiv-bless diag diag-bless
+dbg-smoke:
+	./scripts/dbg_smoke.sh
+
+.PHONY: build run clean equiv equiv-bless diag diag-bless dbg-smoke
 
 
 

@@ -127,7 +127,8 @@ impl<'i> TypeChecker<'i> {
             self.functions
                 .keys()
                 .map(|sym| self.interner.resolve(*sym))
-                .chain(std::iter::once("print")),
+                .chain(std::iter::once("print"))
+                .chain(std::iter::once("string")),
         )
     }
     fn nearest_field(&self, target: Symbol, fields: &[(Symbol, Type)]) -> Option<String>
@@ -147,6 +148,18 @@ impl<'i> TypeChecker<'i> {
         Some(variants.iter()
             .map(|(v, ftys)| (*v, ftys.iter().map(|t| t.substitute(&map)).collect()))
             .collect())
+    }
+    fn result_parts(&self, sym: Symbol, args: &[Type]) -> Option<(Type, Type)> {
+        let variants = self.enum_variants_for(sym, args)?;
+        if variants.len() != 2 {
+            return None;
+        }
+        let ok = variants.iter().find(|(v, _)| self.resolve(*v) == "Ok")?.1.clone();
+        let err = variants.iter().find(|(v, _)| self.resolve(*v) == "Err")?.1.clone();
+        if ok.len() != 1 || err.len() != 1 {
+            return None;
+        }
+        Some((ok[0].clone(), err[0].clone()))
     }
     fn validate_type(&mut self, ty: &Type, span: Span) {
         match ty {
@@ -240,6 +253,7 @@ impl<'i> TypeChecker<'i> {
             Type::Array(elem,n) => format!("[{}; {}]",self.format_type(elem),n),
             Type::Struct(s) => self.resolve(*s),
             Type::Box(inner) => format!("Box<{}>", self.format_type(inner)),
+           Type::String => "String".to_string(),
             Type::Enum(s, args) => {
                 if args.is_empty() {
                     self.resolve(*s)
@@ -640,7 +654,26 @@ impl<'i> TypeChecker<'i> {
                         }
                         for arg in args.iter() { self.check_expr(arg); }
                         Type::Void
-                    } else {
+                    }else if name_str == "string" {
+                        if args.len() != 1 {
+                            self.errors.push(LexoraError::Custom {
+                                message: "string bir str arguman alir".to_string(),
+                                span: *span,
+                            });
+                            for arg in args.iter() { self.check_expr(arg); }
+                            return Type::String;
+                        }
+                        let arg_ty = self.check_expr(&args[0]);
+                        if !matches!(arg_ty, Type::Error) && !types_match(&arg_ty, &Type::Str) {
+                            self.errors.push(LexoraError::TypeMismatch {
+                                expected: "str".to_string(),
+                                found: self.format_type(&arg_ty),
+                                span: args[0].span(),
+                            });
+                        }
+                        Type::String
+                    }
+                    else {
                         self.errors.push(LexoraError::UndefinedFunction {
                             name: name_str,
                             suggestion: self.nearest_fn(*name),
@@ -1024,6 +1057,61 @@ impl<'i> TypeChecker<'i> {
                     }
                 }
             }
+            Expr::Try { expr: inner, span, .. } => {
+                let inner_ty = self.check_expr(inner);
+                if matches!(inner_ty, Type::Error) {
+                    return Type::Error;
+                }
+                let (sym, args) = match &inner_ty {
+                    Type::Enum(s, a) if self.resolve(*s) == "Result" => (*s, a.clone()),
+                    _ => {
+                        self.errors.push(LexoraError::Custom {
+                            message: format!("'?' yalnizca Result uzerinde kullanilabilir, bulunan {}", self.format_type(&inner_ty)),
+                            span: *span,
+                        });
+                        return Type::Error;
+                    }
+                };
+                let (ok_ty, err_ty) = match self.result_parts(sym, &args) {
+                    Some(p) => p,
+                    None => {
+                        self.errors.push(LexoraError::Custom {
+                            message: "'?' icin Result iki varyantli olmali: Ok(T) ve Err(E)".to_string(),
+                            span: *span,
+                        });
+                        return Type::Error;
+                    }
+                };
+                let ret_err = match &self.cur_ret {
+                    Type::Enum(rs, ra) if *rs == sym => {
+                        let ra = ra.clone();
+                        self.result_parts(sym, &ra).map(|(_, e)| e)
+                    }
+                    _ => None,
+                };
+                match ret_err {
+                    Some(re) => {
+                        if !types_match(&err_ty, &re) {
+                            self.errors.push(LexoraError::TypeMismatch {
+                                expected: self.format_type(&re),
+                                found: self.format_type(&err_ty),
+                                span: *span,
+                            });
+                            return Type::Error;
+                        }
+                        
+                        ok_ty
+                    }
+                    None => {
+                        let ret_s = self.format_type(&self.cur_ret);
+                        self.errors.push(LexoraError::Custom {
+                            message: format!("'?' yalnizca Result donduren fonksiyonda kullanilabilir (donus tipi {})", ret_s),
+                            span: *span,
+                        });
+                        return Type::Error;
+                    }
+                }
+            }
             Expr::Error(_, _) => Type::Error,
         }
     }
@@ -1040,6 +1128,7 @@ fn types_match(a: &Type, b: &Type) -> bool {
         (Type::Array(t1, n1), Type::Array(t2, n2)) => types_match(t1, t2) && n1 == n2,
         (Type::Struct(s1), Type::Struct(s2)) => s1 == s2,
         (Type::Box(t1), Type::Box(t2)) => types_match(t1, t2),
+        (Type::String, Type::String) => true,
         (Type::Enum(s1, a1), Type::Enum(s2, a2)) =>
             s1 == s2 && a1.len() == a2.len()
                 && a1.iter().zip(a2.iter()).all(|(x, y)| types_match(x, y)),

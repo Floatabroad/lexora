@@ -1,0 +1,21 @@
+// tepe yorum
+// pes pese ikinci satir
+
+// fn oncesi yorum
+fn half(x: i32) -> i32 {
+    // govde ici yorum
+    x / 2 // bolme ile ayni satirda yorum
+}
+
+fn main() -> i32 {
+    let a = 10 / 2; // bes
+    print(a);
+    let url = "http://ornek"; // string icindeki // yorum DEGIL
+    print(url);
+    print(half(8)); // dort
+        // girintili yorum
+    let b = a / 5;// bitisik yorum
+    print(b);
+    0
+}
+// dosya sonu yorumu, newline yok
