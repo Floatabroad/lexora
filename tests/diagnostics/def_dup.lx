@@ -1,0 +1,12 @@
+struct P { x: i32, x: i32 }
+
+enum C { R, R }
+
+fn f() -> i32 { 1 }
+
+fn f() -> i32 { 2 }
+
+fn main() -> i32 {
+    print(f());
+    return 0;
+}

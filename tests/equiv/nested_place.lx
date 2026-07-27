@@ -1,0 +1,42 @@
+struct C { v: i32 }
+struct B { c: C }
+struct A { b: B }
+
+struct S { a: [i32; 3] }
+
+struct T { s: String }
+struct W { t: T }
+
+struct P { x: i32, y: i32 }
+
+fn mk() -> P {
+    let p: P = P { x: 11, y: 22 };
+    return p;
+}
+
+fn main() -> i32 {
+    let c: C = C { v: 9 };
+    let b: B = B { c: c };
+    let a: A = A { b: b };
+    print(a.b.c.v);
+
+    let arr: [i32; 3] = [10, 20, 30];
+    let s: S = S { a: arr };
+    print(s.a[1]);
+    let i: i32 = 2;
+    print(s.a[i]);
+
+    let p: P = P { x: 5, y: 6 };
+    let bp: Box<P> = box p;
+    print((*bp).x);
+    print((*bp).y);
+
+    print(mk().x);
+    print(mk().y);
+
+    let t: T = T { s: string("selam") };
+    let w: W = W { t: t };
+    print(w.t.s);
+    print(len(w.t.s));
+    return 0;
+}

@@ -8,7 +8,7 @@ use crate::span::Span;
 use crate::error::LexoraError;
 use std::collections::HashSet;
 
-
+const MAX_EXPR_DEPTH: u32 = 128;
 pub struct Parser<'src, 'arena> {
     lexer:                Lexer<'src>,
     current:              SpannedToken<'src>,
@@ -19,6 +19,7 @@ pub struct Parser<'src, 'arena> {
     pub next_expr_id: ExprId,
     enum_names:           HashSet<Symbol>,
     type_params: Vec<Symbol>,
+    depth: u32,
     errors:               Vec<LexoraError>,
 }
 
@@ -42,6 +43,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             next_expr_id: start_id,
             enum_names: HashSet::new(),
             type_params: Vec::new(),
+            depth:0,
             errors: Vec::new(),
 
         };
@@ -81,6 +83,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     }
 
     fn synchronize(&mut self) {
+        self.depth = 0;
         let was_semi = self.current.token == Token::Semicolon;
         self.advance();
         if was_semi{
@@ -333,14 +336,10 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     }
     fn assign_stmt(&mut self, target: Expr<'arena>, value: Expr<'arena>, span: Span) -> Result<Stmt<'arena>, LexoraError> {
         match target {
-            Expr::Identifier(name, _, _) =>
-                Ok(Stmt::Assign { name, value, span }),
-            Expr::Index { array: &Expr::Identifier(name, _, _), index, .. } =>
-                Ok(Stmt::AssignIndex { name, index: index.clone(), value, span }),
-            Expr::FieldAccess { object: &Expr::Identifier(object, _, _), field, .. } =>
-                Ok(Stmt::AssignField { object, field, value, span }),
-            Expr::Deref { .. } =>
-                Ok(Stmt::AssignDeref { target, value, span }),
+            Expr::Identifier(name, _, _) => Ok(Stmt::Assign { name, value, span }),
+            Expr::Index { .. } | Expr::FieldAccess { .. } | Expr::Deref { .. } if target.is_place() => {
+                Ok(Stmt::AssignPlace { target, value, span })
+            }
             other => Err(LexoraError::Custom {
                 message: "gecersiz atama hedefi".to_string(),
                 span: other.span(),
@@ -527,15 +526,36 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let bindings = self.arena.alloc_slice_fill_iter(bindings.into_iter());
         Ok(Pattern::Variant { enum_name, variant, bindings })
     }
-
     pub fn parse_expr(&mut self) -> Result<Expr<'arena>, LexoraError> {
-        self.parse_or()
+        self.depth += 1;
+        if self.depth > MAX_EXPR_DEPTH {
+            self.depth -= 1;
+            return Err(LexoraError::Custom {
+                message: format!("ifade cok derin ic ice (sinir {})", MAX_EXPR_DEPTH),
+                span: self.current.span,
+            });
+        }
+        let result = self.parse_or();
+        self.depth -= 1;
+        result
     }
+
+
     fn parse_or(&mut self) -> Result<Expr<'arena>, LexoraError> {
         let start = self.current.span;
+        let mut chain: u32 = 0;
         let mut left = self.parse_and()?;
         while self.current.token == Token::Or {
             self.advance();
+            chain += 1;
+            self.depth += 1;
+            if self.depth > MAX_EXPR_DEPTH {
+                self.depth -= chain;
+                return Err(LexoraError::Custom {
+                    message: format!("ifade cok derin ic ice (sinir {})", MAX_EXPR_DEPTH),
+                    span: self.current.span,
+                });
+            }
             let right = self.parse_and()?;
             let span = start.merge(right.span());
             let id = self.next_id();
@@ -547,13 +567,24 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 id,
             };
         }
+        self.depth -= chain;
         Ok(left)
     }
     fn parse_and(&mut self) -> Result<Expr<'arena>, LexoraError> {
         let start = self.current.span;
+        let mut chain: u32 = 0;
         let mut left = self.parse_comparison()?;
         while self.current.token == Token::And {
             self.advance();
+            chain += 1;
+            self.depth += 1;
+            if self.depth > MAX_EXPR_DEPTH {
+                self.depth -= chain;
+                return Err(LexoraError::Custom {
+                    message: format!("ifade cok derin ic ice (sinir {})", MAX_EXPR_DEPTH),
+                    span: self.current.span,
+                });
+            }
             let right = self.parse_comparison()?;
             let span = start.merge(right.span());
             let id = self.next_id();
@@ -565,6 +596,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 id,
             };
         }
+        self.depth -= chain;
         Ok(left)
     }
 
@@ -589,6 +621,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     }
     fn parse_additive(&mut self) -> Result<Expr<'arena>, LexoraError> {
         let start = self.current.span;
+        let mut chain: u32 = 0;
         let mut left = self.parse_multiplicative()?;
         loop {
             let op = match self.current.token {
@@ -597,6 +630,15 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 _ =>  break,
             };
             self.advance();
+            self.depth += 1;
+            chain += 1;
+            if self.depth > MAX_EXPR_DEPTH {
+                self.depth -= chain;
+                return Err(LexoraError::Custom {
+                    message: format!("ifade cok derin ic ice (sinir {})", MAX_EXPR_DEPTH),
+                    span: self.current.span,
+                });
+            }
             let right = self.parse_multiplicative()?;
             let span = start.merge(right.span());
             let id = self.next_id();
@@ -608,11 +650,13 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 id,
             };
         }
+        self.depth -= chain;
         Ok(left)
     }
 
     fn parse_multiplicative(&mut self) -> Result<Expr<'arena>, LexoraError>{
         let start = self.current.span;
+        let mut chain: u32 = 0;
         let mut left = self.parse_cast()?;
         loop {
             let op = match self.current.token {
@@ -621,11 +665,21 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 _               => break,
             };
             self.advance();
+            self.depth += 1;
+            chain += 1;
+            if self.depth > MAX_EXPR_DEPTH {
+                self.depth -= chain;
+                return Err(LexoraError::Custom {
+                    message: format!("ifade cok derin ic ice (sinir {})", MAX_EXPR_DEPTH),
+                    span: self.current.span,
+                });
+            }
             let right = self.parse_cast()?;
             let span = start.merge(right.span());
             let id = self.next_id();
             left = Expr::BinaryOp { left: self.arena.alloc(left), op, right: self.arena.alloc(right), span, id};
         }
+        self.depth -= chain;
         Ok(left)
     }
     fn parse_cast(&mut self) -> Result<Expr<'arena>, LexoraError> {

@@ -1,0 +1,15 @@
+struct P { x: i32 }
+
+enum C { R, G }
+
+fn main() -> i32 {
+    let b: Box<i32> = box 1;
+    let p: P = P { x: 1 };
+    let arr: [i32; 2] = [1, 2];
+    let c = C::R;
+    print(b);
+    print(p);
+    print(arr);
+    print(c);
+    return 0;
+}

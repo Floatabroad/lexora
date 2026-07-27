@@ -1,0 +1,23 @@
+struct P { x: i32 }
+
+enum E { A(i32), B }
+
+fn main() -> i32 {
+    let p: P = P { x: 1 };
+    let q: P = P { x: 1 };
+    let arr: [i32; 2] = [1, 2];
+    let brr: [i32; 2] = [1, 2];
+    let bx: Box<i32> = box 1;
+    let e = E::A(1);
+    let f = E::A(1);
+    let s = string("z");
+    if p == q { print("x"); }
+    if arr == brr { print("x"); }
+    if bx == bx { print("x"); }
+    if e == f { print("x"); }
+    if true < false { print("x"); }
+    if s < 5 { print("x"); }
+    print(len(5));
+    print(len("a", "b"));
+    return 0;
+}

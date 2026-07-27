@@ -1,0 +1,10 @@
+fn f() -> i32 {
+}
+
+fn main() -> i32 {
+    let x = print(5);
+    for i in 0..3 {
+        i = 0;
+    }
+    return 0;
+}

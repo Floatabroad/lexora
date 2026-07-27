@@ -176,8 +176,16 @@ impl<'src> Lexer<'src> {
             self.advance();
         }
         let s = &self.source[start..self.pos];
-        let value: i64 = s.parse().unwrap();
-        Token::Integer(value)
+        match s.parse::<i64>() {
+            Ok(value) => Token::Integer(value),
+            Err(_) => {
+                self.errors.push(LexoraError::Custom {
+                    message: format!("tam sayi literali cok buyuk (i64 siniri asildi): {}", s),
+                    span: self.span(start as u32, self.pos as u32),
+                });
+                Token::Integer(0)
+            }
+        }
     }
     fn read_string(&mut self, start: u32) -> Token<'src> {
         self.advance();

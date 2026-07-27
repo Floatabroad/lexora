@@ -1,0 +1,7 @@
+fn main() -> i32 {
+    let a: i32 = 2147483647;
+    let b: i32 = 0 - a - 1;
+    let c: i32 = 0 - 1;
+    print(b / c);
+    return 0;
+}

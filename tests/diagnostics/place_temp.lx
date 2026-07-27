@@ -1,0 +1,14 @@
+struct SW { s: String, n: i32 }
+struct P { x: i32 }
+
+fn mkw() -> SW {
+    let w: SW = SW { s: string("x"), n: 3 };
+    return w;
+}
+
+fn main() -> i32 {
+    print(mkw().n);
+    let p: P = P { x: 1 };
+    print((*(box p)).x);
+    return 0;
+}

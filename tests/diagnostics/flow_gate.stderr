@@ -1,0 +1,18 @@
+error: 'f' fonksiyonu i32 donduruyor ama tum yollar deger dondurmuyor
+ --> tests/diagnostics/flow_gate.lx:1:1
+  |
+1 |   fn f() -> i32 {
+  | __^
+2 | | }
+  | |_^
+error: 'x' void deger ile baglanamaz; void bir deger tipi degil
+ --> tests/diagnostics/flow_gate.lx:5:5
+  |
+5 |     let x = print(5);
+  |     ^^^^^^^^^^^^^^^^^
+error: dongu degiskeni 'i' degistirilemez
+ --> tests/diagnostics/flow_gate.lx:7:9
+  |
+7 |         i = 0;
+  |         ^^^^^^
+error: 3 hata yuzunden durduruldu

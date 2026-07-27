@@ -1,0 +1,9 @@
+fn main() -> i32 {
+    let k = string("k");
+    if k == k + "z" { print("x"); }
+    let m = string("m");
+    let n = m + "!";
+    if m == "m" { print("y"); }
+    print(n);
+    return 0;
+}

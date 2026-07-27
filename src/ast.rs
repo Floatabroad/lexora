@@ -135,19 +135,8 @@ pub enum Stmt<'arena> {
         body: Block<'arena>,
         span: Span,
     },
-    AssignIndex {
-        name: Symbol,
-        index: Expr<'arena>,
-        value: Expr<'arena>,
-        span: Span,
-    },
-    AssignField {
-        object: Symbol,
-        field:  Symbol,
-        value: Expr<'arena>,
-        span: Span,
-    },
-    AssignDeref {
+
+    AssignPlace {
         target: Expr<'arena>,
         value: Expr<'arena>,
         span: Span,
@@ -296,6 +285,18 @@ impl<'arena> Expr<'arena> {
            Expr::If{id, ..} => *id
         }
     }
+    pub fn is_place(&self) -> bool {
+        match self {
+            Expr::Identifier(..) => true,
+            Expr::FieldAccess { object, .. } => object.is_place(),
+            Expr::Index { array, .. } => array.is_place(),
+            Expr::Deref { target, .. } => target.is_place(),
+            _ => false,
+        }
+    }
+    pub fn is_aggregate_literal(&self) -> bool {
+        matches!(self, Expr::ArrayLiteral(..) | Expr::StructLiteral { .. })
+    }
 }
 
 impl<'arena> Stmt<'arena> {
@@ -308,9 +309,7 @@ impl<'arena> Stmt<'arena> {
             Stmt::Assign { span, .. } => *span,
             Stmt::While { span, .. } => *span,
             Stmt::For { span, .. } => *span,
-            Stmt::AssignIndex { span, .. } => *span,
-            Stmt::AssignField { span, .. } => *span,
-            Stmt::AssignDeref { span, .. } => *span,
+            Stmt::AssignPlace { span, .. } => *span,
 
             Stmt::Error(span) => *span,
         }

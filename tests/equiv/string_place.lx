@@ -1,0 +1,24 @@
+enum E { A(Box<String>), B }
+
+fn main() -> i32 {
+    let b: Box<String> = box string("selam");
+    print(*b);
+    print(*b);
+    print(len(*b));
+    if *b == "selam" { print("esit"); }
+
+    let e: E = E::A(box string("derin"));
+    match e {
+        E::A(p) => { print(*p); }
+        E::B => { print("bos"); }
+    }
+
+    let f: E = E::A(box string("atilan"));
+    match f {
+        _ => { print("wildcard"); }
+    }
+
+    let g: Box<Box<String>> = box box string("cift");
+    print(**g);
+    return 0;
+}

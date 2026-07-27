@@ -1,0 +1,16 @@
+error: zaten tanimli: P.x
+ --> tests/diagnostics/def_dup.lx:1:1
+  |
+1 | struct P { x: i32, x: i32 }
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^ yeniden tanimlandi
+error: zaten tanimli: C::R
+ --> tests/diagnostics/def_dup.lx:3:1
+  |
+3 | enum C { R, R }
+  | ^^^^^^^^^^^^^^^ yeniden tanimlandi
+error: zaten tanimli: f
+ --> tests/diagnostics/def_dup.lx:7:1
+  |
+7 | fn f() -> i32 { 2 }
+  | ^^^^^^^^^^^^^^^^^^^ yeniden tanimlandi
+error: 3 hata yuzunden durduruldu

@@ -1,0 +1,45 @@
+error: '==' / '!=' bu tipte kullanilamaz: P — esitlik sayisal, bool veya string tiplerinde olur
+  --> tests/diagnostics/string_cmp_bad.lx:14:8
+   |
+14 |     if p == q { print("x"); }
+   |        ^^^^^^
+error: '==' / '!=' bu tipte kullanilamaz: [i32; 2] — esitlik sayisal, bool veya string tiplerinde olur
+  --> tests/diagnostics/string_cmp_bad.lx:15:8
+   |
+15 |     if arr == brr { print("x"); }
+   |        ^^^^^^^^^^
+error: '==' / '!=' bu tipte kullanilamaz: Box<i32> — esitlik sayisal, bool veya string tiplerinde olur
+  --> tests/diagnostics/string_cmp_bad.lx:16:8
+   |
+16 |     if bx == bx { print("x"); }
+   |        ^^^^^^^^
+error: '==' / '!=' bu tipte kullanilamaz: E — esitlik sayisal, bool veya string tiplerinde olur
+  --> tests/diagnostics/string_cmp_bad.lx:17:8
+   |
+17 |     if e == f { print("x"); }
+   |        ^^^^^^
+error: siralama karsilastirmasi sayisal veya string tip gerektirir, bulunan bool
+  --> tests/diagnostics/string_cmp_bad.lx:18:8
+   |
+18 |     if true < false { print("x"); }
+   |        ^^^^^^^^^^^^
+error: tip uyusmazligi: beklenen String, bulunan i32
+  --> tests/diagnostics/string_cmp_bad.lx:19:8
+   |
+19 |     if s < 5 { print("x"); }
+   |        ^^^^^ bu ifade `i32` tipinde
+   |
+   = help: beklenen tip: `String`
+error: tip uyusmazligi: beklenen String veya str, bulunan i32
+  --> tests/diagnostics/string_cmp_bad.lx:20:15
+   |
+20 |     print(len(5));
+   |               ^ bu ifade `i32` tipinde
+   |
+   = help: beklenen tip: `String veya str`
+error: len bir str veya String arguman alir
+  --> tests/diagnostics/string_cmp_bad.lx:21:11
+   |
+21 |     print(len("a", "b"));
+   |           ^^^^^^^^^^^^^
+error: 8 hata yuzunden durduruldu

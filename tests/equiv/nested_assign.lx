@@ -1,0 +1,50 @@
+struct Inner { x: i32 }
+struct Outer { i: Inner, n: i32 }
+struct S { a: [i32; 3] }
+struct P { x: i32 }
+
+fn bump(s: S) -> i32 {
+    s.a[0] = s.a[0] + 100;
+    return s.a[0];
+}
+
+fn main() -> i32 {
+    let inn: Inner = Inner { x: 1 };
+    let o: Outer = Outer { i: inn, n: 2 };
+    o.i.x = 9;
+    o.n = o.i.x + 1;
+    print(o.i.x);
+    print(o.n);
+
+    let m: [[i32; 2]; 2] = [[1, 2], [3, 4]];
+    m[1][0] = 7;
+    m[0][1] = m[1][0] + 1;
+    print(m[1][0]);
+    print(m[0][1]);
+
+    let arr: [i32; 3] = [1, 2, 3];
+    let s: S = S { a: arr };
+    let k: i32 = 2;
+    s.a[k] = 42;
+    s.a[0] = s.a[k] + 1;
+    print(s.a[2]);
+    print(s.a[0]);
+    print(bump(s));
+
+    let p: P = P { x: 5 };
+    let b: Box<P> = box p;
+    (*b).x = 3;
+    print((*b).x);
+
+    let q: i32 = 0;
+    q = 8;
+    print(q);
+
+    let t: i32 = 0;
+    for j in 0..3 {
+        m[0][0] = j;
+        t = t + m[0][0];
+    }
+    print(t);
+    return 0;
+}

@@ -3,14 +3,9 @@ error: tasinmis deger kullanildi
   |
 4 |     print(s);
   |           ^
-error: print'e owning gecici deger verilemez; once bir degiskene baglayin
- --> tests/diagnostics/string_move.lx:5:11
-  |
-5 |     print(string("gecici"));
-  |           ^^^^^^^^^^^^^^^^
 error: owning bir degiskene tekrar atama henuz desteklenmiyor
- --> tests/diagnostics/string_move.lx:7:5
+ --> tests/diagnostics/string_move.lx:6:5
   |
-7 |     u = string("uc");
+6 |     u = string("uc");
   |     ^^^^^^^^^^^^^^^^^
-error: 3 hata yuzunden durduruldu
+error: 2 hata yuzunden durduruldu

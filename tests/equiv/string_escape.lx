@@ -1,0 +1,11 @@
+fn main() -> i32 {
+    print("ters bolu: a\41b");
+    print("yol: C:\\tmp");
+    print("yuzde: %d ve %s");
+    print("turkce: çğüşıöÇĞÜŞİÖ");
+    print("");
+    let s: String = string("x\y");
+    print(s);
+    print(len(s));
+    return 0;
+}

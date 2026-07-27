@@ -1,0 +1,15 @@
+struct K { ad: String, b: Box<i32> }
+
+fn yut(s: String) -> i32 { return len(s); }
+
+fn main() -> i32 {
+    let k: K = K { ad: string("x"), b: box 1 };
+    let n: String = k.ad;
+    let d: [String; 2] = [string("p"), string("q")];
+    let e: String = d[0];
+    let f: String = k.ad + "!";
+    k.ad = string("yeni");
+    d[1] = string("baska");
+    print(yut(k.ad));
+    return 0;
+}

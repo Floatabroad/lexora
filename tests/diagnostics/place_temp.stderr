@@ -1,0 +1,11 @@
+error: gecici deger uzerinden alan/eleman erisimi yapilamaz; once bir degiskene baglayin
+  --> tests/diagnostics/place_temp.lx:10:11
+   |
+10 |     print(mkw().n);
+   |           ^^^^^
+error: gecici deger uzerinden alan/eleman erisimi yapilamaz; once bir degiskene baglayin
+  --> tests/diagnostics/place_temp.lx:12:12
+   |
+12 |     print((*(box p)).x);
+   |            ^^^^^^^
+error: 2 hata yuzunden durduruldu

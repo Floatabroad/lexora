@@ -1,0 +1,6 @@
+error: 'main' fonksiyonu bulunamadi; giris noktasi 'fn main() -> i32' olmali
+ --> tests/diagnostics/entry_missing.lx:1:1
+  |
+1 | fn yardimci(x: i32) -> i32 {
+  | ^
+error: 1 hata yuzunden durduruldu

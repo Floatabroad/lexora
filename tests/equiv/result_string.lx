@@ -1,0 +1,31 @@
+enum Result<T, E> { Ok(T), Err(E) }
+
+fn bul(x: i32) -> Result<i32, String> {
+    if x > 0 {
+        Result::<i32, String>::Ok(x)
+    } else {
+        Result::<i32, String>::Err(string("negatif deger"))
+    }
+}
+
+fn ciftle(x: i32) -> Result<i32, String> {
+    let v: i32 = bul(x)?;
+    return Result::<i32, String>::Ok(v * 2);
+}
+
+fn main() -> i32 {
+    match ciftle(21) {
+        Result::Ok(v) => { print(v); }
+        Result::Err(e) => { print(e); }
+    }
+    match ciftle(0 - 5) {
+        Result::Ok(v) => { print(v); }
+        Result::Err(e) => { print(e); }
+    }
+    let r: Result<i32, String> = bul(3);
+    match r {
+        Result::Ok(v) => { print(v + 100); }
+        Result::Err(e) => { print(e); }
+    }
+    return 0;
+}

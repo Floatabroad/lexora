@@ -1,0 +1,51 @@
+enum M { S(String), N }
+enum W { A(String), B(Box<i32>), C }
+enum Result<T, E> { Ok(T), Err(E) }
+
+fn yut(m: M) -> i32 {
+    return 5;
+}
+
+fn hata() -> Result<i32, String> {
+    return Result::<i32, String>::Err(string("bozuk"));
+}
+
+fn main() -> i32 {
+    let a: M = M::S(string("bir"));
+    match a {
+        M::S(s) => { print(s); }
+        M::N => { print(0); }
+    }
+
+    let b: M = M::S(string("iki"));
+    match b {
+        M::N => { print(1); }
+        _ => { print(2); }
+    }
+
+    let c: M = M::S(string("uc"));
+    print(3);
+
+    let r: Result<i32, String> = hata();
+    match r {
+        Result::Ok(v) => { print(v); }
+        _ => { print(4); }
+    }
+
+    let d: M = M::S(string("dort"));
+    print(yut(d));
+
+    let w: W = W::B(box 6);
+    match w {
+        W::A(t) => { print(t); }
+        W::B(p) => { print(*p); }
+        W::C => { print(0); }
+    }
+
+    let x: W = W::A(string("yedi"));
+    print(8);
+
+    let g: Box<M> = box M::S(string("dokuz"));
+    print(10);
+    return 0;
+}

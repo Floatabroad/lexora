@@ -1,0 +1,6 @@
+error: tam sayi literali cok buyuk (i64 siniri asildi): 99999999999999999999
+ --> tests/diagnostics/int_literal_overflow.lx:2:13
+  |
+2 |     let x = 99999999999999999999;
+  |             ^^^^^^^^^^^^^^^^^^^^
+error: 1 hata yuzunden durduruldu

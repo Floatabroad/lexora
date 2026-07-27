@@ -1,0 +1,23 @@
+error: iki str sabiti '+' ile birlestirilemez; once string() ile String'e cevirin
+ --> tests/diagnostics/string_concat_bad.lx:2:13
+  |
+2 |     let a = "p" + "q";
+  |             ^^^^^^^^^
+error: aritmetik islem sayisal tip gerektirir (i32/i64), bulunan String
+ --> tests/diagnostics/string_concat_bad.lx:3:13
+  |
+3 |     let b = string("m") * string("n");
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^
+error: aritmetik islem sayisal tip gerektirir (i32/i64), bulunan bool
+ --> tests/diagnostics/string_concat_bad.lx:4:13
+  |
+4 |     let c = true + false;
+  |             ^^^^^^^^^^^^
+error: tip uyusmazligi: beklenen i32, bulunan String
+ --> tests/diagnostics/string_concat_bad.lx:5:13
+  |
+5 |     let d = 5 + string("x");
+  |             ^^^^^^^^^^^^^^^ bu ifade `String` tipinde
+  |
+  = help: beklenen tip: `i32`
+error: 4 hata yuzunden durduruldu

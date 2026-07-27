@@ -1,0 +1,9 @@
+fn print(x: i32) -> i32 { x }
+
+fn len(x: i32) -> i32 { x }
+
+fn string(x: i32) -> i32 { x }
+
+fn main() -> i32 {
+    return 0;
+}

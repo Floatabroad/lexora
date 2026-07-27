@@ -1,0 +1,16 @@
+enum E { A, B }
+
+fn main() -> i32 {
+    let e = E::A;
+    match e {
+        _ => { print(1); }
+        E::A => { print(2); }
+    }
+    let f = E::B;
+    match f {
+        E::A => { print(3); }
+        E::A => { print(4); }
+        E::B => { print(5); }
+    }
+    return 0;
+}

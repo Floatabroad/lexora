@@ -1,0 +1,29 @@
+fn main() -> i32 {
+    let a = string("foo");
+    let b = string("foo");
+    let c = string("bar");
+    if a == b { print("eq_ss"); }
+    if a != c { print("ne_ss"); }
+    if a == "foo" { print("eq_sl"); }
+    if "foo" == a { print("eq_ls"); }
+    if "foo" == "foo" { print("eq_ll"); }
+    if "abc" != "abd" { print("ne_ll"); }
+    if c < a { print("lt"); }
+    if a > c { print("gt"); }
+    if a <= b { print("le"); }
+    if a >= b { print("ge"); }
+    print(a);
+    print(b);
+    print(c);
+    print(len(a));
+    print(len("merhaba"));
+    let d = string("ab");
+    let e = string("cd");
+    if a == d + e { print("bad"); } else { print("chain_ne"); }
+    print(len(string("xyz") + "!"));
+    print(string("p") + "q");
+    let f = string("uzun-string");
+    if f == a { print("bad2"); } else { print("len_shortcut"); }
+    print(f);
+    return 0;
+}

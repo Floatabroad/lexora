@@ -1,0 +1,31 @@
+error: owning alan struct'tan tasinamaz; yerinde odunc alin
+ --> tests/diagnostics/owning_partial.lx:7:21
+  |
+7 |     let n: String = k.ad;
+  |                     ^^^^
+error: owning eleman diziden tasinamaz; yerinde odunc alin
+ --> tests/diagnostics/owning_partial.lx:9:21
+  |
+9 |     let e: String = d[0];
+  |                     ^^^^
+error: owning alan struct'tan tasinamaz; yerinde odunc alin
+  --> tests/diagnostics/owning_partial.lx:10:21
+   |
+10 |     let f: String = k.ad + "!";
+   |                     ^^^^
+error: owning hedefe yeniden atama henuz desteklenmiyor (eski deger sizardi)
+  --> tests/diagnostics/owning_partial.lx:11:5
+   |
+11 |     k.ad = string("yeni");
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+error: owning hedefe yeniden atama henuz desteklenmiyor (eski deger sizardi)
+  --> tests/diagnostics/owning_partial.lx:12:5
+   |
+12 |     d[1] = string("baska");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+error: owning alan struct'tan tasinamaz; yerinde odunc alin
+  --> tests/diagnostics/owning_partial.lx:13:15
+   |
+13 |     print(yut(k.ad));
+   |               ^^^^
+error: 6 hata yuzunden durduruldu

@@ -2,7 +2,6 @@ fn main() -> i32 {
     let s = string("bir");
     let t = s;
     print(s);
-    print(string("gecici"));
     let u = string("iki");
     u = string("uc");
     0

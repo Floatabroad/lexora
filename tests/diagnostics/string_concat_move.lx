@@ -1,0 +1,11 @@
+fn main() -> i32 {
+    let a = string("x");
+    let b = a + "y";
+    print(a);
+    let g = string("z");
+    let h = g + g;
+    let p = string("s");
+    let q = string("t");
+    p + q;
+    return 0;
+}

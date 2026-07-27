@@ -1,0 +1,16 @@
+error: tasinmis deger kullanildi
+ --> tests/diagnostics/string_concat_move.lx:4:11
+  |
+4 |     print(a);
+  |           ^
+error: tasinmis deger tekrar kullanildi
+ --> tests/diagnostics/string_concat_move.lx:6:17
+  |
+6 |     let h = g + g;
+  |                 ^
+error: owning deger bir degiskene baglanmali (sahipsiz kalamaz)
+ --> tests/diagnostics/string_concat_move.lx:9:5
+  |
+9 |     p + q;
+  |     ^^^^^^
+error: 3 hata yuzunden durduruldu

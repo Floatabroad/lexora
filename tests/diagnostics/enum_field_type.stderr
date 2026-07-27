@@ -1,4 +1,4 @@
-error: 'List::Cons' alani icin desteklenmeyen tip: List — enum alani skaler (i32/i64/bool/str) veya Box<T> olabilir
+error: 'List::Cons' alani icin desteklenmeyen tip: List — enum alani skaler (i32/i64/bool/str/String) veya Box<T> olabilir
  --> tests/diagnostics/enum_field_type.lx:1:1
   |
 1 | enum List { Cons(i32, List), Nil }

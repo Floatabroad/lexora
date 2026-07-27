@@ -1,0 +1,7 @@
+fn main() -> i32 {
+    let a = "p" + "q";
+    let b = string("m") * string("n");
+    let c = true + false;
+    let d = 5 + string("x");
+    return 0;
+}

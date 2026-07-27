@@ -1,0 +1,19 @@
+fn shout(s: String) -> String {
+    s + "!"
+}
+
+fn main() -> i32 {
+    let a = string("foo");
+    let b = string("bar");
+    let c = a + b;
+    print(c);
+    let d = string("merhaba") + " dunya";
+    print(d);
+    let e = "sayi: " + string("42");
+    print(e);
+    let f = string("a") + string("b") + string("c") + "-son";
+    print(f);
+    let g = shout(string("hey"));
+    print(g);
+    return 0;
+}

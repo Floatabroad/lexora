@@ -1,0 +1,34 @@
+struct Kisi {
+    ad: String,
+    yas: i32,
+    etiket: Box<i32>,
+}
+
+fn tuket(k: Kisi) -> i32 {
+    return k.yas;
+}
+
+fn main() -> i32 {
+    let k: Kisi = Kisi { ad: string("ayse"), yas: 30, etiket: box 7 };
+    print(k.ad);
+    print(k.yas);
+    print(*k.etiket);
+    print(len(k.ad));
+    if k.ad == "ayse" { print("esit"); }
+
+    let dizi: [String; 3] = [string("bir"), string("iki"), string("uc")];
+    print(dizi[0]);
+    print(dizi[2]);
+    print(len(dizi[1]));
+
+    let kutular: [Box<i32>; 2] = [box 10, box 20];
+    print(*kutular[0] + *kutular[1]);
+
+    let m: Kisi = Kisi { ad: string("veli"), yas: 41, etiket: box 9 };
+    print(tuket(m));
+
+    let ic: [Box<i32>; 2] = [box 1, box 2];
+    let toplam: i32 = *ic[0] + *ic[1];
+    print(toplam);
+    return 0;
+}

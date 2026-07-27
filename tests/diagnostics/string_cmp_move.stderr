@@ -1,0 +1,11 @@
+error: karsilastirmanin iki tarafi ayni owning degeri kullaniyor ve biri onu tasiyor; once bir degiskene baglayin
+ --> tests/diagnostics/string_cmp_move.lx:3:8
+  |
+3 |     if k == k + "z" { print("x"); }
+  |        ^^^^^^^^^^^^
+error: tasinmis deger kullanildi
+ --> tests/diagnostics/string_cmp_move.lx:6:8
+  |
+6 |     if m == "m" { print("y"); }
+  |        ^
+error: 2 hata yuzunden durduruldu
