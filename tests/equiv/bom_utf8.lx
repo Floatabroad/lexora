@@ -1,0 +1,8 @@
+﻿struct Nokta { x: i32, y: i32 }
+
+fn main() -> i32 {
+    let p: Nokta = Nokta { x: 10, y: 20 };
+    print(p.x + p.y);
+    print("BOM ile baslayan dosya");
+    return 0;
+}

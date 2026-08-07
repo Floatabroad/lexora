@@ -2,7 +2,9 @@ use crate::ast::*;
 use crate::error::LexoraError;
 use crate::span::Span;
 use crate::symbol::{Interner, Symbol};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+const MAX_ARRAY_ELEMS: usize = 16384;
 
 pub struct SymbolTable<T> {
     scopes: Vec<HashMap<Symbol, T>>,
@@ -41,6 +43,10 @@ pub struct TypeChecker<'i> {
     pub types: HashMap<ExprId, Type>,
     enums: HashMap<Symbol, (Vec<Symbol>, Vec<(Symbol, Vec<Type>)>)>,
     pub instances: HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>,
+    fn_defs: HashMap<Symbol, (Vec<Symbol>, Vec<Type>, Type)>,
+    pub fn_instances: HashMap<(Symbol, Vec<Type>), (Vec<Type>, Type)>,
+    methods: HashMap<(Symbol, Symbol), (Vec<Type>, Type)>,
+    pub call_targs: HashMap<ExprId, Vec<Type>>,
     errors: Vec<LexoraError>,
     loop_vars: Vec<Symbol>,
     cur_ret: Type,
@@ -56,6 +62,10 @@ impl<'i> TypeChecker<'i> {
             types: HashMap::new(),
             enums: HashMap::new(),
             instances: HashMap::new(),
+            fn_defs: HashMap::new(),
+            fn_instances: HashMap::new(),
+            methods: HashMap::new(),
+            call_targs: HashMap::new(),
             errors: Vec::new(),
             loop_vars: Vec::new(),
             cur_ret: Type::Void,
@@ -83,6 +93,7 @@ impl<'i> TypeChecker<'i> {
             }
         }
         let mut fn_names: HashMap<Symbol, ()> = HashMap::new();
+
         for func in &program.functions {
             if fn_names.insert(func.name, ()).is_some() {
                 self.errors.push(LexoraError::AlreadyDefined {
@@ -91,7 +102,11 @@ impl<'i> TypeChecker<'i> {
                 });
             }
         }
-        match program.functions.iter().find(|f| self.resolve(f.name) == "main") {
+        match program
+            .functions
+            .iter()
+            .find(|f| self.resolve(f.name) == "main")
+        {
             Some(m) => {
                 if !m.params.is_empty() || !matches!(m.return_type, Type::I32) {
                     self.errors.push(LexoraError::Custom {
@@ -111,6 +126,11 @@ impl<'i> TypeChecker<'i> {
                 .entry(e.name)
                 .or_insert_with(|| (e.params.clone(), e.variants.clone()));
         }
+        for s in &program.structs {
+            self.structs
+                .entry(s.name)
+                .or_insert_with(|| s.fields.clone());
+        }
         for e in &program.enums {
             let generic = !e.params.is_empty();
             let mut seen_variants: HashMap<Symbol, ()> = HashMap::new();
@@ -122,21 +142,34 @@ impl<'i> TypeChecker<'i> {
                     });
                 }
             }
-            for (v, ftys) in &e.variants {
-                for t in ftys {
-                    self.validate_type(t, e.span);
+            for (vi, (v, ftys)) in e.variants.iter().enumerate() {
+                for (fi, t) in ftys.iter().enumerate() {
+                    let sp = e
+                        .variant_field_spans
+                        .get(vi)
+                        .and_then(|v| v.get(fi))
+                        .copied()
+                        .unwrap_or(e.span);
+                    self.validate_type(t, sp);
                     let ok = match t {
-                        Type::I32 | Type::I64 | Type::Bool | Type::Str | Type::String | Type::Box(_) => true,
+                        Type::I32
+                        | Type::I64
+                        | Type::F32
+                        | Type::F64
+                        | Type::Bool
+                        | Type::Str
+                        | Type::String
+                        | Type::Box(_) => true,
                         Type::Param(_) => generic,
                         _ => false,
                     };
                     if !ok {
                         self.errors.push(LexoraError::Custom {
                             message: format!(
-                                "'{}::{}' alani icin desteklenmeyen tip: {} — enum alani skaler (i32/i64/bool/str/String) veya Box<T> olabilir",
+                                "'{}::{}' alani icin desteklenmeyen tip: {} — enum alani skaler (i32/i64/f32/f64/bool/str/String) veya Box<T> olabilir",
                                 self.resolve(e.name), self.resolve(*v), self.format_type(t)
                             ),
-                            span: e.span,
+                            span: sp,
                         });
                     }
                 }
@@ -152,24 +185,34 @@ impl<'i> TypeChecker<'i> {
                     });
                 }
             }
-            for (_, t) in &s.fields {
-                self.validate_type(t, s.span);
+            for (i, (_, t)) in s.fields.iter().enumerate() {
+                let sp = s.field_spans.get(i).copied().unwrap_or(s.span);
+                self.validate_type(t, sp);
             }
-
-            self.structs
-                .entry(s.name)
-                .or_insert_with(|| s.fields.clone());
         }
+
         for s in &program.structs {
-            for (f, t) in &s.fields {
-                let mut seen = vec![s.name];
+            for (i, (f, t)) in s.fields.iter().enumerate() {
+                let sp = s.field_spans.get(i).copied().unwrap_or(s.span);
+                let mut seen: HashSet<Symbol> = HashSet::from([s.name]);
                 if self.struct_cycle(s.name, t, &mut seen) {
                     self.errors.push(LexoraError::Custom {
                         message: format!(
                             "'{}.{}' alani struct'i kendine dahil ediyor (sonsuz boyut); dolayim icin Box<{}> kullanin",
                             self.resolve(s.name), self.resolve(*f), self.resolve(s.name)
                         ),
-                        span: s.span,
+                        span: sp,
+                    });
+                    continue;
+                }
+                let mut seen: HashSet<Symbol> = HashSet::from([s.name]);
+                if self.drop_cycle(s.name, t, &mut seen) {
+                    self.errors.push(LexoraError::Custom {
+                        message: format!(
+                            "'{}.{}' alani struct'i Box/dizi dolayimiyla kendine dahil ediyor; boyle bir degerin tabani olamaz ve drop kodu sonsuz aciliyor — zinciri sonlandirmak icin araya bir enum koyun, ornegin Opt<Box<{}>>",
+                            self.resolve(s.name), self.resolve(*f), self.resolve(s.name)
+                        ),
+                        span: sp,
                     });
                 }
             }
@@ -185,17 +228,154 @@ impl<'i> TypeChecker<'i> {
                     span: func.span,
                 });
             }
-            for (_, t) in func.params.iter() {
-                self.validate_type(t, func.span);
+            if matches!(
+                fname.as_str(),
+                "printf"
+                    | "exit"
+                    | "malloc"
+                    | "free"
+                    | "strlen"
+                    | "strcpy"
+                    | "strcmp"
+                    | "lexora_panic"
+                    | "lexora_alloc"
+                    | "lexora_free"
+                    | "lexora_str_new"
+                    | "lexora_str_free"
+                    | "lexora_str_concat"
+                    | "lexora_str_eq"
+            ) {
+                self.errors.push(LexoraError::Custom {
+                    message: format!(
+                        "'{}' Lexora runtime'ina ait bir sembol; ayni isimde tanim yapilamaz",
+                        fname
+                    ),
+                    span: func.span,
+                });
             }
-            self.validate_type(&func.return_type, func.span);
-            let param_types: Vec<Type> = func.params.iter().map(|(_, t)| t.clone()).collect();
-            self.functions
-                .entry(func.name)
-                .or_insert_with(|| (param_types, func.return_type.clone()));
+            if self.structs.contains_key(&func.name) || self.enums.contains_key(&func.name) {
+                self.errors.push(LexoraError::Custom {
+                     message: format!(
+                        "'{}' bir tip adi; ayni isimde fonksiyon tanimlanamaz (uretilen sembol isimleri carpisir)", fname
+                     ),
+                    span:func.span,
+                });
+            }
+            let param_types: Vec<Type> = func
+                .params
+                .iter()
+                .enumerate()
+                .map(|(i, (_, t))| {
+                    let sp = func.param_spans.get(i).copied().unwrap_or(func.span);
+                    if self.validate_type(t, sp) {
+                        t.clone()
+                    } else {
+                        Type::Error
+                    }
+                })
+                .collect();
+            let ret_ty = if self.validate_type(&func.return_type, func.ret_span) {
+                func.return_type.clone()
+            } else {
+                Type::Error
+            };
+            if func.type_params.is_empty() {
+                self.functions
+                    .entry(func.name)
+                    .or_insert_with(|| (param_types, ret_ty));
+            } else {
+                self.fn_defs
+                    .entry(func.name)
+                    .or_insert_with(|| (func.type_params.clone(), param_types, ret_ty));
+            }
+        }
+        for imp in &program.impls {
+            let tname = self.resolve(imp.type_name);
+            let is_struct = self.structs.contains_key(&imp.type_name);
+            let generic_enum = match self.enums.get(&imp.type_name) {
+                Some((p, _)) => Some(!p.is_empty()),
+                None => None,
+            };
+            if !is_struct && generic_enum.is_none() {
+                self.errors.push(LexoraError::Custom {
+                    message: format!(
+                        "tanimsiz tip '{}'; impl yalnizca tanimli struct ve enum'lara yazilabilir",
+                        tname
+                    ),
+                    span: imp.type_span,
+                });
+                continue;
+            }
+            if generic_enum == Some(true) {
+                self.errors.push(LexoraError::Custom {
+                    message: format!("'{}' generic; generic tipe impl henuz yazilamaz", tname),
+                    span: imp.type_span,
+                });
+                continue;
+            }
+            for m in &imp.methods {
+                if !m.type_params.is_empty() {
+                    self.errors.push(LexoraError::Custom {
+                        message: format!(
+                            "'{}.{}' kendi tip parametresini alamaz; metot generic'leri henuz yok",
+                            tname,
+                            self.resolve(m.name)
+                        ),
+                        span: m.span,
+                    });
+                    continue;
+                }
+                if !m.self_param {
+                    self.errors.push(LexoraError::Custom {
+                        message: format!(
+                            "'{}.{}' ilk parametresi 'self' olmali; statik metotlar henuz yok",
+                            tname,
+                            self.resolve(m.name)
+                        ),
+                        span: m.span,
+                    });
+                    continue;
+                }
+                let param_types: Vec<Type> = m
+                    .params
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (_, t))| {
+                        if i == 0 {
+                            return t.clone();
+                        }
+                        let sp = m.param_spans.get(i).copied().unwrap_or(m.span);
+                        if self.validate_type(t, sp) {
+                            t.clone()
+                        } else {
+                            Type::Error
+                        }
+                    })
+                    .collect();
+                let ret_ty = if self.validate_type(&m.return_type, m.ret_span) {
+                    m.return_type.clone()
+                } else {
+                    Type::Error
+                };
+                if self
+                    .methods
+                    .insert((imp.type_name, m.name), (param_types, ret_ty))
+                    .is_some()
+                {
+                    self.errors.push(LexoraError::AlreadyDefined {
+                        name: format!("{}.{}", tname, self.resolve(m.name)),
+                        span: m.span,
+                    });
+                }
+            }
         }
         for func in &program.functions {
-            self.check_function(func);
+            self.check_function(func, None);
+        }
+        for imp in &program.impls {
+            for m in &imp.methods {
+                self.check_function(m, Some(imp.type_name));
+            }
         }
         if self.errors.is_empty() {
             Ok(())
@@ -216,11 +396,22 @@ impl<'i> TypeChecker<'i> {
             name,
             self.functions
                 .keys()
+                .chain(self.fn_defs.keys())
                 .map(|sym| self.interner.resolve(*sym))
                 .chain(std::iter::once("print"))
                 .chain(std::iter::once("string"))
                 .chain(std::iter::once("len")),
         )
+    }
+    fn nearest_method(&self, ty: Symbol, target: Symbol) -> Option<String> {
+        let name = self.interner.resolve(target);
+        let cands: Vec<&str> = self
+            .methods
+            .keys()
+            .filter(|(t, _)| *t == ty)
+            .map(|(_, m)| self.interner.resolve(*m))
+            .collect();
+        crate::suggest::nearest(name, cands)
     }
     fn nearest_field(&self, target: Symbol, fields: &[(Symbol, Type)]) -> Option<String> {
         let name = self.interner.resolve(target);
@@ -260,20 +451,36 @@ impl<'i> TypeChecker<'i> {
         Some((ok[0].clone(), err[0].clone()))
     }
 
-    fn struct_cycle(&self, root: Symbol, ty: &Type, seen: &mut Vec<Symbol>) -> bool {
+    fn drop_cycle(&self, root: Symbol, ty: &Type, seen: &mut HashSet<Symbol>) -> bool {
         match ty {
             Type::Struct(s) => {
                 if *s == root {
                     return true;
                 }
-                if seen.contains(s) {
+                if !seen.insert(*s) {
                     return false;
                 }
-                seen.push(*s);
                 match self.structs.get(s) {
-                    Some(fields) => fields
-                        .iter()
-                        .any(|(_, t)| self.struct_cycle(root, t, seen)),
+                    Some(fields) => fields.iter().any(|(_, t)| self.drop_cycle(root, t, seen)),
+                    None => false,
+                }
+            }
+            Type::Box(inner) => self.drop_cycle(root, inner, seen),
+            Type::Array(elem, _) => self.drop_cycle(root, elem, seen),
+            _ => false,
+        }
+    }
+    fn struct_cycle(&self, root: Symbol, ty: &Type, seen: &mut HashSet<Symbol>) -> bool {
+        match ty {
+            Type::Struct(s) => {
+                if *s == root {
+                    return true;
+                }
+                if !seen.insert(*s) {
+                    return false;
+                }
+                match self.structs.get(s) {
+                    Some(fields) => fields.iter().any(|(_, t)| self.struct_cycle(root, t, seen)),
                     None => false,
                 }
             }
@@ -281,35 +488,107 @@ impl<'i> TypeChecker<'i> {
             _ => false,
         }
     }
-    fn validate_type(&mut self, ty: &Type, span: Span) {
+    fn type_arg_arity_error(&mut self, name: Symbol, given: usize, expected: usize, span: Span) {
+        let message = if expected == 0 {
+            format!("'{}' generic degil, tip argumani almaz", self.resolve(name))
+        } else {
+            format!(
+                "'{}' {} tip parametresi bekliyor, {} verildi",
+                self.resolve(name),
+                expected,
+                given
+            )
+        };
+        self.errors.push(LexoraError::Custom { message, span });
+    }
+    fn validate_type(&mut self, ty: &Type, span: Span) -> bool {
         match ty {
-            Type::Array(elem, _) => self.validate_type(elem, span),
-            Type::Box(inner) => self.validate_type(inner, span),
-            Type::Enum(sym, args) => {
-                for a in args {
-                    self.validate_type(a, span);
-                }
-                let params_len = match self.enums.get(sym) {
-                    Some((p, _)) => p.len(),
-                    None => return,
-                };
-                if args.len() != params_len {
+            Type::Array(elem, _) => {
+                let total = array_elems(ty);
+                if total.map_or(true, |t| t > MAX_ARRAY_ELEMS) {
                     self.errors.push(LexoraError::Custom {
                         message: format!(
-                            "'{}' {} tip parametresi bekliyor, {} verildi",
-                            self.resolve(*sym),
-                            params_len,
-                            args.len()
+                            "dizi cok buyuk: toplam {} eleman (sinir {}) — absurt boyutta dizi derleyiciyi cokertiyor, bu bir politika siniri",
+                            match total {
+                                Some(t) => t.to_string(),
+                                None => "asiri".to_string(),
+                            },
+                            MAX_ARRAY_ELEMS
                         ),
                         span,
                     });
-                    return;
+                    return false;
                 }
-                if !args.is_empty() && args.iter().all(type_is_concrete) {
+                self.validate_type(elem, span)
+            }
+            Type::Box(inner) => self.validate_type(inner, span),
+            Type::Struct(s) => {
+                if self.structs.contains_key(s) {
+                    return true;
+                }
+                if self.enums.contains_key(s) {
+                    self.errors.push(LexoraError::Custom {
+                        message: format!(
+                            "'{}' bir enum ama tip pozisyonunda struct sanildi; enum, tip olarak kullanilmadan once ve ayni dosyada tanimli olmali",
+                            self.resolve(*s)
+                        ),
+                        span,
+                    });
+                    return false;
+                }
+                let name = self.resolve(*s);
+                let suggestion = {
+                    let names: Vec<&str> = self
+                        .structs
+                        .keys()
+                        .chain(self.enums.keys())
+                        .map(|k| self.interner.resolve(*k))
+                        .collect();
+                    crate::suggest::nearest(&name, names)
+                };
+                let message = match suggestion {
+                    Some(near) => {
+                        format!(
+                            "tanimsiz tip '{}'; bunu mu demek istediniz: '{}'?",
+                            name, near
+                        )
+                    }
+
+                    None => format!("tanimsiz tip '{}'", name),
+                };
+                self.errors.push(LexoraError::Custom { message, span });
+                false
+            }
+            Type::Enum(sym, args) => {
+                let mut ok = true;
+                for a in args {
+                    if !self.validate_type(a, span) {
+                        ok = false;
+                    }
+                }
+                let params_len = match self.enums.get(sym) {
+                    Some((p, _)) => p.len(),
+                    None => {
+                        self.errors.push(LexoraError::Custom {
+                            message: format!(
+                                "'{}' bir enum degil; tip argumani yalnizca generic enum alir",
+                                self.resolve(*sym)
+                            ),
+                            span,
+                        });
+                        return false;
+                    }
+                };
+                if args.len() != params_len {
+                    self.type_arg_arity_error(*sym, args.len(), params_len, span);
+                    return false;
+                }
+                if ok && !args.is_empty() && args.iter().all(type_is_concrete) {
                     self.check_instantiation(*sym, args, span);
                 }
+                ok
             }
-            _ => {}
+            _ => true,
         }
     }
     fn check_instantiation(&mut self, sym: Symbol, args: &[Type], span: Span) {
@@ -326,11 +605,11 @@ impl<'i> TypeChecker<'i> {
         for (v, ftys) in &variants {
             for t in ftys {
                 match t {
-                    Type::I32 | Type::I64 | Type::Bool | Type::Str | Type::String | Type::Box(_) => {}
+                    Type::I32 | Type::I64 |Type::F32| Type::F64| Type::Bool | Type::Str | Type::String | Type::Box(_) => {}
 
                     _ => self.errors.push(LexoraError::Custom {
                         message: format!(
-                            "'{}::{}' alani icin desteklenmeyen tip: {} — enum alani skaler (i32/i64/bool/str/String) veya Box<T> olabilir",
+                            "'{}::{}' alani icin desteklenmeyen tip: {} — enum alani skaler (i32/i64/f32/f64/bool/str/String) veya Box<T> olabilir",
                             inst_name, self.resolve(*v), self.format_type(t)
                         ),
                         span,
@@ -340,11 +619,59 @@ impl<'i> TypeChecker<'i> {
             }
         }
     }
-    fn check_function<'arena>(&mut self, func: &Function<'arena>) {
-        self.cur_ret = func.return_type.clone();
+    fn check_fn_instantiation(
+        &mut self,
+        name: Symbol,
+        targs: Vec<Type>,
+        ptys: &[Type],
+        rty: &Type,
+        span: Span,
+    ) -> bool {
+        let key = (name, targs);
+        if self.fn_instances.contains_key(&key) {
+            return true;
+        }
+        let mut ok = true;
+        for t in ptys {
+            if !self.validate_type(t, span) {
+                ok = false;
+            }
+        }
+        if !self.validate_type(rty, span) {
+            ok = false;
+        }
+        if !ok {
+            return false;
+        }
+        self.fn_instances.insert(key, (ptys.to_vec(), rty.clone()));
+        true
+    }
+    fn check_function<'arena>(&mut self, func: &Function<'arena>, owner: Option<Symbol>) {
+        let (param_tys, ret_ty) = match owner {
+            Some(t) => match self.methods.get(&(t, func.name)) {
+                Some((p, r)) => (p.clone(), r.clone()),
+                None => (
+                    func.params.iter().map(|(_, t)| t.clone()).collect(),
+                    func.return_type.clone(),
+                ),
+            },
+
+            None => match self.functions.get(&func.name) {
+                Some((p, r)) => (p.clone(), r.clone()),
+                None => match self.fn_defs.get(&func.name) {
+                    Some((_, p, r)) => (p.clone(), r.clone()),
+                    None => (
+                        func.params.iter().map(|(_, t)| t.clone()).collect(),
+                        func.return_type.clone(),
+                    ),
+                },
+            },
+        };
+        self.cur_ret = ret_ty.clone();
         self.variables.enter_scope();
-        for (sym, ty) in func.params.iter() {
-            if !self.variables.define(*sym, ty.clone()) {
+        for (i, (sym, _)) in func.params.iter().enumerate() {
+            let ty = param_tys.get(i).cloned().unwrap_or(Type::Error);
+            if !self.variables.define(*sym, ty) {
                 self.errors.push(LexoraError::AlreadyDefined {
                     name: self.resolve(*sym),
                     span: func.span,
@@ -352,13 +679,13 @@ impl<'i> TypeChecker<'i> {
             }
         }
         for stmt in func.body.stmts.iter() {
-            self.check_statement(stmt, &func.return_type);
+            self.check_statement(stmt, &ret_ty);
         }
         if let Some(tail) = func.body.tail {
-            let tail_ty = self.check_expr(tail);
-            if !types_match(&func.return_type, &tail_ty) {
+            let tail_ty = self.check_expr_ex(tail, Some(&ret_ty));
+            if !types_match(&ret_ty, &tail_ty) {
                 self.errors.push(LexoraError::TypeMismatch {
-                    expected: self.format_type(&func.return_type),
+                    expected: self.format_type(&ret_ty),
                     found: self.format_type(&tail_ty),
                     span: tail.span(),
                 });
@@ -381,6 +708,8 @@ impl<'i> TypeChecker<'i> {
         match ty {
             Type::I32 => "i32".to_string(),
             Type::I64 => "i64".to_string(),
+            Type::F32 => "f32".to_string(),
+            Type::F64 => "f64".to_string(),
             Type::Bool => "bool".to_string(),
             Type::Void => "void".to_string(),
             Type::Str => "str".to_string(),
@@ -405,21 +734,28 @@ impl<'i> TypeChecker<'i> {
             Stmt::Let {
                 name,
                 ty,
+                ty_span,
                 value,
                 span,
             } => {
-                let val_ty = self.check_expr(value);
+                let val_ty = match ty {
+                    Some(declared) => self.check_expr_ex(value, Some(declared)),
+                    None => self.check_expr(value),
+                };
                 let var_ty = match ty {
                     Some(declared) => {
-                        self.validate_type(declared, *span);
-                        if !types_match(declared, &val_ty) {
-                            self.errors.push(LexoraError::TypeMismatch {
-                                expected: self.format_type(declared),
-                                found: self.format_type(&val_ty),
-                                span: *span,
-                            });
+                        if !self.validate_type(declared, ty_span.unwrap_or(*span)) {
+                            Type::Error
+                        } else {
+                            if !types_match(declared, &val_ty) {
+                                self.errors.push(LexoraError::TypeMismatch {
+                                    expected: self.format_type(declared),
+                                    found: self.format_type(&val_ty),
+                                    span: *span,
+                                });
+                            }
+                            declared.clone()
                         }
-                        declared.clone()
                     }
                     None => {
                         self.validate_type(&val_ty, *span);
@@ -435,7 +771,8 @@ impl<'i> TypeChecker<'i> {
                         span: *span,
                     });
                 }
-                if !self.variables.define(*name, var_ty) {
+                let bagli = self.variables.define(*name, var_ty);
+                if !bagli && self.resolve(*name) != "_" {
                     self.errors.push(LexoraError::AlreadyDefined {
                         name: self.resolve(*name),
                         span: *span,
@@ -463,7 +800,7 @@ impl<'i> TypeChecker<'i> {
                         Type::Error
                     }
                 };
-                let val_ty = self.check_expr(value);
+                let val_ty = self.check_expr_ex(value, Some(&var_ty));
                 if !types_match(&var_ty, &val_ty) {
                     self.errors.push(LexoraError::TypeMismatch {
                         expected: self.format_type(&var_ty),
@@ -473,7 +810,7 @@ impl<'i> TypeChecker<'i> {
                 }
             }
             Stmt::Return(expr, span) => {
-                let expr_ty = self.check_expr(expr);
+                let expr_ty = self.check_expr_ex(expr, Some(ret_ty));
                 if !types_match(ret_ty, &expr_ty) {
                     self.errors.push(LexoraError::TypeMismatch {
                         expected: self.format_type(ret_ty),
@@ -572,7 +909,7 @@ impl<'i> TypeChecker<'i> {
                 span,
             } => {
                 let target_ty = self.check_expr(target);
-                let val_ty = self.check_expr(value);
+                let val_ty = self.check_expr_ex(value, Some(&target_ty));
                 if !types_match(&target_ty, &val_ty) {
                     self.errors.push(LexoraError::TypeMismatch {
                         expected: self.format_type(&target_ty),
@@ -585,11 +922,14 @@ impl<'i> TypeChecker<'i> {
         }
     }
     fn check_expr<'arena>(&mut self, expr: &Expr<'arena>) -> Type {
-        let ty = self.check_expr_inner(expr);
+        self.check_expr_ex(expr, None)
+    }
+    fn check_expr_ex<'arena>(&mut self, expr: &Expr<'arena>, expected: Option<&Type>) -> Type {
+        let ty = self.check_expr_inner(expr, expected);
         self.types.insert(expr.id(), ty.clone());
         ty
     }
-    fn check_expr_inner<'arena>(&mut self, expr: &Expr<'arena>) -> Type {
+    fn check_expr_inner<'arena>(&mut self, expr: &Expr<'arena>, expected: Option<&Type>) -> Type {
         match expr {
             Expr::Integer(n, _, _) => {
                 if *n >= i32::MIN as i64 && *n <= i32::MAX as i64 {
@@ -598,20 +938,30 @@ impl<'i> TypeChecker<'i> {
                     Type::I64
                 }
             }
+            Expr::Float(_, _, _) => Type::F64,
             Expr::Bool(_, _, _) => Type::Bool,
             Expr::StringLiteral(_, _, _) => Type::Str,
 
-            Expr::Identifier(sym, span, _) => match self.variables.lookup(*sym) {
-                Some(t) => t.clone(),
-                None => {
-                    self.errors.push(LexoraError::UndefinedVariable {
-                        name: self.resolve(*sym),
-                        suggestion: self.nearest_var(*sym),
+            Expr::Identifier(sym, span, _) => {
+                if self.resolve(*sym) == "_" {
+                    self.errors.push(LexoraError::Custom {
+                        message: "'_' bir deger degil; yalnizca desende ve baglama hedefinde kullanilabilir".to_string(),
                         span: *span,
                     });
-                    Type::Error
+                    return Type::Error;
                 }
-            },
+                match self.variables.lookup(*sym) {
+                    Some(t) => t.clone(),
+                    None => {
+                        self.errors.push(LexoraError::UndefinedVariable {
+                            name: self.resolve(*sym),
+                            suggestion: self.nearest_var(*sym),
+                            span: *span,
+                        });
+                        Type::Error
+                    }
+                }
+            }
             Expr::BinaryOp {
                 left,
                 op,
@@ -659,9 +1009,12 @@ impl<'i> TypeChecker<'i> {
                         }
                         let ok = match op {
                             BinaryOperator::Eq | BinaryOperator::NotEq => {
-                                matches!(lt, Type::I32 | Type::I64 | Type::Bool)
+                                matches!(
+                                    lt,
+                                    Type::I32 | Type::I64 | Type::Bool | Type::F32 | Type::F64
+                                )
                             }
-                            _ => matches!(lt, Type::I32 | Type::I64),
+                            _ => matches!(lt, Type::I32 | Type::I64 | Type::F32 | Type::F64),
                         };
                         if !ok {
                             let msg = match op {
@@ -709,10 +1062,10 @@ impl<'i> TypeChecker<'i> {
                             });
                             return Type::Error;
                         }
-                        if !matches!(lt, Type::I32 | Type::I64) {
+                        if !matches!(lt, Type::I32 | Type::I64 | Type::F32 | Type::F64) {
                             self.errors.push(LexoraError::Custom {
                                 message: format!(
-                                    "aritmetik islem sayisal tip gerektirir (i32/i64), bulunan {}",
+                                    "aritmetik islem sayisal tip gerektirir (i32/i64/f32/f64), bulunan {}",
                                     self.format_type(&lt)
                                 ),
                                 span: *span,
@@ -740,9 +1093,12 @@ impl<'i> TypeChecker<'i> {
                         Type::Bool
                     }
                     UnaryOperator::Neg => {
-                        if !types_match(&ty, &Type::I32) && !types_match(&ty, &Type::I64) {
+                        if !matches!(
+                            ty,
+                            Type::Error | Type::I32 | Type::I64 | Type::F32 | Type::F64
+                        ) {
                             self.errors.push(LexoraError::TypeMismatch {
-                                expected: "i32 veya i64".to_string(),
+                                expected: "i32, i64, f32 veya f64".to_string(),
                                 found: self.format_type(&ty),
                                 span: *span,
                             });
@@ -763,6 +1119,9 @@ impl<'i> TypeChecker<'i> {
                 match (&from_ty, target_type) {
                     (Type::Error, _) => Type::Error,
                     (Type::I32, Type::I64) | (Type::I64, Type::I32) => target_type.clone(),
+                    (Type::F32, Type::F64) | (Type::F64, Type::F32) => target_type.clone(),
+                    (Type::I32 | Type::I64, Type::F32 | Type::F64) => target_type.clone(),
+                    (Type::F32 | Type::F64, Type::I32 | Type::I64) => target_type.clone(),
                     _ => {
                         self.errors.push(LexoraError::InvalidCast {
                             from: self.format_type(&from_ty),
@@ -774,8 +1133,115 @@ impl<'i> TypeChecker<'i> {
                 }
             }
             Expr::Call {
-                name, args, span, ..
+                name,
+                args,
+                type_args,
+                span,
+                id,
             } => {
+                if let Some((tparams, def_ptys, def_ret)) = self.fn_defs.get(name).cloned() {
+                    if !type_args.is_empty() && type_args.len() != tparams.len() {
+                        self.type_arg_arity_error(*name, type_args.len(), tparams.len(), *span);
+                        for arg in args.iter() {
+                            self.check_expr(arg);
+                        }
+                        return Type::Error;
+                    }
+                    if args.len() != def_ptys.len() {
+                        self.errors.push(LexoraError::Custom {
+                            message: format!(
+                                "'{}' {} argüman bekliyor, {} verildi",
+                                self.resolve(*name),
+                                def_ptys.len(),
+                                args.len()
+                            ),
+                            span: *span,
+                        });
+                        for arg in args.iter() {
+                            self.check_expr(arg);
+                        }
+                        return Type::Error;
+                    }
+
+                    let arg_tys: Vec<Type> = args.iter().map(|a| self.check_expr(a)).collect();
+                    let targs: Vec<Type> = if !type_args.is_empty() {
+                        type_args.clone()
+                    } else {
+                        let mut map: HashMap<Symbol, Type> = HashMap::new();
+                        if let Some(exp) = expected {
+                            unify(&def_ret, exp, &mut map);
+                        }
+                        for (pty, aty) in def_ptys.iter().zip(arg_tys.iter()) {
+                            unify(pty, aty, &mut map);
+                        }
+                        let mut resolved: Vec<Type> = Vec::new();
+                        for p in &tparams {
+                            match map.get(p) {
+                                Some(t) => resolved.push(t.clone()),
+                                None => {
+                                    if arg_tys.iter().any(|t| matches!(t, Type::Error)) {
+                                        return Type::Error;
+                                    }
+                                    self.errors.push(LexoraError::Custom {
+                                        message: format!(
+                                            "'{}' icin '{}' tip parametresi cikarilamiyor; turbofish kullanin: {}::<T>(...)",
+                                            self.resolve(*name),
+                                            self.resolve(*p),
+                                            self.resolve(*name)
+                                        ),
+                                        span: *span,
+                                    });
+                                    return Type::Error;
+                                }
+                            }
+                        }
+                        resolved
+                    };
+                    let mut ok = true;
+                    for t in &targs {
+                        if !self.validate_type(t, *span) {
+                            ok = false;
+                        } else if !type_is_concrete(t) {
+                            self.errors.push(LexoraError::Custom {
+                                message: format!(
+                                    "'{}' somut olmayan tip argumaniyla cagrilamiyor: {} — generic fonksiyon icinden generic cagri henuz desteklenmiyor",
+                                    self.resolve(*name),
+                                    self.format_type(t)
+                                ),
+                                span: *span,
+                            });
+                            ok = false;
+                        }
+                    }
+                    if !ok {
+                        return Type::Error;
+                    }
+                    let map: HashMap<Symbol, Type> =
+                        tparams.iter().copied().zip(targs.iter().cloned()).collect();
+                    let ptys: Vec<Type> = def_ptys.iter().map(|t| t.substitute(&map)).collect();
+                    let rty = def_ret.substitute(&map);
+                    let sig_ok =
+                        self.check_fn_instantiation(*name, targs.clone(), &ptys, &rty, *span);
+                    for ((arg, aty), pty) in args.iter().zip(arg_tys.iter()).zip(ptys.iter()) {
+                        if !types_match(aty, pty) {
+                            self.errors.push(LexoraError::TypeMismatch {
+                                expected: self.format_type(pty),
+                                found: self.format_type(aty),
+                                span: arg.span(),
+                            });
+                        }
+                    }
+                    if !sig_ok {
+                        return Type::Error;
+                    }
+                    self.call_targs.insert(*id, targs);
+                    return rty;
+                }
+                let bilinen = self.functions.contains_key(name)
+                    || matches!(self.resolve(*name).as_str(), "print" | "string" | "len");
+                if !type_args.is_empty() && bilinen {
+                    self.type_arg_arity_error(*name, type_args.len(), 0, *span);
+                }
                 if let Some((param_types, ret_ty)) = self.functions.get(name).cloned() {
                     if args.len() != param_types.len() {
                         self.errors.push(LexoraError::Custom {
@@ -793,7 +1259,7 @@ impl<'i> TypeChecker<'i> {
                         return ret_ty;
                     }
                     for (arg, param_ty) in args.iter().zip(param_types.iter()) {
-                        let arg_ty = self.check_expr(arg);
+                        let arg_ty = self.check_expr_ex(arg, Some(param_ty));
                         if !types_match(&arg_ty, param_ty) {
                             self.errors.push(LexoraError::TypeMismatch {
                                 expected: self.format_type(&param_ty),
@@ -822,10 +1288,12 @@ impl<'i> TypeChecker<'i> {
                                     | Type::Bool
                                     | Type::Str
                                     | Type::String
+                                    | Type::F32
+                                    | Type::F64
                             ) {
                                 self.errors.push(LexoraError::Custom {
                                     message: format!(
-                                        "print bu tipi yazdiramaz: {} — yazdirilabilir tipler i32/i64/bool/str/String",
+                                        "print bu tipi yazdiramaz: {} — yazdirilabilir tipler i32/i64/f32/f64/bool/str/String",
                                         self.format_type(&aty)
                                     ),
                                     span: arg.span(),
@@ -833,10 +1301,7 @@ impl<'i> TypeChecker<'i> {
                             }
                         }
                         Type::Void
-                    }
-
-
-                     else if name_str == "string" {
+                    } else if name_str == "string" {
                         if args.len() != 1 {
                             self.errors.push(LexoraError::Custom {
                                 message: "string bir str arguman alir".to_string(),
@@ -950,6 +1415,7 @@ impl<'i> TypeChecker<'i> {
                         return Type::Error;
                     }
                 };
+                let mut seen: Vec<Symbol> = Vec::new();
                 for (field_name, field_val) in fields.iter() {
                     let actual_ty = self.check_expr(field_val);
                     let expected_ty = match struct_fields.iter().find(|(n, _)| *n == *field_name) {
@@ -963,6 +1429,16 @@ impl<'i> TypeChecker<'i> {
                             continue;
                         }
                     };
+                    if seen.contains(field_name) {
+                        self.errors.push(LexoraError::Custom {
+                            message: format!(
+                                "'{}' alani birden fazla kez verildi",
+                                self.resolve(*field_name)
+                            ),
+                            span: *span,
+                        });
+                    }
+                    seen.push(*field_name);
                     if !types_match(&expected_ty, &actual_ty) {
                         self.errors.push(LexoraError::TypeMismatch {
                             expected: self.format_type(&expected_ty),
@@ -970,6 +1446,21 @@ impl<'i> TypeChecker<'i> {
                             span: *span,
                         });
                     }
+                }
+                let missing: Vec<String> = struct_fields
+                    .iter()
+                    .filter(|(n, _)| !seen.contains(n))
+                    .map(|(n, _)| format!("'{}'", self.resolve(*n)))
+                    .collect();
+                if !missing.is_empty() {
+                    self.errors.push(LexoraError::Custom {
+                        message: format!(
+                            "'{}' struct'i icin eksik alan: {}",
+                            self.resolve(*name),
+                            missing.join(", ")
+                        ),
+                        span: *span,
+                    });
                 }
                 Type::Struct(*name)
             }
@@ -1072,30 +1563,18 @@ impl<'i> TypeChecker<'i> {
                         return Type::Error;
                     }
                 };
+
                 if params.is_empty() && !type_args.is_empty() {
-                    self.errors.push(LexoraError::Custom {
-                        message: format!(
-                            "'{}' generic degil, tip argumani almaz",
-                            self.resolve(*enum_name)
-                        ),
-                        span: *span,
-                    });
+                    self.type_arg_arity_error(*enum_name, type_args.len(), 0, *span);
                 }
                 if !params.is_empty() && !type_args.is_empty() && type_args.len() != params.len() {
-                    self.errors.push(LexoraError::Custom {
-                        message: format!(
-                            "'{}' {} tip parametresi bekliyor, {} verildi",
-                            self.resolve(*enum_name),
-                            params.len(),
-                            type_args.len()
-                        ),
-                        span: *span,
-                    });
+                    self.type_arg_arity_error(*enum_name, type_args.len(), params.len(), *span);
                     for a in args.iter() {
                         self.check_expr(a);
                     }
                     return Type::Error;
                 }
+
                 if args.len() != def_field_tys.len() {
                     self.errors.push(LexoraError::Custom {
                         message: format!(
@@ -1115,6 +1594,15 @@ impl<'i> TypeChecker<'i> {
                     type_args.clone()
                 } else {
                     let mut map: HashMap<Symbol, Type> = HashMap::new();
+                    if let Some(Type::Enum(esym, eargs)) = expected {
+                        if *esym == *enum_name && eargs.len() == params.len() {
+                            for (p, a) in params.iter().zip(eargs.iter()) {
+                                if type_is_concrete(a) {
+                                    map.insert(*p, a.clone());
+                                }
+                            }
+                        }
+                    }
                     for (fty, aty) in def_field_tys.iter().zip(arg_tys.iter()) {
                         unify(fty, aty, &mut map);
                     }
@@ -1201,27 +1689,45 @@ impl<'i> TypeChecker<'i> {
                 let mut has_wildcard = false;
                 let mut match_ty: Option<Type> = None;
                 for (pat, body) in arms.iter() {
+                    let pat_span = pat.span();
                     if has_wildcard {
                         self.errors.push(LexoraError::Custom {
                             message: "bu kol asla eslesmez: onceki '_' tum durumlari kapsiyor"
                                 .to_string(),
-                            span: body.span,
+                            span: pat_span,
                         });
                     }
                     let mut binds: Vec<(Symbol, Type)> = Vec::new();
                     match pat {
-                        Pattern::Wildcard => has_wildcard = true,
+                        Pattern::Wildcard(_) => has_wildcard = true,
                         Pattern::Variant {
                             enum_name,
                             variant,
                             bindings,
+                            ..
                         } => {
+                            let mut seen_binds: Vec<Symbol> = Vec::new();
+                            for b in bindings.iter() {
+                                if self.resolve(*b) == "_" {
+                                    continue;
+                                }
+                                if seen_binds.contains(b) {
+                                    self.errors.push(LexoraError::Custom {
+                                        message: format!(
+                                            "'{}' bu desende birden fazla kez baglaniyor",
+                                            self.resolve(*b)
+                                        ),
+                                        span: pat_span,
+                                    });
+                                }
+                                seen_binds.push(*b);
+                            }
                             if let (Some(e), Some(vars)) = (enum_sym, &all_variants) {
                                 if *enum_name != e {
                                     self.errors.push(LexoraError::Custom {
                                         message: format!("desen enum'u '{}', scrutinee enum'u '{}' ile uyusmuyor",
                                                          self.resolve(*enum_name), self.resolve(e)),
-                                        span: *span,
+                                        span: pat_span,
                                     });
                                 } else if let Some((_, ftys)) =
                                     vars.iter().find(|(v, _)| v == variant)
@@ -1233,7 +1739,7 @@ impl<'i> TypeChecker<'i> {
                                                 self.resolve(e),
                                                 self.resolve(*variant)
                                             ),
-                                            span: body.span,
+                                            span: pat_span,
                                         });
                                     }
                                     covered.push(*variant);
@@ -1246,7 +1752,7 @@ impl<'i> TypeChecker<'i> {
                                                 ftys.len(),
                                                 bindings.len()
                                             ),
-                                            span: *span,
+                                            span: pat_span,
                                         });
                                     }
                                     for (b, t) in bindings.iter().zip(ftys.iter()) {
@@ -1259,7 +1765,7 @@ impl<'i> TypeChecker<'i> {
                                             self.resolve(e),
                                             self.resolve(*variant)
                                         ),
-                                        span: *span,
+                                        span: pat_span,
                                     });
                                 }
                             }
@@ -1273,7 +1779,7 @@ impl<'i> TypeChecker<'i> {
                         self.check_statement(s, &ret);
                     }
                     let arm_ty = match body.tail {
-                        Some(t) => self.check_expr(t),
+                        Some(t) => self.check_expr_ex(t, expected),
                         None => Type::Void,
                     };
                     self.variables.exit_scope();
@@ -1327,7 +1833,7 @@ impl<'i> TypeChecker<'i> {
                     self.check_statement(s, &ret);
                 }
                 let then_ty = match then_body.tail {
-                    Some(t) => self.check_expr(t),
+                    Some(t) => self.check_expr_ex(t, expected),
                     None => Type::Void,
                 };
                 self.variables.exit_scope();
@@ -1338,7 +1844,7 @@ impl<'i> TypeChecker<'i> {
                             self.check_statement(s, &ret);
                         }
                         let else_ty = match eb.tail {
-                            Some(t) => self.check_expr(t),
+                            Some(t) => self.check_expr_ex(t, expected),
                             None => Type::Void,
                         };
                         self.variables.exit_scope();
@@ -1427,6 +1933,95 @@ impl<'i> TypeChecker<'i> {
                     }
                 }
             }
+            Expr::MethodCall {
+                receiver,
+                method,
+                args,
+                span,
+                ..
+            } => {
+                let recv_ty = self.check_expr(receiver);
+                let type_sym = match &recv_ty {
+                    Type::Error => {
+                        for a in args.iter() {
+                            self.check_expr(a);
+                        }
+                        return Type::Error;
+                    }
+                    Type::Struct(s) => *s,
+                    Type::Enum(s, a) if a.is_empty() => *s,
+                    _ => {
+                        self.errors.push(LexoraError::Custom {
+                            message: format!(
+                                "'{}' tipinin metodu yok; metotlar yalnizca struct ve non-generic enum'lara yazilir",
+                                self.format_type(&recv_ty)
+                            ),
+                            span: receiver.span(),
+                        });
+                        for a in args.iter() {
+                            self.check_expr(a);
+                        }
+                        return Type::Error;
+                    }
+                };
+                let sig = match self.methods.get(&(type_sym, *method)).cloned() {
+                    Some(s) => s,
+                    None => {
+                        let suggestion = self.nearest_method(type_sym, *method);
+                        let msg = match suggestion {
+                            Some(near) => format!(
+                                "'{}' tipinde '{}' metodu yok; bunu mu demek istediniz: '{}'?",
+                                self.resolve(type_sym),
+                                self.resolve(*method),
+                                near
+                            ),
+                            None => format!(
+                                "'{}' tipinde '{}' metodu yok",
+                                self.resolve(type_sym),
+                                self.resolve(*method)
+                            ),
+                        };
+                        self.errors.push(LexoraError::Custom {
+                            message: msg,
+                            span: *span,
+                        });
+                        for a in args.iter() {
+                            self.check_expr(a);
+                        }
+                        return Type::Error;
+                    }
+                };
+                let expected = sig.0.len().saturating_sub(1);
+                if args.len() != expected {
+                    self.errors.push(LexoraError::Custom {
+                        message: format!(
+                            "'{}.{}' {} arguman bekliyor, {} verildi",
+                            self.resolve(type_sym),
+                            self.resolve(*method),
+                            expected,
+                            args.len()
+                        ),
+                        span: *span,
+                    });
+                    for a in args.iter() {
+                        self.check_expr(a);
+                    }
+                    return sig.1;
+                }
+                for (arg, pty) in args.iter().zip(sig.0.iter().skip(1)) {
+                    let aty = self.check_expr_ex(arg, Some(pty));
+                    if !types_match(&aty, pty) {
+                        self.errors.push(LexoraError::TypeMismatch {
+                            expected: self.format_type(pty),
+                            found: self.format_type(&aty),
+                            span: arg.span(),
+                        });
+                    }
+                }
+
+                sig.1
+            }
+
             Expr::Error(_, _) => Type::Error,
         }
     }
@@ -1441,6 +2036,8 @@ fn types_match(a: &Type, b: &Type) -> bool {
         (Type::Error, _) | (_, Type::Error) => true,
         (Type::I32, Type::I32) => true,
         (Type::I64, Type::I64) => true,
+        (Type::F32, Type::F32) => true,
+        (Type::F64, Type::F64) => true,
         (Type::Bool, Type::Bool) => true,
         (Type::Str, Type::Str) => true,
         (Type::Void, Type::Void) => true,
@@ -1474,9 +2071,11 @@ fn stmt_always_returns(stmt: &Stmt) -> bool {
 
 fn expr_always_returns(expr: &Expr) -> bool {
     match expr {
-        Expr::If { then_body, else_body: Some(eb), .. } => {
-            block_always_returns(then_body) && block_always_returns(eb)
-        }
+        Expr::If {
+            then_body,
+            else_body: Some(eb),
+            ..
+        } => block_always_returns(then_body) && block_always_returns(eb),
         Expr::Match { arms, .. } => {
             !arms.is_empty() && arms.iter().all(|(_, b)| block_always_returns(b))
         }
@@ -1492,7 +2091,12 @@ fn type_is_concrete(ty: &Type) -> bool {
         _ => true,
     }
 }
-
+fn array_elems(ty: &Type) -> Option<usize> {
+    match ty {
+        Type::Array(elem, n) => array_elems(elem).and_then(|inner| n.checked_mul(inner)),
+        _ => Some(1),
+    }
+}
 fn unify(def_ty: &Type, concrete: &Type, map: &mut HashMap<Symbol, Type>) {
     match (def_ty, concrete) {
         (Type::Param(p), t) => {
@@ -1512,4 +2116,3 @@ fn unify(def_ty: &Type, concrete: &Type, map: &mut HashMap<Symbol, Type>) {
         _ => {}
     }
 }
-

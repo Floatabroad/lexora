@@ -1,0 +1,42 @@
+enum P { Ikili(i32, i32), Tekli(i32), Yok }
+enum M { A(String), B(Box<i32>), C }
+
+fn main() -> i32 {
+    let p: P = P::Ikili(3, 4);
+    match p {
+        P::Ikili(_, _) => print(1),
+        P::Tekli(_) => print(2),
+        P::Yok => print(3),
+    }
+
+    let q: P = P::Tekli(9);
+    match q {
+        P::Ikili(a, _) => print(a),
+        P::Tekli(v) => print(v),
+        P::Yok => print(0),
+    }
+
+    let _: i32 = 1;
+    let _: i32 = 2;
+    let _: bool = true;
+
+    let m: M = M::A(string("atilan"));
+    match m {
+        M::A(_) => print(10),
+        M::B(_) => print(20),
+        M::C => print(30),
+    }
+
+    let n: M = M::B(box 7);
+    match n {
+        M::A(_) => print(40),
+        M::B(_) => print(50),
+        M::C => print(60),
+    }
+
+    for _ in 0..3 {
+        print(70);
+    }
+
+    return 0;
+}

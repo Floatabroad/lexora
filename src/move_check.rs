@@ -11,18 +11,22 @@ enum MoveState {
     MaybeMoved,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone,  PartialEq, Eq)]
 enum BindState {
     Copy,
-    Owning(MoveState),
+    Owning{
+        paths: Vec<Vec<u32>>,
+        states: Vec<MoveState>,
+    },
 }
 
 pub struct MoveChecker<'a> {
     types: &'a HashMap<ExprId, Type>,
     interner: &'a Interner,
     scopes: Vec<HashMap<Symbol, BindState>>,
-    moves: HashSet<ExprId>,
+    moves: HashMap<ExprId, Vec<u32>>,
     errors: Vec<LexoraError>,
+    cur_self: Option<Symbol>,
     structs: HashMap<Symbol, Vec<(Symbol, Type)>>,
     enums: HashMap<Symbol, (Vec<Symbol>, Vec<(Symbol, Vec<Type>)>)>,
 }
@@ -33,13 +37,14 @@ impl<'a> MoveChecker<'a> {
             types,
             interner,
             scopes: Vec::new(),
-            moves: HashSet::new(),
+            moves: HashMap::new(),
             errors: Vec::new(),
+            cur_self: None,
             structs: HashMap::new(),
             enums: HashMap::new(),
         }
     }
-    pub fn check(mut self, program: &Program) -> (HashSet<ExprId>, Vec<LexoraError>) {
+    pub fn check(mut self, program: &Program) -> (HashMap<ExprId, Vec<u32>>, Vec<LexoraError>) {
         for e in &program.enums {
             self.enums
                 .insert(e.name, (e.params.clone(), e.variants.clone()));
@@ -50,6 +55,11 @@ impl<'a> MoveChecker<'a> {
         for func in &program.functions {
             self.check_function(func);
         }
+        for imp in &program.impls {
+            for m in &imp.methods {
+                self.check_function(m);
+            }
+        }
         (self.moves, self.errors)
     }
     fn enter(&mut self) {
@@ -58,17 +68,23 @@ impl<'a> MoveChecker<'a> {
     fn exit(&mut self) {
         self.scopes.pop();
     }
-    fn bind(&mut self, sym: Symbol, owning: bool) {
-        let state = if owning {
-            BindState::Owning(MoveState::Owned)
-        } else {
-            BindState::Copy
+    fn bind(&mut self, sym: Symbol, ty: Option<&Type>) {
+        let state = match ty {
+            Some(t) if self.is_owning(t) => {
+                let mut paths: Vec<Vec<u32>> = Vec::new();
+                self.owning_nodes(t, &mut Vec::new(), &mut paths);
+                let states = vec![MoveState::Owned; paths.len()];
+                BindState::Owning { paths, states }
+            }
+            _ => BindState::Copy,
         };
         self.scopes.last_mut().unwrap().insert(sym, state);
     }
+
     fn lookup(&self, sym: Symbol) -> Option<BindState> {
-        self.scopes.iter().rev().find_map(|s| s.get(&sym)).copied()
+        self.scopes.iter().rev().find_map(|s| s.get(&sym)).cloned()
     }
+
     fn lookup_mut(&mut self, sym: Symbol) -> Option<&mut BindState> {
         self.scopes.iter_mut().rev().find_map(|s| s.get_mut(&sym))
     }
@@ -89,6 +105,7 @@ impl<'a> MoveChecker<'a> {
         match ty {
             Type::Box(_) => true,
             Type::String => true,
+            Type::Param(_) => true,
             Type::Enum(e, args) => self.variants_for(*e, args).map_or(false, |vs| {
                 vs.iter()
                     .any(|(_, ftys)| ftys.iter().any(|t| self.is_owning(t)))
@@ -101,26 +118,156 @@ impl<'a> MoveChecker<'a> {
             _ => false,
         }
     }
+    fn owning_nodes(&self, ty: &Type, prefix: &mut Vec<u32>, out: &mut Vec<Vec<u32>>) {
+        if !self.is_owning(ty) {
+            return;
+        }
+        out.push(prefix.clone());
+        if let Type::Struct(s) = ty {
+            let fields = match self.structs.get(s) {
+                Some(f) => f.clone(),
+                None => return,
+            };
+            for (i, (_, fty)) in fields.iter().enumerate() {
+                prefix.push(i as u32);
+                self.owning_nodes(fty, prefix, out);
+                prefix.pop();
+            }
+        }
+    }
+    fn place_path(&self, expr: &Expr) -> Option<(Symbol, Vec<u32>)> {
+        match expr {
+            Expr::Identifier(sym, _, _) => Some((*sym, Vec::new())),
+            Expr::FieldAccess { object, field, .. } => {
+                let (sym, mut path) = self.place_path(object)?;
+                let sty = match self.types.get(&object.id())? {
+                    Type::Struct(s) => *s,
+                    _ => return None,
+                };
+                let idx = self
+                    .structs
+                    .get(&sty)?
+                    .iter()
+                    .position(|(n, _)| n == field)?;
+                path.push(idx as u32);
+                Some((sym, path))
+            }
+            _ => None,
+        }
+    }
+    fn nodes_under(&self, sym: Symbol, path: &[u32]) -> Vec<usize> {
+        match self.lookup(sym) {
+            Some(BindState::Owning { paths, .. }) => paths
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| p.starts_with(path))
+                .map(|(i, _)| i)
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+    fn all_owned(&self, sym: Symbol) -> bool {
+        matches!(
+            self.lookup(sym),
+            Some(BindState::Owning { ref states, .. }) if states.iter().all(|s| *s == MoveState::Owned)
+        )
+    }
+    fn check_path_live(&mut self, sym: Symbol, path: &[u32], span: Span, consuming: bool) {
+        let idx = self.nodes_under(sym, path);
+        if idx.is_empty() {
+            return;
+        }
+        let states: Vec<MoveState> = match self.lookup(sym) {
+            Some(BindState::Owning { states, .. }) => idx.iter().map(|i| states[*i]).collect(),
+            _ => return,
+        };
+        if states.iter().any(|s| *s == MoveState::MaybeMoved) {
+            self.errors.push(LexoraError::Custom {
+                message: "kosullu tasinmis olabilecek deger kullanildi".to_string(),
+                span,
+            });
+        } else if states.iter().all(|s| *s == MoveState::Moved) {
+            let message = if consuming {
+                "tasinmis deger tekrar kullanildi"
+            } else {
+                "tasinmis deger kullanildi"
+            };
+            self.errors.push(LexoraError::Custom {
+                message: message.to_string(),
+                span,
+            });
+        } else if states.iter().any(|s| *s == MoveState::Moved) {
+            self.errors.push(LexoraError::Custom {
+                message: "kismen tasinmis deger kullanildi; alanlari ayri ayri kullanin"
+                    .to_string(),
+                span,
+            });
+        }
+    }
+    fn mark_path_moved(&mut self, sym: Symbol, path: &[u32]) {
+        let idx = self.nodes_under(sym, path);
+        if let Some(BindState::Owning { states, .. }) = self.lookup_mut(sym) {
+            for i in idx {
+                states[i] = MoveState::Moved;
+            }
+        }
+    }
+    fn mark_path_live(&mut self, sym: Symbol, path: &[u32]) {
+        let idx = self.nodes_under(sym, path);
+        if let Some(BindState::Owning { states, .. }) = self.lookup_mut(sym) {
+            for i in idx {
+                states[i] = MoveState::Owned;
+            }
+        }
+    }
+
+    fn check_assign_target(&mut self, sym: Symbol, path: &[u32], span: Span) {
+        let bad = match self.lookup(sym) {
+            Some(BindState::Owning { paths, states }) => {
+                paths.iter().zip(states.iter()).any(|(p, s)| {
+                    p.len() < path.len() && path.starts_with(p) && *s != MoveState::Owned
+                })
+            }
+            _ => false,
+        };
+        if bad {
+            self.errors.push(LexoraError::Custom {
+                message: "tasinmis degerin bir parcasina atama yapilamaz; once butun olarak yeniden atayin".to_string(),
+                span,
+            });
+        }
+    }
     fn expr_is_owning(&self, expr: &Expr) -> bool {
         self.types
             .get(&expr.id())
             .map_or(false, |t| self.is_owning(t))
     }
+
     fn check_place_base(&mut self, base: &Expr) {
         if base.is_place() {
             return;
         }
-        if self.expr_is_owning(base) || matches!(base, Expr::Deref { .. }) {
+        if self.expr_is_owning(base) {
             self.errors.push(LexoraError::Custom {
-                message: "gecici deger uzerinden alan/eleman erisimi yapilamaz; once bir degiskene baglayin".to_string(),
+                message: "gecici deger uzerinden alan/eleman/deref erisimi yapilamaz; once bir degiskene baglayin".to_string(),
                 span: base.span(),
             });
         }
     }
+
     fn check_function(&mut self, func: &Function) {
         self.enter();
-        for (sym, ty) in func.params.iter() {
-            self.bind(*sym, self.is_owning(ty));
+        self.cur_self = if func.self_param {
+            func.params.first().map(|(s, _)| *s)
+        } else {
+            None
+        };
+        for (i, (sym, ty)) in func.params.iter().enumerate() {
+            if i == 0 && func.self_param {
+                self.bind(*sym, None);
+            } else {
+                self.bind(*sym, Some(ty));
+            }
         }
         for stmt in func.body.stmts.iter() {
             self.check_stmt(stmt);
@@ -129,23 +276,18 @@ impl<'a> MoveChecker<'a> {
             self.consume_expr(tail);
         }
         self.exit();
+        self.cur_self = None;
     }
     fn check_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::Let { name, value, .. } => {
                 self.consume_expr(value);
-                let owning = self.expr_is_owning(value);
-                self.bind(*name, owning);
+                let vt = self.types.get(&value.id()).cloned();
+                self.bind(*name, vt.as_ref());
             }
-            Stmt::Assign { name, value, span } => {
+            Stmt::Assign { name, value, .. } => {
                 self.consume_expr(value);
-                if matches!(self.lookup(*name), Some(BindState::Owning(_))) {
-                    self.errors.push(LexoraError::Custom {
-                        message: "owning bir degiskene tekrar atama henuz desteklenmiyor"
-                            .to_string(),
-                        span: *span,
-                    });
-                }
+                self.mark_path_live(*name, &[]);
             }
             Stmt::Return(expr, _) => self.consume_expr(expr),
             Stmt::Expr(expr, span) => {
@@ -178,19 +320,20 @@ impl<'a> MoveChecker<'a> {
                 self.consume_expr(to);
                 self.check_loop(body, *span, Some(*var));
             }
-            Stmt::AssignPlace {
-                target,
-                value,
-                span,
-            } => {
-                if self.expr_is_owning(target) {
-                    self.errors.push(LexoraError::Custom {
-                        message: "owning hedefe yeniden atama henuz desteklenmiyor (eski deger sizardi)".to_string(),
-                        span: *span,
-                    });
+            Stmt::AssignPlace { target, value, span } => {
+                match self.place_path(target) {
+                    Some((sym, path))
+                    if matches!(self.lookup(sym), Some(BindState::Owning { .. })) =>
+                        {
+                            self.check_assign_target(sym, &path, *span);
+                            self.consume_expr(value);
+                            self.mark_path_live(sym, &path);
+                        }
+                    _ => {
+                        self.read_place(target);
+                        self.consume_expr(value);
+                    }
                 }
-                self.read_place(target);
-                self.consume_expr(value);
             }
             Stmt::Error(_) => {}
         }
@@ -199,7 +342,7 @@ impl<'a> MoveChecker<'a> {
         let entry = self.scopes.clone();
         self.enter();
         if let Some(v) = loop_var {
-            self.bind(v, false);
+            self.bind(v, None);
         }
         for s in body.stmts.iter() {
             self.check_stmt(s);
@@ -211,12 +354,14 @@ impl<'a> MoveChecker<'a> {
         let mut moved_outer = false;
         for (i, scope) in entry.iter().enumerate() {
             for (sym, st) in scope.iter() {
-                if let BindState::Owning(MoveState::Owned) = st {
-                    if let Some(BindState::Owning(s2)) =
-                        self.scopes.get(i).and_then(|m| m.get(sym)).copied()
-                    {
-                        if s2 != MoveState::Owned {
-                            moved_outer = true;
+                if let BindState::Owning { states, .. } = st {
+                    if states.iter().all(|s| *s == MoveState::Owned) {
+                        if let Some(BindState::Owning { states: s2, .. }) =
+                            self.scopes.get(i).and_then(|m| m.get(sym))
+                        {
+                            if s2.iter().any(|s| *s != MoveState::Owned) {
+                                moved_outer = true;
+                            }
                         }
                     }
                 }
@@ -233,27 +378,16 @@ impl<'a> MoveChecker<'a> {
     fn consume_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Identifier(sym, span, id) => {
-                let prev = match self.lookup_mut(*sym) {
-                    Some(BindState::Owning(state)) => {
-                        let prev = *state;
-                        *state = MoveState::Moved;
-                        Some(prev)
-                    }
-                    _ => None,
-                };
-                if let Some(prev) = prev {
-                    self.moves.insert(*id);
-                    match prev {
-                        MoveState::Owned => {}
-                        MoveState::Moved => self.errors.push(LexoraError::Custom {
-                            message: "tasinmis deger tekrar kullanildi".to_string(),
-                            span: *span,
-                        }),
-                        MoveState::MaybeMoved => self.errors.push(LexoraError::Custom {
-                            message: "kosullu tasinmis olabilecek deger kullanildi".to_string(),
-                            span: *span,
-                        }),
-                    }
+                if Some(*sym) == self.cur_self && self.expr_is_owning(expr) {
+                    self.errors.push(LexoraError::Custom {
+                        message: "'self' tasinamaz (sahipli alicida deger olarak kacamaz); yerinde odunc alin".to_string(),
+                        span: *span,
+                    });
+                }
+                if matches!(self.lookup(*sym), Some(BindState::Owning { .. })) {
+                    self.check_path_live(*sym, &[], *span, true);
+                    self.mark_path_moved(*sym, &[]);
+                    self.moves.insert(*id, Vec::new());
                 }
             }
             Expr::Box { value, .. } => self.consume_expr(value),
@@ -261,7 +395,7 @@ impl<'a> MoveChecker<'a> {
                 if self.expr_is_owning(expr) {
                     if matches!(target, Expr::Identifier(..)) {
                         self.consume_expr(target);
-                        self.moves.insert(*id);
+                        self.moves.insert(*id, Vec::new());
                     } else {
                         self.errors.push(LexoraError::Custom{
                             message: "Box icinden owning deger deref ile tasinamaz (yalnizca *degisken formunda tasinabilir)".to_string(),
@@ -270,6 +404,7 @@ impl<'a> MoveChecker<'a> {
                         self.read_place(target);
                     }
                 } else {
+                    self.check_place_base(target);
                     self.read_place(target);
                 }
             }
@@ -310,20 +445,24 @@ impl<'a> MoveChecker<'a> {
                     let shared: Vec<Symbol> = ls
                         .intersection(&rs)
                         .copied()
-                        .filter(|s| {
-                            matches!(self.lookup(*s), Some(BindState::Owning(MoveState::Owned)))
-                        })
+                        .filter(|s| self.all_owned(*s))
                         .collect();
                     self.read_place(left);
                     self.read_place(right);
                     for s in shared {
-                        if !matches!(self.lookup(s), Some(BindState::Owning(MoveState::Owned))) {
+                        if !self.all_owned(s) {
                             self.errors.push(LexoraError::Custom {
                                 message: "karsilastirmanin iki tarafi ayni owning degeri kullaniyor ve biri onu tasiyor; once bir degiskene baglayin".to_string(),
                                 span: *span,
                             });
                         }
                     }
+                } else if matches!(op, BinaryOperator::And | BinaryOperator::Or) {
+                    self.consume_expr(left);
+                    let entry = self.scopes.clone();
+                    self.consume_expr(right);
+                    let after = self.scopes.clone();
+                    self.scopes = join_scopes(&after, &entry);
                 } else {
                     self.consume_expr(left);
                     self.consume_expr(right);
@@ -345,15 +484,37 @@ impl<'a> MoveChecker<'a> {
                 self.read_place(array);
                 self.consume_expr(index);
             }
-            Expr::FieldAccess { object, span, .. } => {
-                if self.expr_is_owning(expr) {
-                    self.errors.push(LexoraError::Custom {
-                        message: "owning alan struct'tan tasinamaz; yerinde odunc alin".to_string(),
-                        span: *span,
-                    });
-                }
+            Expr::FieldAccess { object, span, id,.. } => {
                 self.check_place_base(object);
-                self.read_place(object)
+                if !self.expr_is_owning(expr) {
+                    self.read_place(object);
+                    return;
+                }
+                match self.place_path(expr) {
+                    Some((sym, path))
+                    if matches!(self.lookup(sym), Some(BindState::Owning { .. })) =>
+                        {
+                            self.check_path_live(sym, &path, *span, true);
+                            self.mark_path_moved(sym, &path);
+                            self.moves.insert(*id, path);
+                        }
+                    Some((sym, _)) if Some(sym) == self.cur_self => {
+                        self.errors.push(LexoraError::Custom {
+                            message: "'self' alanlari tasinamaz (odunc alinan alicidan cikamaz); yerinde odunc alin".to_string(),
+                            span: *span,
+                        });
+                        self.read_place(object);
+                    }
+                    _ => {
+                        if object.is_place() {
+                            self.errors.push(LexoraError::Custom {
+                                message: "owning alan yalnizca yerel bir degiskenin alan zincirinden tasinabilir; dizi elemani ve Box icerigi yerinde odunc alinir".to_string(),
+                                span: *span,
+                            });
+                        }
+                        self.read_place(object);
+                    }
+                }
             }
             Expr::ArrayLiteral(elems, _, _) => {
                 for e in elems.iter() {
@@ -388,6 +549,7 @@ impl<'a> MoveChecker<'a> {
                         enum_name,
                         variant,
                         bindings,
+                        ..
                     } = pat
                     {
                         let ftys = self
@@ -399,8 +561,7 @@ impl<'a> MoveChecker<'a> {
                             })
                             .unwrap_or_default();
                         for (i, b) in bindings.iter().enumerate() {
-                            let owning = ftys.get(i).map_or(false, |t| self.is_owning(t));
-                            self.bind(*b, owning);
+                            self.bind(*b, ftys.get(i));
                         }
                     }
                     for s in body.stmts.iter() {
@@ -451,35 +612,40 @@ impl<'a> MoveChecker<'a> {
                 let after_else = self.scopes.clone();
                 self.scopes = join_scopes(&after_then, &after_else);
             }
-            Expr::Integer(..) | Expr::Bool(..) | Expr::StringLiteral(..) | Expr::Error(..) => {}
+            Expr::MethodCall { receiver, args, .. } => {
+                self.check_place_base(receiver);
+                self.read_place(receiver);
+                for a in args.iter() {
+                    self.consume_expr(a);
+                }
+            }
+            Expr::Integer(..)
+            | Expr::Float(..)
+            | Expr::Bool(..)
+            | Expr::StringLiteral(..)
+            | Expr::Error(..) => {}
         }
     }
     fn read_place(&mut self, expr: &Expr) {
         match expr {
             Expr::Identifier(sym, span, _) => {
-                if let Some(BindState::Owning(state)) = self.lookup(*sym) {
-                    match state {
-                        MoveState::Owned => {}
-                        MoveState::Moved => self.errors.push(LexoraError::Custom {
-                            message: "tasinmis deger kullanildi".to_string(),
-                            span: *span,
-                        }),
-                        MoveState::MaybeMoved => self.errors.push(LexoraError::Custom {
-                            message: "kosullu tasinmis olabilecek deger kullanildi".to_string(),
-                            span: *span,
-                        }),
-                    }
-                }
+                self.check_path_live(*sym, &[], *span, false);
             }
-            Expr::Deref { target, .. } => self.read_place(target),
+            Expr::Deref { target, .. } => {
+                self.check_place_base(target);
+                self.read_place(target)
+            }
             Expr::Index { array, index, .. } => {
                 self.check_place_base(array);
                 self.read_place(array);
                 self.consume_expr(index);
             }
-            Expr::FieldAccess { object, .. } => {
+            Expr::FieldAccess { object, span, .. } => {
                 self.check_place_base(object);
-                self.read_place(object)
+                match self.place_path(expr) {
+                    Some((sym, path)) => self.check_path_live(sym, &path, *span, false),
+                    None => self.read_place(object),
+                }
             }
             other => self.consume_expr(other),
         }
@@ -498,16 +664,27 @@ fn is_comparison(op: &BinaryOperator) -> bool {
     )
 }
 
-fn join_state(a: BindState, b: BindState) -> BindState {
+fn join_state(a: &BindState, b: &BindState) -> BindState {
     match (a, b) {
-        (BindState::Owning(x), BindState::Owning(y)) => {
-            if x == y {
-                BindState::Owning(x)
-            } else {
-                BindState::Owning(MoveState::MaybeMoved)
+        (BindState::Owning { paths, states: sa }, BindState::Owning { states: sb, .. })
+        if sa.len() == sb.len() =>
+            {
+                BindState::Owning {
+                    paths: paths.clone(),
+                    states: sa
+                        .iter()
+                        .zip(sb.iter())
+                        .map(|(x, y)| {
+                            if x == y {
+                                *x
+                            } else {
+                                MoveState::MaybeMoved
+                            }
+                        })
+                        .collect(),
+                }
             }
-        }
-        _ => a,
+        _ => a.clone(),
     }
 }
 
@@ -520,8 +697,8 @@ fn join_scopes(
         .map(|(ma, mb)| {
             ma.iter()
                 .map(|(sym, sa)| {
-                    let sb = mb.get(sym).copied().unwrap_or(*sa);
-                    (*sym, join_state(*sa, sb))
+                    let sb = mb.get(sym).unwrap_or(sa);
+                    (*sym, join_state(sa, sb))
                 })
                 .collect()
         })
@@ -582,8 +759,17 @@ fn collect_idents(expr: &Expr, out: &mut HashSet<Symbol>) {
                 collect_block_idents(eb, out);
             }
         }
-
-        Expr::Integer(..) | Expr::Bool(..) | Expr::StringLiteral(..) | Expr::Error(..) => {}
+        Expr::MethodCall { receiver, args, .. } => {
+            collect_idents(receiver, out);
+            for a in args.iter() {
+                collect_idents(a, out);
+            }
+        }
+        Expr::Integer(..)
+        | Expr::Float(..)
+        | Expr::Bool(..)
+        | Expr::StringLiteral(..)
+        | Expr::Error(..) => {}
     }
 }
 

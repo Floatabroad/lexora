@@ -1,0 +1,27 @@
+struct Point {
+    x: i32,
+}
+
+enum E {
+    A(Box<Quux>),
+    N,
+}
+
+fn f(q: Poimt) -> i32 {
+    return 7;
+}
+
+fn g(n: i32) -> Zork {
+    return 1;
+}
+
+struct Holder {
+    inner: Nope,
+    arr: [Nada; 2],
+}
+
+fn main() -> i32 {
+    let v: Wat = 5;
+    print(1);
+    return 0;
+}

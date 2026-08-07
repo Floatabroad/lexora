@@ -5,14 +5,15 @@ use crate::error::LexoraError;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token<'src> {
     Integer(i64),
+    Float(f64),
     Identifier(&'src str),
     StringLiteral(&'src str),
 
     Let, Fn, Return, If, Else,
     True, False, While, For, In,
-    And, Or, Not, As, Import, Struct, Box, Enum, Match,
+    And, Or, Not, As, Import, Struct, Box, Enum, Match, Impl, SelfKw,
 
-    I32, I64, Bool, Void, Str,
+    I32, I64,F32,F64, Bool, Void, Str,
 
     Plus, Minus, Star, Slash,
     Equals, EqualsEquals,
@@ -47,8 +48,12 @@ pub struct Lexer<'src> {
 
 impl<'src> Lexer<'src> {
     pub fn new(source: &'src str, base: u32) -> Self {
-
-        Lexer { source, pos: 0, line: 1, base, errors: Vec::new()}
+        let pos = if source.as_bytes().starts_with(&[0xEF, 0xBB, 0xBF]) {
+            3
+        } else {
+            0
+        };
+        Lexer { source, pos, line: 1, base, errors: Vec::new() }
     }
     pub fn take_errors(&mut self) -> Vec<LexoraError> {
         std::mem::take(&mut self.errors)
@@ -60,6 +65,13 @@ impl<'src> Lexer<'src> {
         if self.pos < self.source.len() {
             self.source.as_bytes()[self.pos]
         }else {
+            0
+        }
+    }
+    fn peek_byte(&self, n: usize) -> u8 {
+        if self.pos + n < self.source.len() {
+            self.source.as_bytes()[self.pos + n]
+        } else {
             0
         }
     }
@@ -175,15 +187,52 @@ impl<'src> Lexer<'src> {
             && self.source.as_bytes()[self.pos].is_ascii_digit() {
             self.advance();
         }
+        let mut is_float = false;
+        if self.current() == b'.' && self.peek_byte(1).is_ascii_digit() {
+            is_float = true;
+            self.advance();
+            while self.pos < self.source.len()
+                && self.source.as_bytes()[self.pos].is_ascii_digit() {
+                self.advance();
+            }
+        }
+        if (self.current() == b'e' || self.current() == b'E')
+            && (self.peek_byte(1).is_ascii_digit()
+            || ((self.peek_byte(1) == b'+' || self.peek_byte(1) == b'-')
+            && self.peek_byte(2).is_ascii_digit()))
+        {
+            is_float = true;
+            self.advance();
+            if self.current() == b'+' || self.current() == b'-' {
+                self.advance();
+            }
+            while self.pos < self.source.len()
+                && self.source.as_bytes()[self.pos].is_ascii_digit() {
+                self.advance();
+            }
+        }
         let s = &self.source[start..self.pos];
-        match s.parse::<i64>() {
-            Ok(value) => Token::Integer(value),
-            Err(_) => {
-                self.errors.push(LexoraError::Custom {
-                    message: format!("tam sayi literali cok buyuk (i64 siniri asildi): {}", s),
-                    span: self.span(start as u32, self.pos as u32),
-                });
-                Token::Integer(0)
+        if is_float {
+            match s.parse::<f64>() {
+                Ok(v) => Token::Float(v),
+                Err(_) => {
+                    self.errors.push(LexoraError::Custom {
+                        message: format!("gecersiz kayan nokta literali: {}", s),
+                        span: self.span(start as u32, self.pos as u32),
+                    });
+                    Token::Float(0.0)
+                }
+            }
+        } else {
+            match s.parse::<i64>() {
+                Ok(value) => Token::Integer(value),
+                Err(_) => {
+                    self.errors.push(LexoraError::Custom {
+                        message: format!("tam sayi literali cok buyuk (i64 siniri asildi): {}", s),
+                        span: self.span(start as u32, self.pos as u32),
+                    });
+                    Token::Integer(0)
+                }
             }
         }
     }
@@ -232,11 +281,15 @@ impl<'src> Lexer<'src> {
             "box" => Token::Box,
             "i32" => Token::I32,
             "i64" => Token::I64,
+            "f32" => Token::F32,
+            "f64" => Token::F64,
             "bool" => Token::Bool,
             "void" => Token::Void,
             "str" => Token::Str,
             "enum" => Token::Enum,
             "match" => Token::Match,
+            "impl" => Token::Impl,
+            "self" => Token::SelfKw,
             _ => Token::Identifier(ident),
         }
     }

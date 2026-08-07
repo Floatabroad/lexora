@@ -1,0 +1,20 @@
+fn exit(code: i32) -> void {
+    print(777);
+}
+
+fn strlen(s: str) -> i64 {
+    return 99 as i64;
+}
+
+fn printf(x: i32) -> i32 {
+    return x;
+}
+
+fn lexora_str_free(p: str) -> void {
+    print(0);
+}
+
+fn main() -> i32 {
+    print(len("abcde"));
+    return 0;
+}

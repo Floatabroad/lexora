@@ -1,0 +1,19 @@
+error: owning eleman diziden tasinamaz; yerinde odunc alin
+ --> tests/diagnostics/fn_generic_move.lx:2:12
+  |
+2 |     return a[0];
+  |            ^^^^
+error: tasinmis deger tekrar kullanildi
+ --> tests/diagnostics/fn_generic_move.lx:6:16
+  |
+6 |     return [x, x];
+  |                ^
+error: dongu govdesinde owning deger disari tasinamaz
+  --> tests/diagnostics/fn_generic_move.lx:10:5
+   |
+10 |       for i in 0..2 {
+   | ______^
+11 | |         let y: T = x;
+12 | |     }
+   | |_____^
+error: 3 hata yuzunden durduruldu

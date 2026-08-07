@@ -1,0 +1,24 @@
+struct N {
+    x: i32,
+}
+
+impl N {
+    fn uzunluk(self) -> i32 {
+        return self.x;
+    }
+    fn topla(self, a: i32) -> i32 {
+        return self.x + a;
+    }
+}
+
+fn main() -> i32 {
+    let n: N = N { x: 1 };
+    print(n.uzunlk());
+    print(n.topla(1, 2));
+    print(n.topla(true));
+    let a: i32 = 5;
+    print(a.uzunluk());
+    let s: str = "x";
+    print(s.uzunluk());
+    return 0;
+}

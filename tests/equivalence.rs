@@ -83,13 +83,12 @@ fn backend_equivalence() {
         assert_eq!(sir_code, ink_code, "[{name}] exit code farkli");
 
         let golden = cases_dir.join(format!("{name}.out"));
-        if golden.exists() {
-            let expected = fs::read_to_string(&golden).unwrap();
-            assert_eq!(
-                sir_out.trim_end(),
-                expected.trim_end(),
-                "[{name}] golden ile uyusmuyor"
-            );
-        }
+        let expected = fs::read_to_string(&golden)
+            .unwrap_or_else(|_| panic!("[{name}] golden yok (once `make equiv-bless`)"));
+        assert_eq!(
+            sir_out.trim_end(),
+            expected.trim_end(),
+            "[{name}] golden ile uyusmuyor"
+        );
     }
 }

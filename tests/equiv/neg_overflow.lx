@@ -1,0 +1,10 @@
+fn main() -> i32 {
+    let a: i32 = 2147483647;
+    let b: i32 = 0 - a - 1;
+    let big: i64 = 9223372036854775807;
+    print(-a);
+    print(-big);
+    print(0 - 7);
+    print(-b);
+    return 0;
+}

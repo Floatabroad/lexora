@@ -1,0 +1,10 @@
+enum K {
+    A(i32),
+    B,
+}
+
+fn main() -> i32 {
+    let a = [K::A(1];
+    let b = [K::A(1, 2];
+    return 0;
+}

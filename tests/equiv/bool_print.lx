@@ -1,0 +1,44 @@
+struct S0 { f0: bool, f1: i32 }
+
+struct S1 { f0: bool, f1: bool, f2: i64 }
+
+fn fn0(p0_0: bool, p0_1: i32) -> i32 {
+    print((if (S0 { f0: p0_0, f1: p0_1 }).f0 { ((4157761659) - (-4479301342)) } else { (-(-3545756240)) }));
+    return p0_1;
+}
+
+fn fn1(p1_0: i64, p1_1: i32) -> i32 {
+    let v1: bool = (S0 { f0: true, f1: ((73) / 14) }).f0;
+    print((S1 { f0: (S0 { f0: false, f1: p1_1 }).f0, f1: v1, f2: p1_0 }).f1);
+    return (if ((true) or (false)) { fn0(false, -78) } else { ((p1_1) / 50) });
+}
+
+fn main() -> i32 {
+    let v2: i64 = (((((-88) as i64) * ((-3) as i64))) / (17 as i64));
+    if (S1 { f0: (S1 { f0: true, f1: false, f2: -7009758828 }).f1, f1: ((false) or (true)), f2: 9603504272 }).f1 {
+        if ((true) and (false)) {
+            for i3 in 0..2 {
+                let v4: i32 = i3;
+            }
+        } else {
+            for i5 in 0..0 {
+                let v6: i32 = 43;
+            }
+        }
+        let v7: bool = ((true) and (true));
+    } else {
+        let v8: i64 = ((v2) + (5481510604));
+        let s9: String = string("abc");
+        print(len(s9));
+        print(s9);
+    }
+    for i10 in 0..2 {
+        print(((i10) as i64));
+        let v11: bool = (not (true));
+    }
+    let a12: [i32; 2] = [fn1((S1 { f0: false, f1: false, f2: v2 }).f2, (S0 { f0: true, f1: -24 }).f1), (if (S1 { f0: false, f1: true, f2: v2 }).f1 { ((-27) / 36) } else { -51 })];
+    a12[1] = fn1((S1 { f0: false, f1: false, f2: v2 }).f2, -78);
+    print(a12[1]);
+    let v13: i64 = (S1 { f0: ((true) or (false)), f1: (S1 { f0: true, f1: true, f2: v2 }).f1, f2: 3145283543 }).f2;
+    return 0;
+}

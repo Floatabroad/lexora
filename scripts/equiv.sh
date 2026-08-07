@@ -47,6 +47,14 @@ for lx in "$CASES"/*.lx; do
     run_capture "$TMP/$name.sir"
     sir_out="$REPLY_OUT"; sir_code="$REPLY_CODE"
 
+    if ! llc -O2 output.ll -o "$TMP/$name.o2.s" 2>"$TMP/llc.err"; then
+        echo "FAIL  $name  (llc -O2)"; sed 's/^/    /' "$TMP/llc.err"
+        fail=$((fail + 1)); failed="$failed $name"; continue
+    fi
+    clang -no-pie "$TMP/$name.o2.s" -o "$TMP/$name.o2.sir" 2>/dev/null
+    run_capture "$TMP/$name.o2.sir"
+    sir2_out="$REPLY_OUT"; sir2_code="$REPLY_CODE"
+
     if ! "$BIN" --backend inkwell "$lx" >/dev/null 2>"$TMP/ink.err"; then
         echo "FAIL  $name  (inkwell derleme)"
         sed 's/^/    /' "$TMP/ink.err"
@@ -54,6 +62,14 @@ for lx in "$CASES"/*.lx; do
     fi
     run_capture "./output"
     ink_out="$REPLY_OUT"; ink_code="$REPLY_CODE"
+
+    if ! "$BIN" --backend inkwell -O2 "$lx" >/dev/null 2>"$TMP/ink.err"; then
+        echo "FAIL  $name  (inkwell -O2 derleme)"
+        sed 's/^/    /' "$TMP/ink.err"
+        fail=$((fail + 1)); failed="$failed $name"; continue
+    fi
+    run_capture "./output"
+    ink2_out="$REPLY_OUT"; ink2_code="$REPLY_CODE"
 
     if [ "$BLESS" -eq 1 ]; then
         printf '%s\n' "$sir_out" > "$golden"
@@ -64,18 +80,30 @@ for lx in "$CASES"/*.lx; do
     ok=1
     [ "$sir_out" = "$ink_out" ] || ok=0
     [ "$sir_code" = "$ink_code" ] || ok=0
+    [ "$sir_out" = "$sir2_out" ] || ok=0
+    [ "$sir_code" = "$sir2_code" ] || ok=0
+    [ "$sir_out" = "$ink2_out" ] || ok=0
+    [ "$sir_code" = "$ink2_code" ] || ok=0
     if [ -f "$golden" ]; then
         [ "$sir_out" = "$(cat "$golden")" ] || ok=0
+    else
+        ok=0
     fi
 
     if [ "$ok" -eq 1 ]; then
-        echo "PASS  $name  (exit $sir_code)"
+        echo "PASS  $name  (exit $sir_code, O0+O2)"
         pass=$((pass + 1))
     else
         echo "FAIL  $name"
         echo "  string-ir (exit $sir_code):"; printf '%s\n' "$sir_out" | sed 's/^/    /'
         echo "  inkwell   (exit $ink_code):"; printf '%s\n' "$ink_out" | sed 's/^/    /'
-        [ -f "$golden" ] && { echo "  golden:"; sed 's/^/    /' "$golden"; }
+        echo "  string-ir -O2 (exit $sir2_code):"; printf '%s\n' "$sir2_out" | sed 's/^/    /'
+        echo "  inkwell -O2   (exit $ink2_code):"; printf '%s\n' "$ink2_out" | sed 's/^/    /'
+        if [ -f "$golden" ]; then
+            echo "  golden:"; sed 's/^/    /' "$golden"
+        else
+            echo "  golden yok: $golden (once \`make equiv-bless\`)"
+        fi
         fail=$((fail + 1)); failed="$failed $name"
     fi
 done

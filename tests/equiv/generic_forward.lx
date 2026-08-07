@@ -1,0 +1,37 @@
+enum Once { O(Box<Kutu<i32>>), Bos }
+enum Kutu<T> { K(T) }
+
+fn ilk(k: Kutu<i32>) -> i32 {
+    match k {
+        Kutu::K(v) => v,
+    }
+}
+
+fn main() -> i32 {
+    let k: Kutu<i32> = Kutu::K(5);
+    print(ilk(k));
+
+    let s: Kutu<String> = Kutu::K(string("metin"));
+    match s {
+        Kutu::K(t) => print(t),
+    }
+
+    let o: Once = Once::O(box Kutu::K(7));
+    match o {
+        Once::O(b) => {
+            let ic: Kutu<i32> = *b;
+            match ic {
+                Kutu::K(v) => print(v),
+            }
+        }
+        Once::Bos => print(0),
+    }
+
+    let bos: Once = Once::Bos;
+    match bos {
+        Once::O(_) => print(1),
+        Once::Bos => print(99),
+    }
+
+    return 0;
+}

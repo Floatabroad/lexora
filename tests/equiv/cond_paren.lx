@@ -1,0 +1,55 @@
+struct P {
+    x: i32,
+    y: i32,
+}
+
+enum E {
+    A(i32),
+    B,
+}
+
+fn kare(n: i32) -> i32 {
+    return n * n;
+}
+
+fn main() -> i32 {
+    let n: i32 = 2;
+    let c: bool = true;
+
+    if (P { x: 1, y: 2 }).x > 0 {
+        print(11);
+    }
+    while (P { x: 0, y: 0 }).y > 0 {
+        print(99);
+    }
+    for i in 0..(P { x: 3, y: 2 }).y {
+        print(i);
+    }
+
+    if (if c { 1 } else { 2 }) > n {
+        print(21);
+    } else {
+        print(22);
+    }
+    let e: E = E::A(5);
+    if (match e { E::A(v) => v, E::B => 0 }) > n {
+        print(31);
+    }
+    while (if c { 0 } else { 1 }) > n {
+        print(98);
+    }
+
+    print(kare((P { x: 4, y: 0 }).x));
+    let arr: [i32; 3] = [(P { x: 7, y: 0 }).x, 8, 9];
+    print(arr[(P { x: 2, y: 0 }).x]);
+    let f: E = E::A((P { x: 6, y: 0 }).x);
+    match f {
+        E::A(v) => print(v),
+        E::B => print(0),
+    }
+
+    if (if c { (P { x: 1, y: 0 }).x } else { 0 }) == n - 1 {
+        print(41);
+    }
+    return 0;
+}

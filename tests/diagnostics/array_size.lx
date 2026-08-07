@@ -1,0 +1,24 @@
+struct Kutu { veri: [i32; 5000000000] }
+
+fn param(a: [i32; 5000000000]) -> i32 {
+    return a[0];
+}
+
+fn donus() -> [i64; 4294967296] {
+    let a: [i64; 4294967296] = [1];
+    return a;
+}
+
+fn main() -> i32 {
+    let yerel: [i32; 3000000000] = [1];
+    print(yerel[0]);
+    return 0;
+}
+
+fn ic_ice(m: [[i64; 1000]; 1000]) -> i32 {
+    return 0;
+}
+
+fn sinir(s: [i32; 16385]) -> i32 {
+    return s[0];
+}

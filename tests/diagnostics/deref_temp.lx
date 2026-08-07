@@ -1,0 +1,20 @@
+enum Result<T, E> { Ok(T), Err(E) }
+
+struct N { x: i32 }
+
+impl N { fn kutu(self) -> Box<i32> { box self.x } }
+
+fn mk() -> Box<i32> { return box 42; }
+
+fn g(n: i32) -> Result<Box<i32>, str> { return Result::Ok(box n); }
+
+fn h(n: i32) -> Result<i32, str> { return Result::Ok(*g(n)? + 1); }
+
+fn main() -> i32 {
+    let p: N = N { x: 7 };
+    print(*mk());
+    print(*p.kutu());
+    print(*(box 5));
+    print(match h(2) { Result::Ok(v) => v, Result::Err(e) => -1 });
+    return 0;
+}

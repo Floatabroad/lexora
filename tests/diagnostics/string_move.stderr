@@ -3,9 +3,4 @@ error: tasinmis deger kullanildi
   |
 4 |     print(s);
   |           ^
-error: owning bir degiskene tekrar atama henuz desteklenmiyor
- --> tests/diagnostics/string_move.lx:6:5
-  |
-6 |     u = string("uc");
-  |     ^^^^^^^^^^^^^^^^^
-error: 2 hata yuzunden durduruldu
+error: 1 hata yuzunden durduruldu

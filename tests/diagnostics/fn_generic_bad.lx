@@ -1,0 +1,27 @@
+fn bos<T>(n: i32) -> i32 {
+    return n;
+}
+
+fn kimlik<T>(x: T) -> T {
+    return x;
+}
+
+fn ic<A>(x: A) -> A {
+    return kimlik(x);
+}
+
+fn topla<T>(a: T, b: T) -> T {
+    return a + b;
+}
+
+fn yaz<T>(x: T) -> i32 {
+    print(x);
+    return 0;
+}
+
+fn main() -> i32 {
+    print(bos(1));
+    print(kimlik::<i32, bool>(5));
+    print(kimlik(1, 2));
+    return 0;
+}

@@ -3,6 +3,7 @@ use crate::source_map::SourceMap;
 use crate::span::Span;
 use crate::symbol::{Interner, Symbol};
 use inkwell::AddressSpace;
+use inkwell::FloatPredicate;
 use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
 use inkwell::basic_block::BasicBlock;
@@ -25,13 +26,15 @@ use inkwell::values::{
     AsValueRef, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue, PointerValue,
     ValueKind,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 #[derive(Clone)]
 struct DropLocal<'ctx> {
     sym: Symbol,
     slot: PointerValue<'ctx>,
     flag: PointerValue<'ctx>,
+    path: Vec<u32>,
+    root: Type,
     pointee: Type,
 }
 
@@ -81,12 +84,15 @@ pub struct CodeGen<'ctx> {
     di_sp: Option<DISubprogram<'ctx>>,
     target_data: Option<TargetData>,
     struct_fields_ast: HashMap<Symbol, Vec<(Symbol, Type)>>,
-    moves: &'ctx HashSet<ExprId>,
+    moves: &'ctx HashMap<ExprId, Vec<u32>>,
     drop_scopes: Vec<Vec<DropLocal<'ctx>>>,
     enums: HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>,
     enum_types: HashMap<(Symbol, Vec<Type>), StructType<'ctx>>,
     variant_types: HashMap<(Symbol, Vec<Type>, Symbol), StructType<'ctx>>,
     instances: &'ctx HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>,
+    fn_instances: &'ctx HashMap<(Symbol, Vec<Type>), (Vec<Type>, Type)>,
+    call_targs: &'ctx HashMap<ExprId, Vec<Type>>,
+    cur_subst: HashMap<Symbol, Type>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -98,8 +104,10 @@ impl<'ctx> CodeGen<'ctx> {
         sources: &'ctx SourceMap<'ctx>,
         opt: u8,
         debug: bool,
-        moves: &'ctx HashSet<ExprId>,
+        moves: &'ctx HashMap<ExprId, Vec<u32>>,
         instances: &'ctx HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>,
+        fn_instances: &'ctx HashMap<(Symbol, Vec<Type>), (Vec<Type>, Type)>,
+        call_targs: &'ctx HashMap<ExprId, Vec<Type>>,
     ) -> Self {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
@@ -181,12 +189,27 @@ impl<'ctx> CodeGen<'ctx> {
             enum_types: HashMap::new(),
             variant_types: HashMap::new(),
             instances,
+            fn_instances,
+            call_targs,
+            cur_subst: HashMap::new(),
         }
+    }
+    fn subst(&self, ty: &Type) -> Type {
+        if self.cur_subst.is_empty() {
+            ty.clone()
+        } else {
+            ty.substitute(&self.cur_subst)
+        }
+    }
+    fn ty_of(&self, expr: &Expr) -> Type {
+        self.subst(&self.types[&expr.id()])
     }
     fn llvm_type(&self, ty: &Type) -> BasicTypeEnum<'ctx> {
         match ty {
             Type::I32 => self.context.i32_type().into(),
             Type::I64 => self.context.i64_type().into(),
+            Type::F32 => self.context.f32_type().into(),
+            Type::F64 => self.context.f64_type().into(),
             Type::Bool => self.context.bool_type().into(),
             Type::Str => self.context.ptr_type(AddressSpace::default()).into(),
             Type::Array(elem, n) => {
@@ -225,6 +248,14 @@ impl<'ctx> CodeGen<'ctx> {
                 .as_type(),
             Type::I64 => dib
                 .create_basic_type("i64", 64, 0x05, DIFlags::ZERO)
+                .unwrap()
+                .as_type(),
+            Type::F32 => dib
+                .create_basic_type("f32", 32, 0x04, DIFlags::ZERO)
+                .unwrap()
+                .as_type(),
+            Type::F64 => dib
+                .create_basic_type("f64", 64, 0x04, DIFlags::ZERO)
                 .unwrap()
                 .as_type(),
             Type::Bool => dib
@@ -311,15 +342,53 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
     pub fn compile(&mut self, program: &Program) -> Result<(), BuilderError> {
-        self.register_structs(program);
         self.register_enums(program);
+        self.register_structs(program);
         self.gen_drop_functions(program)?;
 
+        let mut fn_keys: Vec<(Symbol, Vec<Type>)> = self.fn_instances.keys().cloned().collect();
+        fn_keys.sort_by_key(|(s, a)| self.fn_name(*s, a));
+
         for func in &program.functions {
-            self.declare_functions(func);
+            if func.type_params.is_empty() {
+                self.declare_functions(func, &[], None);
+            }
+        }
+        for key in &fn_keys {
+            if let Some(func) = program.functions.iter().find(|f| f.name == key.0) {
+                self.cur_subst = func
+                    .type_params
+                    .iter()
+                    .copied()
+                    .zip(key.1.iter().cloned())
+                    .collect();
+                self.declare_functions(func, &key.1, None);
+                self.cur_subst.clear();
+            }
+        }
+        for imp in &program.impls {
+            for m in &imp.methods {
+                if m.self_param {
+                    self.declare_functions(m, &[], Some(imp.type_name));
+                }
+            }
         }
         for func in &program.functions {
-            self.gen_function(func)?;
+            if func.type_params.is_empty() {
+                self.gen_function(func, &[], None)?;
+            }
+        }
+        for key in &fn_keys {
+            if let Some(func) = program.functions.iter().find(|f| f.name == key.0) {
+                self.gen_function(func, &key.1, None)?;
+            }
+        }
+        for imp in &program.impls {
+            for m in &imp.methods {
+                if m.self_param {
+                    self.gen_function(m, &[], Some(imp.type_name))?;
+                }
+            }
         }
         if let Some(dib) = &self.dib {
             dib.finalize();
@@ -385,7 +454,70 @@ impl<'ctx> CodeGen<'ctx> {
                 .any(|(_, ftys)| ftys.iter().any(|t| self.is_owning_type(t)))
         })
     }
+    fn owning_paths(&self, ty: &Type, prefix: &mut Vec<u32>, out: &mut Vec<(Vec<u32>, Type)>) {
+        if let Type::Struct(s) = ty {
+            let fields = match self.struct_fields_ast.get(s) {
+                Some(f) => f.clone(),
+                None => return,
+            };
+            for (i, (_, fty)) in fields.iter().enumerate() {
+                if !self.is_owning_type(fty) {
+                    continue;
+                }
+                prefix.push(i as u32);
+                self.owning_paths(fty, prefix, out);
+                prefix.pop();
+            }
+            return;
+        }
+        if self.is_owning_type(ty) {
+            out.push((prefix.clone(), ty.clone()));
+        }
+    }
 
+    fn register_drop(
+        &mut self,
+        sym: Symbol,
+        slot: PointerValue<'ctx>,
+        ty: &Type,
+    ) -> Result<(), BuilderError> {
+        let mut paths: Vec<(Vec<u32>, Type)> = Vec::new();
+        self.owning_paths(ty, &mut Vec::new(), &mut paths);
+        for (path, leaf) in paths {
+            let flag = self.entry_alloca(self.context.bool_type().into(), "dropflag")?;
+            self.builder
+                .build_store(flag, self.context.bool_type().const_int(1, false))?;
+            self.drop_scopes.last_mut().unwrap().push(DropLocal {
+                sym,
+                slot,
+                flag,
+                path,
+                root: ty.clone(),
+                pointee: leaf,
+            });
+        }
+        Ok(())
+    }
+
+    fn gep_path(
+        &self,
+        base: PointerValue<'ctx>,
+        root: &Type,
+        path: &[u32],
+    ) -> Result<PointerValue<'ctx>, BuilderError> {
+        let mut ptr = base;
+        let mut ty = root.clone();
+        for &i in path {
+            let s = match ty {
+                Type::Struct(s) => s,
+                _ => break,
+            };
+            let st = self.structs.get(&s).unwrap().0;
+            ptr = self.builder.build_struct_gep(st, ptr, i, "dropfld")?;
+            ty = self.struct_fields_ast.get(&s).unwrap()[i as usize].1.clone();
+        }
+        Ok(ptr)
+    }
     fn is_owning_type(&self, ty: &Type) -> bool {
         match ty {
             Type::Box(_) => true,
@@ -419,6 +551,17 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         (ok.0, ok.1[0].clone(), err.0, err.1[0].clone())
     }
+    fn method_name(&self, ty: Symbol, m: Symbol) -> String {
+        format!("{}.{}", self.interner.resolve(ty), self.interner.resolve(m))
+    }
+    fn fn_name(&self, sym: Symbol, targs: &[Type]) -> String {
+        if targs.is_empty() {
+            self.interner.resolve(sym).to_string()
+        } else {
+            let m: Vec<String> = targs.iter().map(|t| t.mangle()).collect();
+            format!("{}.{}", self.interner.resolve(sym), m.join("."))
+        }
+    }
     fn inst_name(sym: Symbol, args: &[Type]) -> String {
         if args.is_empty() {
             sym.0.to_string()
@@ -427,22 +570,39 @@ impl<'ctx> CodeGen<'ctx> {
             format!("{}.{}", sym.0, m.join("."))
         }
     }
-    fn declare_functions(&mut self, func: &Function) -> FunctionValue<'ctx> {
+    fn declare_functions(
+        &mut self,
+        func: &Function,
+        targs: &[Type],
+        owner: Option<Symbol>,
+    ) -> FunctionValue<'ctx> {
+        let ptr_t = self.context.ptr_type(AddressSpace::default());
         let param_types: Vec<BasicMetadataTypeEnum> = func
             .params
             .iter()
-            .map(|(_, ty)| self.llvm_type(ty).into())
+            .enumerate()
+            .map(|(i, (_, ty))| {
+                if i == 0 && func.self_param {
+                    ptr_t.into()
+                } else {
+                    self.llvm_type(&self.subst(ty)).into()
+                }
+            })
             .collect();
 
-        let fn_type = match &func.return_type {
+        let ret = self.subst(&func.return_type);
+        let fn_type = match &ret {
             Type::Void => self.context.void_type().fn_type(&param_types, false),
-            ret => self.llvm_type(ret).fn_type(&param_types, false),
+            r => self.llvm_type(r).fn_type(&param_types, false),
         };
 
-        let name = self.interner.resolve(func.name);
+        let name = match owner {
+            Some(t) => self.method_name(t, func.name),
+            None => self.fn_name(func.name, targs),
+        };
         self.module
-            .get_function(name)
-            .unwrap_or_else(|| self.module.add_function(name, fn_type, None))
+            .get_function(&name)
+            .unwrap_or_else(|| self.module.add_function(&name, fn_type, None))
     }
     fn set_loc(&self, span: Span) {
         if !self.debug {
@@ -487,11 +647,29 @@ impl<'ctx> CodeGen<'ctx> {
             );
         }
     }
-    fn gen_function(&mut self, func: &Function) -> Result<(), BuilderError> {
-        let name = self.interner.resolve(func.name);
-        let function = self.module.get_function(name).unwrap();
+    fn gen_function(
+        &mut self,
+        func: &Function,
+        targs: &[Type],
+        owner: Option<Symbol>,
+    ) -> Result<(), BuilderError> {
+        self.cur_subst = func
+            .type_params
+            .iter()
+            .copied()
+            .zip(targs.iter().cloned())
+            .collect();
+        let name = match owner {
+            Some(t) => self.method_name(t, func.name),
+            None => self.fn_name(func.name, targs),
+        };
+        let function = match self.module.get_function(&name) {
+            Some(f) => f,
+            None => return Ok(()),
+        };
         self.cur_fn = Some(function);
-        self.cur_ret = Some(func.return_type.clone());
+        let ret_ast = self.subst(&func.return_type);
+        self.cur_ret = Some(ret_ast.clone());
         let entry = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry);
         self.builder.unset_current_debug_location();
@@ -503,11 +681,25 @@ impl<'ctx> CodeGen<'ctx> {
             let dib = self.dib.as_ref().unwrap();
             let file = self.di_file.unwrap();
             let cu = self.di_cu.unwrap();
-            let ret_di = match func.return_type {
+            let ret_di = match ret_ast {
                 Type::Void => None,
                 ref t => Some(self.di_type(t)),
             };
-            let params_di: Vec<DIType> = func.params.iter().map(|(_, t)| self.di_type(t)).collect();
+            let params_di: Vec<DIType> = func
+                .params
+                .iter()
+                .enumerate()
+                .map(|(i, (_, t))| {
+                    let inner = self.di_type(&self.subst(t));
+                    if i == 0 && func.self_param {
+                        dib.create_pointer_type("self", inner, 64, 0, AddressSpace::default())
+                            .as_type()
+                    } else {
+                        inner
+                    }
+                })
+                .collect();
+
             let subroutine = dib.create_subroutine_type(file, ret_di, &params_di, DIFlags::ZERO);
             let line = self
                 .sources
@@ -516,7 +708,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap_or(0);
             let sp = dib.create_function(
                 cu.as_debug_info_scope(),
-                name,
+                &name,
                 None,
                 file,
                 line,
@@ -531,24 +723,21 @@ impl<'ctx> CodeGen<'ctx> {
             self.di_sp = Some(sp);
         }
 
-        for (i, (sym, ty)) in func.params.iter().enumerate() {
-            let llvm_ty = self.llvm_type(ty);
+        for (i, (sym, ty_raw)) in func.params.iter().enumerate() {
+            if i == 0 && func.self_param {
+                let arg = function.get_nth_param(0).unwrap().into_pointer_value();
+                let recv_ty = self.llvm_type(&self.subst(ty_raw));
+                self.vars.insert(*sym, (arg, recv_ty));
+                continue;
+            }
+            let ty = self.subst(ty_raw);
+            let llvm_ty = self.llvm_type(&ty);
             let pname = self.interner.resolve(*sym);
             let slot = self.entry_alloca(llvm_ty, pname)?;
             let arg = function.get_nth_param(i as u32).unwrap();
             self.builder.build_store(slot, arg)?;
             self.vars.insert(*sym, (slot, llvm_ty));
-            if self.is_owning_type(ty) {
-                let flag = self.entry_alloca(self.context.bool_type().into(), "dropflag")?;
-                self.builder
-                    .build_store(flag, self.context.bool_type().const_int(1, false))?;
-                self.drop_scopes.last_mut().unwrap().push(DropLocal {
-                    sym: *sym,
-                    slot,
-                    flag,
-                    pointee: ty.clone(),
-                });
-            }
+            self.register_drop(*sym, slot, &ty)?;
             if self.debug {
                 let dib = self.dib.as_ref().unwrap();
                 let file = self.di_file.unwrap();
@@ -564,7 +753,7 @@ impl<'ctx> CodeGen<'ctx> {
                     (i + 1) as u32,
                     file,
                     line,
-                    self.di_type(ty),
+                    self.di_type(&ty),
                     true,
                     DIFlags::ZERO,
                 );
@@ -592,7 +781,7 @@ impl<'ctx> CodeGen<'ctx> {
             {
                 let val = self.gen_expr(tail)?;
                 self.free_all_live()?;
-                match func.return_type {
+                match ret_ast {
                     Type::Void => {
                         self.builder.build_return(None)?;
                     }
@@ -605,7 +794,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.drop_exit()?;
         let cur = self.builder.get_insert_block().unwrap();
         if cur.get_terminator().is_none() {
-            match func.return_type {
+            match ret_ast {
                 Type::Void => {
                     self.builder.build_return(None)?;
                 }
@@ -615,6 +804,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
         self.vars.exit();
+        self.cur_subst.clear();
         Ok(())
     }
     fn gen_statement(&mut self, stmt: &Stmt) -> Result<(), BuilderError> {
@@ -623,33 +813,21 @@ impl<'ctx> CodeGen<'ctx> {
             Stmt::Let {
                 name, value, span, ..
             } => {
-                let llvm_ty = self.llvm_type(&self.types[&value.id()]);
+                let llvm_ty = self.llvm_type(&self.ty_of(value));
                 let pname = self.interner.resolve(*name);
                 let slot = self.entry_alloca(llvm_ty, pname)?;
 
                 self.gen_into(value, slot)?;
                 self.vars.insert(*name, (slot, llvm_ty));
-                let owning_ty = match self.types.get(&value.id()) {
-                    Some(t) if self.is_owning_type(t) => Some(t.clone()),
-                    _ => None,
-                };
+                let vty = self.ty_of(value);
+                self.register_drop(*name, slot, &vty)?;
 
-                if let Some(pointee) = owning_ty {
-                    let flag = self.entry_alloca(self.context.bool_type().into(), "dropflag")?;
-                    self.builder
-                        .build_store(flag, self.context.bool_type().const_int(1, false))?;
-                    self.drop_scopes.last_mut().unwrap().push(DropLocal {
-                        sym: *name,
-                        slot,
-                        flag,
-                        pointee,
-                    });
-                }
+                
                 if self.debug {
                     let dib = self.dib.as_ref().unwrap();
                     let file = self.di_file.unwrap();
                     let sp = self.di_sp.unwrap();
-                    let dty = &self.types[&value.id()];
+                    let dty = self.ty_of(value);
                     let line = self
                         .sources
                         .resolve(*span)
@@ -660,7 +838,7 @@ impl<'ctx> CodeGen<'ctx> {
                         pname,
                         file,
                         line,
-                        self.di_type(dty),
+                        self.di_type(&dty),
                         true,
                         DIFlags::ZERO,
                         0,
@@ -681,7 +859,9 @@ impl<'ctx> CodeGen<'ctx> {
             Stmt::Assign { name, value, .. } => {
                 let (slot, _) = self.vars.get(*name);
                 let val = self.gen_expr(value)?;
+                self.drop_before_assign(*name, &[])?;
                 self.builder.build_store(slot, val)?;
+                self.set_flags_live(*name, &[])?;
                 Ok(())
             }
             Stmt::Return(expr, _) => {
@@ -758,8 +938,9 @@ impl<'ctx> CodeGen<'ctx> {
                 let slot = self.entry_alloca(i32t, var_name)?;
                 let from_val = self.gen_expr(from)?;
                 self.builder.build_store(slot, from_val)?;
-                self.vars.insert(*var, (slot, i32t));
 
+                let to_val = self.gen_expr(to)?.into_int_value();
+                self.vars.insert(*var, (slot, i32t));
                 let cond_bb = self.context.append_basic_block(function, "for_cond");
                 let body_bb = self.context.append_basic_block(function, "for_body");
                 let after_bb = self.context.append_basic_block(function, "for_after");
@@ -771,7 +952,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_load(i32t, slot, var_name)?
                     .into_int_value();
-                let to_val = self.gen_expr(to)?.into_int_value();
                 let cmp = self.builder.build_int_compare(
                     IntPredicate::SLT,
                     cur_val,
@@ -821,7 +1001,23 @@ impl<'ctx> CodeGen<'ctx> {
             Stmt::AssignPlace { target, value, .. } => {
                 let ptr = self.gen_place(target)?;
                 let val = self.gen_expr(value)?;
-                self.builder.build_store(ptr, val)?;
+                let flagged = self
+                    .place_path_of(target)
+                    .filter(|(root, path)| !self.matching_drops(*root, path).is_empty());
+                match flagged {
+                    Some((root, path)) => {
+                        self.drop_before_assign(root, &path)?;
+                        self.builder.build_store(ptr, val)?;
+                        self.set_flags_live(root, &path)?;
+                    }
+                    None => {
+                        let ast_ty = self.ty_of(target);
+                        if self.is_owning_type(&ast_ty) {
+                            self.drop_in_place(ptr, &ast_ty)?;
+                        }
+                        self.builder.build_store(ptr, val)?;
+                    }
+                }
                 Ok(())
             }
 
@@ -831,6 +1027,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
     fn gen_expr(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>, BuilderError> {
+        self.set_loc(expr.span());
         match expr {
             Expr::Integer(n, _, _) => {
                 let val = if *n > i32::MAX as i64 || *n < i32::MIN as i64 {
@@ -839,6 +1036,13 @@ impl<'ctx> CodeGen<'ctx> {
                     self.context.i32_type().const_int(*n as u64, true)
                 };
                 Ok(val.into())
+            }
+            Expr::Float(v, _, _) => {
+                let ty = match self.ty_of(expr) {
+                    Type::F32 => self.context.f32_type(),
+                    _ => self.context.f64_type(),
+                };
+                Ok(ty.const_float(*v).into())
             }
             Expr::Bool(b, _, _) => Ok(self.context.bool_type().const_int(*b as u64, false).into()),
             Expr::Identifier(sym, _, id) => {
@@ -851,14 +1055,81 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::BinaryOp {
                 left, op, right, ..
             } => {
-                if *op == BinaryOperator::Add && self.types[&expr.id()] == Type::String {
+                if *op == BinaryOperator::Add && self.ty_of(expr) == Type::String {
                     return self.gen_str_concat(left, right);
                 }
-                if is_comparison_op(op)
-                    && matches!(self.types[&left.id()], Type::Str | Type::String)
-                {
+                if is_comparison_op(op) && matches!(self.ty_of(left), Type::Str | Type::String) {
                     return self.gen_str_cmp(left, op, right);
                 }
+                if matches!(op, BinaryOperator::And | BinaryOperator::Or) {
+                    let i1 = self.context.bool_type();
+                    let slot = self.entry_alloca(i1.into(), "sc")?;
+                    let lv = self.gen_expr(left)?.into_int_value();
+                    self.builder.build_store(slot, lv)?;
+                    let function = self.cur_fn.unwrap();
+                    let rhs_bb = self.context.append_basic_block(function, "sc_rhs");
+                    let end_bb = self.context.append_basic_block(function, "sc_end");
+                    if *op == BinaryOperator::And {
+                        self.builder.build_conditional_branch(lv, rhs_bb, end_bb)?;
+                    } else {
+                        self.builder.build_conditional_branch(lv, end_bb, rhs_bb)?;
+                    }
+                    self.builder.position_at_end(rhs_bb);
+                    let rv = self.gen_expr(right)?.into_int_value();
+                    self.builder.build_store(slot, rv)?;
+                    if self
+                        .builder
+                        .get_insert_block()
+                        .unwrap()
+                        .get_terminator()
+                        .is_none()
+                    {
+                        self.builder.build_unconditional_branch(end_bb)?;
+                    }
+                    self.builder.position_at_end(end_bb);
+                    return Ok(self.builder.build_load(i1, slot, "scres")?);
+                }
+                if matches!(self.ty_of(left), Type::F32 | Type::F64) {
+                    let l = self.gen_expr(left)?.into_float_value();
+                    let r = self.gen_expr(right)?.into_float_value();
+                    let res: BasicValueEnum = match op {
+                        BinaryOperator::Add => self.builder.build_float_add(l, r, "fadd")?.into(),
+                        BinaryOperator::Sub => self.builder.build_float_sub(l, r, "fsub")?.into(),
+                        BinaryOperator::Mul => self.builder.build_float_mul(l, r, "fmul")?.into(),
+                        BinaryOperator::Div => self.builder.build_float_div(l, r, "fdiv")?.into(),
+                        BinaryOperator::Eq => self
+                            .builder
+                            .build_float_compare(FloatPredicate::OEQ, l, r, "fcmp")?
+                            .into(),
+                        BinaryOperator::NotEq => self
+                            .builder
+                            .build_float_compare(FloatPredicate::ONE, l, r, "fcmp")?
+                            .into(),
+                        BinaryOperator::Less => self
+                            .builder
+                            .build_float_compare(FloatPredicate::OLT, l, r, "fcmp")?
+                            .into(),
+                        BinaryOperator::Greater => self
+                            .builder
+                            .build_float_compare(FloatPredicate::OGT, l, r, "fcmp")?
+                            .into(),
+                        BinaryOperator::LessEq => self
+                            .builder
+                            .build_float_compare(FloatPredicate::OLE, l, r, "fcmp")?
+                            .into(),
+                        BinaryOperator::GreaterEq => self
+                            .builder
+                            .build_float_compare(FloatPredicate::OGE, l, r, "fcmp")?
+                            .into(),
+                        BinaryOperator::And | BinaryOperator::Or => {
+                            unreachable!(
+                                "float uzerinde mantiksal operator (typechecker kacirmali)"
+                            )
+                        }
+                    };
+                    return Ok(res);
+                }
+
                 let l = self.gen_expr(left)?.into_int_value();
                 let r = self.gen_expr(right)?.into_int_value();
                 let res = match op {
@@ -903,7 +1174,8 @@ impl<'ctx> CodeGen<'ctx> {
                         let both = self.builder.build_and(l_min, r_neg1, "divovf")?;
                         let ovf_bb = self.context.append_basic_block(function, "divovf_panic");
                         let ok2_bb = self.context.append_basic_block(function, "divovf_ok");
-                        self.builder.build_conditional_branch(both, ovf_bb, ok2_bb)?;
+                        self.builder
+                            .build_conditional_branch(both, ovf_bb, ok2_bb)?;
                         self.builder.position_at_end(ovf_bb);
                         let panic_fn = self.get_or_build_panic()?;
                         let msg = self.fmt_global(".panicmsg_ovf", "lexora: integer overflow")?;
@@ -936,8 +1208,9 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder
                             .build_int_compare(IntPredicate::SGE, l, r, "cmp")?
                     }
-                    BinaryOperator::And => self.builder.build_and(l, r, "and")?,
-                    BinaryOperator::Or => self.builder.build_or(l, r, "or")?,
+                    BinaryOperator::And | BinaryOperator::Or => {
+                        unreachable!("and/or kisa devre yolundan gecmeliydi")
+                    }
                 };
                 Ok(res.into())
             }
@@ -949,11 +1222,20 @@ impl<'ctx> CodeGen<'ctx> {
                     let printf = self.get_printf();
 
                     let (fmt_ptr, print_arg): (PointerValue, BasicMetadataValueEnum) =
-                        match &self.types[&args[0].id()] {
+                        match self.ty_of(&args[0]) {
                             Type::Str | Type::String => {
                                 (self.fmt_global(".fmt_s", "%s\n")?, arg.into())
                             }
                             Type::I64 => (self.fmt_global(".fmt_lld", "%lld\n")?, arg.into()),
+                            Type::F64 => (self.fmt_global(".fmt_f", "%f\n")?, arg.into()),
+                            Type::F32 => {
+                                let d = self.builder.build_float_ext(
+                                    arg.into_float_value(),
+                                    self.context.f64_type(),
+                                    "fpext",
+                                )?;
+                                (self.fmt_global(".fmt_f", "%f\n")?, d.into())
+                            }
                             Type::Bool => {
                                 let z = self.builder.build_int_z_extend(
                                     arg.into_int_value(),
@@ -962,12 +1244,21 @@ impl<'ctx> CodeGen<'ctx> {
                                 )?;
                                 (self.fmt_global(".fmt_d", "%d\n")?, z.into())
                             }
-                            _ => (self.fmt_global(".fmt_d", "%d\n")?, arg.into()),
+                            Type::I32 => (self.fmt_global(".fmt_d", "%d\n")?, arg.into()),
+                            Type::Void
+                            | Type::Array(..)
+                            | Type::Struct(_)
+                            | Type::Box(_)
+                            | Type::Enum(..)
+                            | Type::Param(_)
+                            | Type::Error => {
+                                unreachable!("print bu tipi yazdiramaz (typechecker kacirmali)")
+                            }
                         };
 
                     self.builder
                         .build_call(printf, &[fmt_ptr.into(), print_arg], "printf_call")?;
-                    if matches!(self.types[&args[0].id()], Type::String) {
+                    if matches!(self.ty_of(&args[0]), Type::String) {
                         self.str_temp_free(&args[0], arg.into_pointer_value())?;
                     }
                     Ok(self.context.i32_type().const_int(0, false).into())
@@ -989,7 +1280,14 @@ impl<'ctx> CodeGen<'ctx> {
                         ValueKind::Instruction(_) => unreachable!("lexora_str_new ptr dondurur"),
                     }
                 } else {
-                    let function = self.module.get_function(fname).unwrap();
+                    let targs = self.call_targs.get(&expr.id()).cloned().unwrap_or_default();
+                    let mangled = self.fn_name(*name, &targs);
+                    let function = match self.module.get_function(&mangled) {
+                        Some(f) => f,
+                        None => {
+                            unreachable!("cagrilan fonksiyon tanimli degil (typechecker kacirmali)")
+                        }
+                    };
                     let mut argv: Vec<BasicMetadataValueEnum> = Vec::new();
                     for a in args.iter() {
                         argv.push(self.gen_expr(a)?.into());
@@ -1010,56 +1308,93 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Cast {
                 expr, target_type, ..
             } => {
-                let val = self.gen_expr(expr)?.into_int_value();
-                let from_bits = val.get_type().get_bit_width();
-
-                let target_ty = self.llvm_type(target_type).into_int_type();
-                let to_bits = target_ty.get_bit_width();
-
-                let res = if to_bits > from_bits {
-                    self.builder.build_int_s_extend(val, target_ty, "sext")?
-                } else if to_bits < from_bits {
-                    self.builder.build_int_truncate(val, target_ty, "trunc")?
-                } else {
-                    val
+                let from = self.ty_of(expr);
+                let val = self.gen_expr(expr)?;
+                let res: BasicValueEnum = match (&from, target_type) {
+                    (Type::I32, Type::I64) => self
+                        .builder
+                        .build_int_s_extend(val.into_int_value(), self.context.i64_type(), "sext")?
+                        .into(),
+                    (Type::I64, Type::I32) => self
+                        .builder
+                        .build_int_truncate(val.into_int_value(), self.context.i32_type(), "trunc")?
+                        .into(),
+                    (Type::F32, Type::F64) => self
+                        .builder
+                        .build_float_ext(val.into_float_value(), self.context.f64_type(), "fpext")?
+                        .into(),
+                    (Type::F64, Type::F32) => self
+                        .builder
+                        .build_float_trunc(
+                            val.into_float_value(),
+                            self.context.f32_type(),
+                            "fptrunc",
+                        )?
+                        .into(),
+                    (Type::I32 | Type::I64, Type::F32 | Type::F64) => {
+                        let to = self.llvm_type(target_type).into_float_type();
+                        self.builder
+                            .build_signed_int_to_float(val.into_int_value(), to, "sitofp")?
+                            .into()
+                    }
+                    (Type::F32 | Type::F64, Type::I32 | Type::I64) => {
+                        let to = self.llvm_type(target_type).into_int_type();
+                        self.builder
+                            .build_float_to_signed_int(val.into_float_value(), to, "fptosi")?
+                            .into()
+                    }
+                    _ => val,
                 };
-                Ok(res.into())
+                Ok(res)
             }
+
             Expr::UnaryOp { op, operand, .. } => {
+                if matches!(self.ty_of(operand), Type::F32 | Type::F64) {
+                    let val = self.gen_expr(operand)?.into_float_value();
+                    return Ok(self.builder.build_float_neg(val, "fneg")?.into());
+                }
                 let val = self.gen_expr(operand)?.into_int_value();
                 let res = match op {
                     UnaryOperator::Not => self.builder.build_not(val, "not")?,
-                    UnaryOperator::Neg => self.builder.build_int_neg(val, "neg")?,
+                    UnaryOperator::Neg => {
+                        let zero = val.get_type().const_zero();
+                        self.checked_arith("llvm.ssub.with.overflow", zero, val)?
+                    }
                 };
                 Ok(res.into())
             }
             Expr::Index { .. } => {
                 let ptr = self.gen_place(expr)?;
-                let ty = self.llvm_type(&self.types[&expr.id()]);
+                let ty = self.llvm_type(&self.ty_of(expr));
                 Ok(self.builder.build_load(ty, ptr, "elem")?)
             }
             Expr::FieldAccess { .. } => {
                 let ptr = self.gen_place(expr)?;
-                let ty = self.llvm_type(&self.types[&expr.id()]);
-                Ok(self.builder.build_load(ty, ptr, "fldval")?)
+                let ty = self.llvm_type(&self.ty_of(expr));
+                let val = self.builder.build_load(ty, ptr, "fldval")?;
+                if let Some((root, _)) = self.place_path_of(expr) {
+                    self.clear_flag_on_move(expr.id(), root)?;
+                }
+                Ok(val)
             }
+
             Expr::Box { value, .. } => {
-                let pointee = self.llvm_type(&self.types[&value.id()]);
+                let pointee = self.llvm_type(&self.ty_of(value));
                 let val = self.gen_expr(value)?;
                 Ok(self.build_box(pointee, val)?.into())
             }
             Expr::Deref { target, id, .. } => {
                 let ptr = self.gen_expr(target)?.into_pointer_value();
-                let pointee = self.llvm_type(&self.types[&expr.id()]);
+                let pointee = self.llvm_type(&self.ty_of(expr));
                 let val = self.builder.build_load(pointee, ptr, "deref")?;
-                if self.moves.contains(id) {
+                if self.moves.contains_key(id) {
                     self.build_free(ptr)?;
                 }
                 Ok(val)
             }
             Expr::Try { expr: inner, .. } => {
-                let (sym, targs) = match &self.types[&inner.id()] {
-                    Type::Enum(s, a) => (*s, a.clone()),
+                let (sym, targs) = match self.ty_of(inner) {
+                    Type::Enum(s, a) => (s, a),
                     _ => unreachable!("'?' ifadesinin tipi Result degil (typechecker kacirmali)"),
                 };
                 let key = (sym, targs);
@@ -1139,12 +1474,41 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_load(self.llvm_type(&ok_fty), ofld, "okval")?)
             }
+            Expr::MethodCall {
+                receiver,
+                method,
+                args,
+                ..
+            } => {
+                let tsym = match self.ty_of(receiver) {
+                    Type::Struct(s) => s,
+                    Type::Enum(s, _) => s,
+                    _ => unreachable!("metot alicisi struct/enum degil (typechecker kacirmali)"),
+                };
+                let name = self.method_name(tsym, *method);
+                let function = match self.module.get_function(&name) {
+                    Some(f) => f,
+                    None => unreachable!("metot tanimli degil (typechecker kacirmali)"),
+                };
+                let recv_ptr = self.gen_place(receiver)?;
+                let mut argv: Vec<BasicMetadataValueEnum> = vec![recv_ptr.into()];
+                for a in args.iter() {
+                    argv.push(self.gen_expr(a)?.into());
+                }
+                let call = self.builder.build_call(function, &argv, "mcall")?;
+                match call.try_as_basic_value() {
+                    ValueKind::Basic(v) => Ok(v),
+                    ValueKind::Instruction(_) => {
+                        Ok(self.context.i32_type().const_int(0, false).into())
+                    }
+                }
+            }
             Expr::Error(_, _) => {
                 unreachable!("poison ifade codegen'e ulasti (errors bos degilse codegen yok)")
             }
             Expr::EnumVariant { variant, args, .. } => {
-                let (sym, targs) = match &self.types[&expr.id()] {
-                    Type::Enum(s, a) => (*s, a.clone()),
+                let (sym, targs) = match self.ty_of(expr) {
+                    Type::Enum(s, a) => (s, a),
                     _ => unreachable!("enum ifadesinin tipi enum degil (typechecker kacirmali)"),
                 };
                 let key = (sym, targs);
@@ -1180,8 +1544,8 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Match {
                 scrutinee, arms, ..
             } => {
-                let (enum_sym, enum_args) = match &self.types[&scrutinee.id()] {
-                    Type::Enum(s, a) => (*s, a.clone()),
+                let (enum_sym, enum_args) = match self.ty_of(scrutinee) {
+                    Type::Enum(s, a) => (s, a),
                     _ => unreachable!("match scrutinee enum degil (typechecker kacirmali)"),
                 };
                 let key = (enum_sym, enum_args);
@@ -1201,7 +1565,7 @@ impl<'ctx> CodeGen<'ctx> {
                 } else {
                     (self.gen_expr(scrutinee)?.into_int_value(), None)
                 };
-                let match_ty = self.types[&expr.id()].clone();
+                let match_ty = self.ty_of(expr);
                 let result_slot = if match_ty != Type::Void {
                     let lt = self.llvm_type(&match_ty);
                     Some((lt, self.entry_alloca(lt, "matchval")?))
@@ -1223,7 +1587,7 @@ impl<'ctx> CodeGen<'ctx> {
                             let idx = self.variant_tag(&key, *variant);
                             cases.push((i32t.const_int(idx, false), bb));
                         }
-                        Pattern::Wildcard => {
+                        Pattern::Wildcard(_) => {
                             default_bb = Some(bb);
                         }
                     }
@@ -1266,23 +1630,10 @@ impl<'ctx> CodeGen<'ctx> {
                             let bslot = self.entry_alloca(fty, "bindslot")?;
                             self.builder.build_store(bslot, loaded)?;
                             self.vars.insert(*b, (bslot, fty));
-                            if self.is_owning_type(&field_tys[i]) {
-                                let flag =
-                                    self.entry_alloca(self.context.bool_type().into(), "dropflag")?;
-                                self.builder.build_store(
-                                    flag,
-                                    self.context.bool_type().const_int(1, false),
-                                )?;
-                                self.drop_scopes.last_mut().unwrap().push(DropLocal {
-                                    sym: *b,
-                                    slot: bslot,
-                                    flag,
-                                    pointee: field_tys[i].clone(),
-                                });
-                            }
+                            self.register_drop(*b, bslot, &field_tys[i])?;
                         }
                     }
-                    if let Pattern::Wildcard = pat {
+                    if let Pattern::Wildcard(_) = pat {
                         if let Some((ptr, _)) = scrut_ptr {
                             if self.enum_is_owning(&key) {
                                 self.builder
@@ -1331,7 +1682,7 @@ impl<'ctx> CodeGen<'ctx> {
                 else_body,
                 ..
             } => {
-                let if_ty = self.types[&expr.id()].clone();
+                let if_ty = self.ty_of(expr);
                 let result_slot = if if_ty != Type::Void {
                     let lt = self.llvm_type(&if_ty);
                     Some((lt, self.entry_alloca(lt, "ifval")?))
@@ -1450,7 +1801,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             Expr::ArrayLiteral(..) | Expr::StructLiteral { .. } => {
-                let ty = self.llvm_type(&self.types[&expr.id()]);
+                let ty = self.llvm_type(&self.ty_of(expr));
                 let tmp = self.entry_alloca(ty, "aggtmp")?;
                 self.gen_into(expr, tmp)?;
                 Ok(self.builder.build_load(ty, tmp, "aggval")?)
@@ -1476,13 +1827,13 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Identifier(sym, _, _) => Ok(self.vars.get(*sym).0),
             Expr::FieldAccess { object, field, .. } => {
                 let base = self.gen_place(object)?;
-                let st = self.llvm_type(&self.types[&object.id()]).into_struct_type();
+                let st = self.llvm_type(&self.ty_of(object)).into_struct_type();
                 let idx = self.field_index(st, *field);
                 self.builder.build_struct_gep(st, base, idx, "fld")
             }
             Expr::Index { array, index, .. } => {
                 let base = self.gen_place(array)?;
-                let array_ty = self.llvm_type(&self.types[&array.id()]).into_array_type();
+                let array_ty = self.llvm_type(&self.ty_of(array)).into_array_type();
                 let idx_val = self.gen_expr(index)?.into_int_value();
                 self.bounds_check(idx_val, array_ty.len())?;
                 let zero = self.context.i32_type().const_zero();
@@ -1493,7 +1844,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             Expr::Deref { target, .. } => Ok(self.gen_expr(target)?.into_pointer_value()),
             other => {
-                let ty = self.llvm_type(&self.types[&other.id()]);
+                let ty = self.llvm_type(&self.ty_of(other));
                 let tmp = self.entry_alloca(ty, "placetmp")?;
                 self.gen_into(other, tmp)?;
                 Ok(tmp)
@@ -1504,21 +1855,29 @@ impl<'ctx> CodeGen<'ctx> {
     fn gen_into(&mut self, expr: &Expr, ptr: PointerValue<'ctx>) -> Result<(), BuilderError> {
         match expr {
             Expr::ArrayLiteral(elems, _, _) => {
-                let array_ty = self.llvm_type(&self.types[&expr.id()]).into_array_type();
+                let array_ty = self.llvm_type(&self.ty_of(expr)).into_array_type();
                 let zero = self.context.i32_type().const_zero();
                 for (i, elem) in elems.iter().enumerate() {
                     let idx = self.context.i32_type().const_int(i as u64, false);
                     if elem.is_aggregate_literal() {
                         let eptr = unsafe {
-                            self.builder
-                                .build_in_bounds_gep(array_ty, ptr, &[zero, idx], "init_ptr")?
+                            self.builder.build_in_bounds_gep(
+                                array_ty,
+                                ptr,
+                                &[zero, idx],
+                                "init_ptr",
+                            )?
                         };
                         self.gen_into(elem, eptr)?;
                     } else {
                         let val = self.gen_expr(elem)?;
                         let eptr = unsafe {
-                            self.builder
-                                .build_in_bounds_gep(array_ty, ptr, &[zero, idx], "init_ptr")?
+                            self.builder.build_in_bounds_gep(
+                                array_ty,
+                                ptr,
+                                &[zero, idx],
+                                "init_ptr",
+                            )?
                         };
                         self.builder.build_store(eptr, val)?;
                     }
@@ -1848,7 +2207,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<IntValue<'ctx>, BuilderError> {
         let i64t = self.context.i64_type();
         let i8t = self.context.i8_type();
-        match self.types[&expr.id()] {
+        match self.ty_of(expr) {
             Type::String => {
                 let blk = unsafe {
                     self.builder.build_in_bounds_gep(
@@ -1890,11 +2249,11 @@ impl<'ctx> CodeGen<'ctx> {
             ValueKind::Basic(v) => v,
             ValueKind::Instruction(_) => unreachable!("lexora_str_concat ptr dondurur"),
         };
-        if matches!(self.types[&left.id()], Type::String) {
+        if matches!(self.ty_of(left), Type::String) {
             self.builder
                 .build_call(self.get_lexora_str_free()?, &[lv.into()], "")?;
         }
-        if matches!(self.types[&right.id()], Type::String) {
+        if matches!(self.ty_of(right), Type::String) {
             self.builder
                 .build_call(self.get_lexora_str_free()?, &[rv.into()], "")?;
         }
@@ -1902,7 +2261,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn str_temp_free(&mut self, expr: &Expr, val: PointerValue<'ctx>) -> Result<(), BuilderError> {
-        if matches!(self.types[&expr.id()], Type::String) && !expr.is_place() {
+        if matches!(self.ty_of(expr), Type::String) && !expr.is_place() {
             self.builder
                 .build_call(self.get_lexora_str_free()?, &[val.into()], "")?;
         }
@@ -1998,7 +2357,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap_or(true);
             if !terminated {
                 for d in scope.iter().rev() {
-                    self.build_drop(d.slot, d.flag, &d.pointee)?;
+                    self.build_drop(d)?;
                 }
             }
         }
@@ -2008,49 +2367,98 @@ impl<'ctx> CodeGen<'ctx> {
         let scopes: Vec<Vec<DropLocal>> = self.drop_scopes.clone();
         for scope in scopes.iter().rev() {
             for d in scope.iter().rev() {
-                self.build_drop(d.slot, d.flag, &d.pointee)?;
+                self.build_drop(d)?;
             }
         }
         Ok(())
     }
-    fn find_flag(&self, sym: Symbol) -> Option<PointerValue<'ctx>> {
+    fn find_flags(&self, sym: Symbol, path: &[u32]) -> Vec<PointerValue<'ctx>> {
         for scope in self.drop_scopes.iter().rev() {
-            for d in scope.iter().rev() {
-                if d.sym == sym {
-                    return Some(d.flag);
-                }
+            if !scope.iter().any(|d| d.sym == sym) {
+                continue;
             }
+            return scope
+                .iter()
+                .filter(|d| d.sym == sym && d.path.starts_with(path))
+                .map(|d| d.flag)
+                .collect();
         }
-        None
+        Vec::new()
+    }
+
+    fn place_path_of(&self, expr: &Expr) -> Option<(Symbol, Vec<u32>)> {
+        match expr {
+            Expr::Identifier(sym, _, _) => Some((*sym, Vec::new())),
+            Expr::FieldAccess { object, field, .. } => {
+                let (sym, mut path) = self.place_path_of(object)?;
+                let s = match self.ty_of(object) {
+                    Type::Struct(s) => s,
+                    _ => return None,
+                };
+                let idx = self
+                    .struct_fields_ast
+                    .get(&s)?
+                    .iter()
+                    .position(|(n, _)| *n == *field)?;
+                path.push(idx as u32);
+                Some((sym, path))
+            }
+            _ => None,
+        }
+    }
+    fn matching_drops(&self, sym: Symbol, path: &[u32]) -> Vec<DropLocal<'ctx>> {
+        for scope in self.drop_scopes.iter().rev() {
+            if !scope.iter().any(|d| d.sym == sym) {
+                continue;
+            }
+            return scope
+                .iter()
+                .filter(|d| d.sym == sym && d.path.starts_with(path))
+                .cloned()
+                .collect();
+        }
+        Vec::new()
+    }
+    fn drop_before_assign(&mut self, sym: Symbol, path: &[u32]) -> Result<(), BuilderError> {
+        for d in self.matching_drops(sym, path) {
+            self.build_drop(&d)?;
+        }
+        Ok(())
+    }
+
+    fn set_flags_live(&mut self, sym: Symbol, path: &[u32]) -> Result<(), BuilderError> {
+        for flag in self.find_flags(sym, path) {
+            self.builder
+                .build_store(flag, self.context.bool_type().const_int(1, false))?;
+        }
+        Ok(())
     }
     fn clear_flag_on_move(&mut self, id: ExprId, sym: Symbol) -> Result<(), BuilderError> {
-        if self.moves.contains(&id) {
-            if let Some(flag) = self.find_flag(sym) {
-                self.builder
-                    .build_store(flag, self.context.bool_type().const_zero())?;
-            }
+        let path = match self.moves.get(&id) {
+            Some(p) => p.clone(),
+            None => return Ok(()),
+        };
+        for flag in self.find_flags(sym, &path) {
+            self.builder
+                .build_store(flag, self.context.bool_type().const_zero())?;
         }
         Ok(())
     }
-    fn build_drop(
-        &self,
-        slot: PointerValue<'ctx>,
-        flag: PointerValue<'ctx>,
-        ty: &Type,
-    ) -> Result<(), BuilderError> {
+    fn build_drop(&self, d: &DropLocal<'ctx>) -> Result<(), BuilderError> {
         let function = self.cur_fn.unwrap();
         let i1 = self.context.bool_type();
         let f = self
             .builder
-            .build_load(i1, flag, "dropflag")?
+            .build_load(i1, d.flag, "dropflag")?
             .into_int_value();
         let do_bb = self.context.append_basic_block(function, "drop_do");
         let skip_bb = self.context.append_basic_block(function, "drop_skip");
         self.builder.build_conditional_branch(f, do_bb, skip_bb)?;
 
         self.builder.position_at_end(do_bb);
-        self.drop_in_place(slot, ty)?;
-        self.builder.build_store(flag, i1.const_zero())?;
+        let ptr = self.gep_path(d.slot, &d.root, &d.path)?;
+        self.drop_in_place(ptr, &d.pointee)?;
+        self.builder.build_store(d.flag, i1.const_zero())?;
         self.builder.build_unconditional_branch(skip_bb)?;
         self.builder.position_at_end(skip_bb);
         Ok(())
@@ -2074,8 +2482,11 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_call(self.get_lexora_str_free()?, &[p.into()], "")?;
             }
             Type::Enum(e, args) => {
-                self.builder
-                    .build_call(self.drop_fn(&(*e, args.clone())), &[ptr.into()], "")?;
+                let key = (*e, args.clone());
+                if self.enum_is_owning(&key) {
+                    self.builder
+                        .build_call(self.drop_fn(&key), &[ptr.into()], "")?;
+                }
             }
             Type::Struct(s) => {
                 let st = self.structs.get(s).unwrap().0;
@@ -2084,7 +2495,9 @@ impl<'ctx> CodeGen<'ctx> {
                     if !self.is_owning_type(fty) {
                         continue;
                     }
-                    let fptr = self.builder.build_struct_gep(st, ptr, i as u32, "dropfld")?;
+                    let fptr = self
+                        .builder
+                        .build_struct_gep(st, ptr, i as u32, "dropfld")?;
                     self.drop_in_place(fptr, fty)?;
                 }
             }

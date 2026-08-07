@@ -1,0 +1,6 @@
+enum E { A }
+fn main() -> i32 {
+  let e: E = E::A;
+  match e { E::A => { let a: i32 = 1 let b: i32 = 2; } }
+  return 0;
+}

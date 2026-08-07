@@ -1,0 +1,42 @@
+struct N {
+    x: i32,
+}
+
+enum Opt<T> {
+    S(T),
+    N,
+}
+
+impl Yok {
+    fn f(self) -> i32 {
+        return 1;
+    }
+}
+
+impl Opt {
+    fn f(self) -> i32 {
+        return 1;
+    }
+}
+
+impl N {
+    fn g<T>(self) -> i32 {
+        return 1;
+    }
+    fn yeni() -> i32 {
+        return 1;
+    }
+    fn h(self) -> i32 {
+        return self.x;
+    }
+    fn h(self) -> i32 {
+        return 2;
+    }
+    fn k(self, a: Bilinmez) -> i32 {
+        return 1;
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

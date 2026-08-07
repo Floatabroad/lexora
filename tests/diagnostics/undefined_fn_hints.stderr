@@ -1,0 +1,25 @@
+error: tanimsiz fonksiyon: kimlk
+ --> tests/diagnostics/undefined_fn_hints.lx:6:11
+  |
+6 |     print(kimlk(5));
+  |           ^^^^^^^^ bu isimde bir fonksiyon yok
+  |
+  = help: bunu mu demek istediniz: `kimlik`?
+error: tanimsiz fonksiyon: tpla
+ --> tests/diagnostics/undefined_fn_hints.lx:7:11
+  |
+7 |     print(tpla(1, 2));
+  |           ^^^^^^^^^^ bu isimde bir fonksiyon yok
+  |
+  = help: bunu mu demek istediniz: `topla`?
+error: tanimsiz fonksiyon: yoktur
+ --> tests/diagnostics/undefined_fn_hints.lx:8:11
+  |
+8 |     print(yoktur::<i32>(3));
+  |           ^^^^^^^^^^^^^^^^ bu isimde bir fonksiyon yok
+error: 'topla' generic degil, tip argumani almaz
+ --> tests/diagnostics/undefined_fn_hints.lx:9:11
+  |
+9 |     print(topla::<bool>(1, 2));
+  |           ^^^^^^^^^^^^^^^^^^^
+error: 4 hata yuzunden durduruldu

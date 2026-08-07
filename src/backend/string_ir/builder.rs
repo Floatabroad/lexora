@@ -49,19 +49,19 @@ impl<'i> IrBuilder<'i> {
     }
     pub fn emit_function_begin(
         &mut self,
-        name: Symbol,
+        name: &str,
         params: &[(Symbol, LlvmType)],
         ret_ty: &LlvmType,
     ) {
-        let name_str = self.interner.resolve(name);
+
         let params_str: Vec<String> = params
             .iter()
-            .map(|(sym, ty)| format!("{} %{}", ty.to_ir_str(), self.interner.resolve(*sym)))
+            .map(|(sym, ty)|  format!("{} %v.{}", ty.to_ir_str(), self.interner.resolve(*sym)))
             .collect();
         self.output.push_str(&format!(
             "define {} @{}({}) {{\n",
             ret_ty.to_ir_str(),
-            name_str,
+            name,
             params_str.join(", ")
         ));
     }
@@ -296,6 +296,52 @@ impl<'i> IrBuilder<'i> {
         ));
         result
     }
+    pub fn build_fbin(&mut self, op: &str, ty: &LlvmType, lhs: Value, rhs: Value) -> Value {
+        let result = self.fresh_temp();
+        self.output.push_str(&format!(
+            "  {} = {} {} {}, {}\n",
+            result.to_ir_str(),
+            op,
+            ty.to_ir_str(),
+            lhs.to_ir_str(),
+            rhs.to_ir_str(),
+        ));
+        result
+    }
+    pub fn build_fcmp(&mut self, pred: &str, ty: &LlvmType, lhs: Value, rhs: Value) -> Value {
+        let result = self.fresh_temp();
+        self.output.push_str(&format!(
+            "  {} = fcmp {} {} {}, {}\n",
+            result.to_ir_str(),
+            pred,
+            ty.to_ir_str(),
+            lhs.to_ir_str(),
+            rhs.to_ir_str(),
+        ));
+        result
+    }
+    pub fn build_fneg(&mut self, ty: &LlvmType, val: Value) -> Value {
+        let result = self.fresh_temp();
+        self.output.push_str(&format!(
+            "  {} = fneg {} {}\n",
+            result.to_ir_str(),
+            ty.to_ir_str(),
+            val.to_ir_str(),
+        ));
+        result
+    }
+    pub fn build_conv(&mut self, op: &str, val: Value, from: &LlvmType, to: &LlvmType) -> Value {
+        let result = self.fresh_temp();
+        self.output.push_str(&format!(
+            "  {} = {} {} {} to {}\n",
+            result.to_ir_str(),
+            op,
+            from.to_ir_str(),
+            val.to_ir_str(),
+            to.to_ir_str(),
+        ));
+        result
+    }
     pub fn build_and(&mut self, lhs: Value, rhs: Value) -> Value {
         let result = self.fresh_temp();
         self.output.push_str(&format!(
@@ -306,16 +352,7 @@ impl<'i> IrBuilder<'i> {
         ));
         result
     }
-    pub fn build_or(&mut self, lhs: Value, rhs: Value) -> Value {
-        let result = self.fresh_temp();
-        self.output.push_str(&format!(
-            "  {} = or i1 {}, {}\n",
-            result.to_ir_str(),
-            lhs.to_ir_str(),
-            rhs.to_ir_str(),
-        ));
-        result
-    }
+   
     pub fn build_not(&mut self, val: Value) -> Value {
         let result = self.fresh_temp();
         self.output.push_str(&format!(
@@ -325,16 +362,7 @@ impl<'i> IrBuilder<'i> {
         ));
         result
     }
-    pub fn build_neg(&mut self, ty: &LlvmType, val: Value) -> Value {
-        let result = self.fresh_temp();
-        self.output.push_str(&format!(
-            "  {} = sub {} 0, {}\n",
-            result.to_ir_str(),
-            ty.to_ir_str(),
-            val.to_ir_str(),
-        ));
-        result
-    }
+
     pub fn build_sext(&mut self, val: Value, from: &LlvmType, to: &LlvmType) -> Value {
         let result = self.fresh_temp();
         self.output.push_str(&format!(
@@ -402,18 +430,18 @@ impl<'i> IrBuilder<'i> {
     pub fn build_call(
         &mut self,
         ret_ty: &LlvmType,
-        name: Symbol,
+        name: &str,
         args: &[(LlvmType, Value)],
     ) -> Value {
         let args_str: Vec<String> = args
             .iter()
             .map(|(ty, val)| format!("{} {}", ty.to_ir_str(), val.to_ir_str()))
             .collect();
-        let name_str = self.interner.resolve(name).to_string();
+
         if *ret_ty == LlvmType::Void {
             self.output.push_str(&format!(
                 "  call void @{}({})\n",
-                name_str,
+                name,
                 args_str.join(", ")
             ));
             Value::Void
@@ -423,7 +451,7 @@ impl<'i> IrBuilder<'i> {
                 "  {} = call {} @{}({})\n",
                 result.to_ir_str(),
                 ret_ty.to_ir_str(),
-                name_str,
+                name,
                 args_str.join(", ")
             ));
             result
@@ -607,10 +635,10 @@ impl<'i> IrBuilder<'i> {
             }
         }
         self.globals.push_str(&format!(
-            "@str{} = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n",
+            "@.str{} = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n",
             id, len, esc
         ));
-        (Value::Named(format!("@str{}", id)), len)
+        (Value::Named(format!("@.str{}", id)), len)
     }
     pub fn finish(&self) -> String {
         format!("{}\n{}", self.globals, self.output)

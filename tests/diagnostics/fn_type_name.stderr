@@ -1,0 +1,11 @@
+error: 'Nokta' bir tip adi; ayni isimde fonksiyon tanimlanamaz (uretilen sembol isimleri carpisir)
+ --> tests/diagnostics/fn_type_name.lx:7:1
+  |
+7 | fn Nokta<T>(v: T) -> i32 { return 7; }
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: 'Renk' bir tip adi; ayni isimde fonksiyon tanimlanamaz (uretilen sembol isimleri carpisir)
+ --> tests/diagnostics/fn_type_name.lx:9:1
+  |
+9 | fn Renk(a: i32) -> i32 { return a; }
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: 2 hata yuzunden durduruldu

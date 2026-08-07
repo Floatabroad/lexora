@@ -1,0 +1,32 @@
+struct K {
+    ad: String,
+}
+
+fn yut(k: K) -> i32 {
+    return 0;
+}
+
+impl K {
+    fn kacir_let(self) -> i32 {
+        let k: K = self;
+        return 0;
+    }
+    fn kacir_donus(self) -> K {
+        return self;
+    }
+    fn kacir_cagri(self) -> i32 {
+        return yut(self);
+    }
+    fn kismi(self) -> i32 {
+        let n: String = self.ad;
+        return 0;
+    }
+    fn odunc(self) -> i32 {
+        print(self.ad);
+        return len(self.ad);
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

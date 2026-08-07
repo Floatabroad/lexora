@@ -3,12 +3,12 @@ error: iki str sabiti '+' ile birlestirilemez; once string() ile String'e ceviri
   |
 2 |     let a = "p" + "q";
   |             ^^^^^^^^^
-error: aritmetik islem sayisal tip gerektirir (i32/i64), bulunan String
+error: aritmetik islem sayisal tip gerektirir (i32/i64/f32/f64), bulunan String
  --> tests/diagnostics/string_concat_bad.lx:3:13
   |
 3 |     let b = string("m") * string("n");
   |             ^^^^^^^^^^^^^^^^^^^^^^^^^
-error: aritmetik islem sayisal tip gerektirir (i32/i64), bulunan bool
+error: aritmetik islem sayisal tip gerektirir (i32/i64/f32/f64), bulunan bool
  --> tests/diagnostics/string_concat_bad.lx:4:13
   |
 4 |     let c = true + false;

@@ -1,0 +1,37 @@
+struct t1 {
+    entry: i32,
+}
+
+fn str0(t0: i32) -> i32 {
+    return t0 + 1;
+}
+
+fn labels(entry: i32, for_cond0: i32, while_body0: i32, merge0: i32) -> i32 {
+    let total: i32 = entry;
+    for t2 in 0..for_cond0 {
+        total = total + t2;
+    }
+    while total < while_body0 {
+        total = total + merge0;
+    }
+    return total;
+}
+
+fn shadow(then0: i32, arm0: i32) -> i32 {
+    if then0 > arm0 {
+        return then0;
+    }
+    return arm0;
+}
+
+fn main() -> i32 {
+    print("merhaba");
+    print(str0(5));
+    print(labels(1, 4, 20, 3));
+    print(shadow(9, 2));
+    let s: t1 = t1 { entry: 42 };
+    print(s.entry);
+    let t3: str = "dunya";
+    print(t3);
+    return 0;
+}

@@ -1,0 +1,14 @@
+struct Nokta { x: i32 }
+
+enum Renk { Kirmizi, Mavi }
+
+impl Nokta { fn string(self) -> i32 { self.x } }
+
+fn Nokta<T>(v: T) -> i32 { return 7; }
+
+fn Renk(a: i32) -> i32 { return a; }
+
+fn main() -> i32 {
+    let p: Nokta = Nokta { x: 5 };
+    return p.string();
+}

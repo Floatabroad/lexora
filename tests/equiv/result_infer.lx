@@ -1,0 +1,57 @@
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+enum Opt<T> {
+    Some(T),
+    None,
+}
+
+fn bol(a: i32, b: i32) -> Result<i32, str> {
+    if b == 0 {
+        return Result::Err("sifira bolme");
+    }
+    return Result::Ok(a / b);
+}
+
+fn zincir(a: i32) -> Result<i32, str> {
+    let x: i32 = bol(100, a)?;
+    return Result::Ok(x + 1);
+}
+
+fn kolda(c: bool) -> Result<i32, str> {
+    return if c {
+        Result::Ok(5)
+    } else {
+        Result::Err("yok")
+    };
+}
+
+fn tail(c: bool) -> Result<i64, String> {
+    if c {
+        Result::Ok(9000000000)
+    } else {
+        Result::Err(string("buyuk hata"))
+    }
+}
+
+fn yut(o: Opt<i32>) -> i32 {
+    return match o {
+        Opt::Some(v) => v,
+        Opt::None => -1,
+    };
+}
+
+fn main() -> i32 {
+    print(match zincir(5) { Result::Ok(v) => v, Result::Err(e) => 0 });
+    print(match zincir(0) { Result::Ok(v) => v, Result::Err(e) => -1 });
+    print(match kolda(true) { Result::Ok(v) => v, Result::Err(e) => 0 });
+    print(match kolda(false) { Result::Ok(v) => v, Result::Err(e) => -2 });
+    print(match tail(true) { Result::Ok(v) => v, Result::Err(e) => 0 as i64 });
+    print(match tail(false) { Result::Ok(v) => v, Result::Err(e) => -3 as i64 });
+    let a: Opt<i32> = Opt::Some(3);
+    print(yut(a));
+    print(yut(Opt::None));
+    return 0;
+}

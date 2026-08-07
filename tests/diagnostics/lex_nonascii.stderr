@@ -8,9 +8,4 @@ error: beklenmeyen ifade: Integer(3)
   |
 2 |     let x = 5 — 3;
   |                 ^ beklenen: Semicolon
-error: tanimsiz degisken: x
- --> tests/diagnostics/lex_nonascii.lx:3:11
-  |
-3 |     print(x);
-  |           ^ bu kapsamda tanimli degil
-error: 3 hata yuzunden durduruldu
+error: 2 hata yuzunden durduruldu

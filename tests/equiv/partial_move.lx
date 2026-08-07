@@ -1,0 +1,33 @@
+struct Ic { ad: String }
+
+struct Kutu { a: String, b: String, n: i32 }
+
+struct Dis { ic: Ic, sayi: i32 }
+
+fn yut(s: String) -> i32 { return len(s); }
+
+fn main() -> i32 {
+    let k: Kutu = Kutu { a: string("birinci"), b: string("ikincidir"), n: 5 };
+    let m: String = k.a;
+    print(m);
+    print(k.b);
+    print(len(k.b));
+    print(k.n);
+    print(yut(m));
+
+    let o: Dis = Dis { ic: Ic { ad: string("derinyol") }, sayi: 7 };
+    let s: String = o.ic.ad;
+    print(s);
+    print(o.sayi);
+
+    let p: Kutu = Kutu { a: string("aa"), b: string("bb"), n: 1 };
+    let x: String = p.a;
+    let y: String = p.b;
+    print(x + y);
+    print(p.n);
+
+    let q: Kutu = Kutu { a: string("tek"), b: string("cift"), n: 2 };
+    if q.n > 1 { print(len(q.a)); } else { print(0); }
+    print(q.b);
+    return 0;
+}

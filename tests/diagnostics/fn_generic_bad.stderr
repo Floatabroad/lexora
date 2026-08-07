@@ -1,0 +1,31 @@
+error: 'kimlik' somut olmayan tip argumaniyla cagrilamiyor: A — generic fonksiyon icinden generic cagri henuz desteklenmiyor
+  --> tests/diagnostics/fn_generic_bad.lx:10:12
+   |
+10 |     return kimlik(x);
+   |            ^^^^^^^^^
+error: aritmetik islem sayisal tip gerektirir (i32/i64/f32/f64), bulunan T
+  --> tests/diagnostics/fn_generic_bad.lx:14:12
+   |
+14 |     return a + b;
+   |            ^^^^^
+error: print bu tipi yazdiramaz: T — yazdirilabilir tipler i32/i64/f32/f64/bool/str/String
+  --> tests/diagnostics/fn_generic_bad.lx:18:11
+   |
+18 |     print(x);
+   |           ^
+error: 'bos' icin 'T' tip parametresi cikarilamiyor; turbofish kullanin: bos::<T>(...)
+  --> tests/diagnostics/fn_generic_bad.lx:23:11
+   |
+23 |     print(bos(1));
+   |           ^^^^^^
+error: 'kimlik' 1 tip parametresi bekliyor, 2 verildi
+  --> tests/diagnostics/fn_generic_bad.lx:24:11
+   |
+24 |     print(kimlik::<i32, bool>(5));
+   |           ^^^^^^^^^^^^^^^^^^^^^^
+error: 'kimlik' 1 argüman bekliyor, 2 verildi
+  --> tests/diagnostics/fn_generic_bad.lx:25:11
+   |
+25 |     print(kimlik(1, 2));
+   |           ^^^^^^^^^^^^
+error: 6 hata yuzunden durduruldu

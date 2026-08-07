@@ -1,15 +1,24 @@
 struct K { ad: String, b: Box<i32> }
 
-fn yut(s: String) -> i32 { return len(s); }
+fn mk() -> K { return K { ad: string("t"), b: box 2 }; }
+
+fn yut(k: K) -> i32 { return 0; }
 
 fn main() -> i32 {
-    let k: K = K { ad: string("x"), b: box 1 };
-    let n: String = k.ad;
     let d: [String; 2] = [string("p"), string("q")];
     let e: String = d[0];
-    let f: String = k.ad + "!";
-    k.ad = string("yeni");
-    d[1] = string("baska");
-    print(yut(k.ad));
+
+    let t: String = mk().ad;
+
+    let bx: Box<K> = box K { ad: string("u"), b: box 3 };
+    let v: String = (*bx).ad;
+
+    let k: K = K { ad: string("x"), b: box 1 };
+    let m: String = k.ad;
+    print(yut(k));
+
+    let k2: K = K { ad: string("y"), b: box 4 };
+    let n1: String = k2.ad;
+    let n2: String = k2.ad;
     return 0;
 }

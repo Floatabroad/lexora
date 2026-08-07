@@ -1,0 +1,33 @@
+error: 'exit' Lexora runtime'ina ait bir sembol; ayni isimde tanim yapilamaz
+ --> tests/diagnostics/reserved_runtime.lx:1:1
+  |
+1 |   fn exit(code: i32) -> void {
+  | __^
+2 | |     print(777);
+3 | | }
+  | |_^
+error: 'strlen' Lexora runtime'ina ait bir sembol; ayni isimde tanim yapilamaz
+ --> tests/diagnostics/reserved_runtime.lx:5:1
+  |
+5 |   fn strlen(s: str) -> i64 {
+  | __^
+6 | |     return 99 as i64;
+7 | | }
+  | |_^
+error: 'printf' Lexora runtime'ina ait bir sembol; ayni isimde tanim yapilamaz
+  --> tests/diagnostics/reserved_runtime.lx:9:1
+   |
+9  |   fn printf(x: i32) -> i32 {
+   | __^
+10 | |     return x;
+11 | | }
+   | |_^
+error: 'lexora_str_free' Lexora runtime'ina ait bir sembol; ayni isimde tanim yapilamaz
+  --> tests/diagnostics/reserved_runtime.lx:13:1
+   |
+13 |   fn lexora_str_free(p: str) -> void {
+   | __^
+14 | |     print(0);
+15 | | }
+   | |_^
+error: 4 hata yuzunden durduruldu

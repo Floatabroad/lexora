@@ -1,0 +1,24 @@
+enum Opt<T> {
+    Some(T),
+    None,
+}
+
+fn sar<T>(x: T) -> Opt<T> {
+    return Opt::<T>::Some(x);
+}
+
+fn bos<T>() -> Opt<T> {
+    return Opt::<T>::None;
+}
+
+fn main() -> i32 {
+    sar::<i32>(7);
+    print(match sar::<i32>(1) { Opt::Some(v) => v, Opt::None => 0 });
+    print(match sar::<i64>(9000000000) { Opt::Some(v) => v, Opt::None => 0 as i64 });
+    print(match sar::<bool>(true) { Opt::Some(v) => v, Opt::None => false });
+    print(match sar::<str>("selam") { Opt::Some(v) => v, Opt::None => "yok" });
+    print(match bos::<i32>() { Opt::Some(v) => v, Opt::None => -1 });
+    let s: String = string("heap");
+    print(match sar::<String>(s) { Opt::Some(v) => len(v), Opt::None => 0 });
+    return 0;
+}

@@ -1,0 +1,12 @@
+enum Durum {
+    Acik,
+    Kapali,
+}
+
+fn ac() -> Durum {
+    return Durum::Acik;
+}
+
+fn kapa() -> Durum {
+    return Durum::Kapali;
+}

@@ -1,0 +1,16 @@
+error: 'topla' generic degil, tip argumani almaz
+ --> tests/diagnostics/turbofish_nongeneric.lx:6:11
+  |
+6 |     print(topla::<i32>(1, 2));
+  |           ^^^^^^^^^^^^^^^^^^
+error: 'topla' generic degil, tip argumani almaz
+ --> tests/diagnostics/turbofish_nongeneric.lx:7:11
+  |
+7 |     print(topla::<Yoktur, Bosluk>(3, 4));
+  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: 'len' generic degil, tip argumani almaz
+ --> tests/diagnostics/turbofish_nongeneric.lx:8:11
+  |
+8 |     print(len::<i32>("abc"));
+  |           ^^^^^^^^^^^^^^^^^
+error: 3 hata yuzunden durduruldu

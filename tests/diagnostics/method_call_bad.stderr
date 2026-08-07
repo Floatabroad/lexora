@@ -1,0 +1,28 @@
+error: 'N' tipinde 'uzunlk' metodu yok; bunu mu demek istediniz: 'uzunluk'?
+  --> tests/diagnostics/method_call_bad.lx:16:11
+   |
+16 |     print(n.uzunlk());
+   |           ^^^^^^^^^^
+error: 'N.topla' 1 arguman bekliyor, 2 verildi
+  --> tests/diagnostics/method_call_bad.lx:17:11
+   |
+17 |     print(n.topla(1, 2));
+   |           ^^^^^^^^^^^^^
+error: tip uyusmazligi: beklenen i32, bulunan bool
+  --> tests/diagnostics/method_call_bad.lx:18:19
+   |
+18 |     print(n.topla(true));
+   |                   ^^^^ bu ifade `bool` tipinde
+   |
+   = help: beklenen tip: `i32`
+error: 'i32' tipinin metodu yok; metotlar yalnizca struct ve non-generic enum'lara yazilir
+  --> tests/diagnostics/method_call_bad.lx:20:11
+   |
+20 |     print(a.uzunluk());
+   |           ^
+error: 'str' tipinin metodu yok; metotlar yalnizca struct ve non-generic enum'lara yazilir
+  --> tests/diagnostics/method_call_bad.lx:22:11
+   |
+22 |     print(s.uzunluk());
+   |           ^
+error: 5 hata yuzunden durduruldu

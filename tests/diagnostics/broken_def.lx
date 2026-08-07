@@ -1,0 +1,15 @@
+struct S { a: i32, b: }
+
+fn topla(x: i32, -> i32 { return x; }
+
+enum E { A(, B }
+
+fn main() -> i32 {
+    let s: S = S { a: 1, b: 2 };
+    print(s.a);
+    print(topla(1, 2));
+    print(topla(3, 4));
+    let e: E = E::A(1);
+    match e { E::A(v) => print(v), E::B => print(0) }
+    return 0;
+}

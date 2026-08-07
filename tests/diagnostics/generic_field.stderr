@@ -1,4 +1,4 @@
-error: 'Option<Point>::Some' alani icin desteklenmeyen tip: Point — enum alani skaler (i32/i64/bool/str/String) veya Box<T> olabilir
+error: 'Option<Point>::Some' alani icin desteklenmeyen tip: Point — enum alani skaler (i32/i64/f32/f64/bool/str/String) veya Box<T> olabilir
  --> tests/diagnostics/generic_field.lx:5:28
   |
 5 |     let a: Option<Point> = Option::<Point>::None;

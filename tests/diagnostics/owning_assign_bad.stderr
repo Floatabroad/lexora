@@ -1,0 +1,11 @@
+error: tasinmis degerin bir parcasina atama yapilamaz; once butun olarak yeniden atayin
+  --> tests/diagnostics/owning_assign_bad.lx:14:5
+   |
+14 |     k.a = string("z");
+   |     ^^^^^^^^^^^^^^^^^^
+error: tasinmis degerin bir parcasina atama yapilamaz; once butun olarak yeniden atayin
+  --> tests/diagnostics/owning_assign_bad.lx:18:5
+   |
+18 |     o.ic.ad = string("w");
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+error: 2 hata yuzunden durduruldu

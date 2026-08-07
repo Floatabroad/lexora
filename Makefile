@@ -27,7 +27,25 @@ diag-bless:
 dbg-smoke:
 	./scripts/dbg_smoke.sh
 
-.PHONY: build run clean equiv equiv-bless diag diag-bless dbg-smoke
+fuzz:
+	./scripts/fuzz.sh $(N)
+
+robust:
+	./scripts/robust.sh
+
+mutate:
+	./scripts/mutate.sh $(N)
+
+oracle:
+	./scripts/oracle.sh $(N)
+
+asan:
+	./scripts/asan.sh
+
+typesweep:
+	./scripts/typesweep.sh
+
+.PHONY: build run clean equiv equiv-bless diag diag-bless dbg-smoke fuzz robust mutate oracle asan typesweep
 
 
 

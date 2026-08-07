@@ -1,0 +1,65 @@
+enum Opt<T> {
+    Some(T),
+    None,
+}
+
+struct Nokta {
+    x: i32,
+    y: i32,
+}
+
+fn kimlik<T>(x: T) -> T {
+    return x;
+}
+
+fn sar<T>(x: T) -> Box<T> {
+    return box x;
+}
+
+fn coz<T>(b: Box<T>) -> T {
+    return *b;
+}
+
+fn varsayilan<T>(o: Opt<T>, d: T) -> T {
+    return match o {
+        Opt::Some(v) => v,
+        Opt::None => d,
+    };
+}
+
+fn ikinci<A, B>(a: A, b: B) -> B {
+    return b;
+}
+
+fn tail<T>(x: T) -> T {
+    x
+}
+
+fn main() -> i32 {
+    print(kimlik(5));
+    print(kimlik(9000000000));
+    print(kimlik(2.5));
+    print(kimlik(true));
+    print(kimlik("selam"));
+    print(tail(42));
+
+    let s: String = kimlik(string("tasindi"));
+    print(s);
+
+    let b: Box<i32> = sar(7);
+    print(coz(b));
+    let bs: Box<String> = sar(string("heap"));
+    print(coz(bs));
+
+    print(varsayilan(Opt::Some(3), 0));
+    print(varsayilan(Opt::<i32>::None, -1));
+    print(varsayilan(Opt::Some(1.5), 0.0));
+
+    print(ikinci(1, true));
+    print(ikinci("a", 99));
+
+    print(kimlik::<i64>(5 as i64));
+    let p: Nokta = kimlik(Nokta { x: 4, y: 6 });
+    print(p.x + p.y);
+    return 0;
+}

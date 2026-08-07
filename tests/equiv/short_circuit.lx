@@ -1,0 +1,42 @@
+fn main() -> i32 {
+    let t: bool = true;
+    let f: bool = false;
+    print(t and t);
+    print(t and f);
+    print(f and t);
+    print(f and f);
+    print(t or t);
+    print(t or f);
+    print(f or t);
+    print(f or f);
+
+    let x: i32 = 0;
+    if not (x == 0) and 100 / x > 1 {
+        print(100);
+    } else {
+        print(200);
+    }
+    if x == 0 or 100 / x > 1 {
+        print(300);
+    } else {
+        print(400);
+    }
+
+    let arr: [i32; 3] = [1, 2, 3];
+    let i: i32 = 5;
+    if i < 3 and arr[i] > 0 {
+        print(500);
+    } else {
+        print(600);
+    }
+
+    let n: i32 = 3;
+    let toplam: i32 = 0;
+    for k in 0..5 {
+        if k < n and arr[k] > 0 {
+            toplam = toplam + arr[k];
+        }
+    }
+    print(toplam);
+    return 0;
+}

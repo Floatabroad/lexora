@@ -1,0 +1,10 @@
+fn topla(a: i32, b: i32) -> i32 {
+    return a + b;
+}
+
+fn main() -> i32 {
+    print(topla::<i32>(1, 2));
+    print(topla::<Yoktur, Bosluk>(3, 4));
+    print(len::<i32>("abc"));
+    return 0;
+}

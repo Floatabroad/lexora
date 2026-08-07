@@ -1,0 +1,8 @@
+fn main() -> i32 {
+  if true { if true { if true {
+    let q: i32 = 1 let r: i32 = 2;
+  } } }
+  let s: i32 = 1 + 2 + 3;
+  print(s);
+  return 0;
+}

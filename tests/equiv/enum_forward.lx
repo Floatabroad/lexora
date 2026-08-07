@@ -1,0 +1,73 @@
+import "../equiv_lib/enum_lib.lx";
+
+fn disaridan(d: Durum) -> i32 {
+    return match d {
+        Durum::Acik => 1,
+        Durum::Kapali => 0,
+    };
+}
+
+fn ileri(s: Sonra) -> i32 {
+    return match s {
+        Sonra::Bir => 10,
+        Sonra::Iki => 20,
+    };
+}
+
+fn ileriGeneric(k: Kutu<i32>) -> i32 {
+    return match k {
+        Kutu::Dolu(v) => v,
+        Kutu::Bos => -1,
+    };
+}
+
+fn derinlik(a: A) -> i32 {
+    return match a {
+        A::AV(b) => {
+            let ic: B = *b;
+            1 + derinlikB(ic)
+        }
+        A::ANil => 0,
+    };
+}
+
+fn derinlikB(b: B) -> i32 {
+    return match b {
+        B::BV(a) => {
+            let ic: A = *a;
+            1 + derinlik(ic)
+        }
+        B::BNil => 0,
+    };
+}
+
+enum Sonra {
+    Bir,
+    Iki,
+}
+
+enum Kutu<T> {
+    Dolu(T),
+    Bos,
+}
+
+enum A {
+    AV(Box<B>),
+    ANil,
+}
+
+enum B {
+    BV(Box<A>),
+    BNil,
+}
+
+fn main() -> i32 {
+    print(disaridan(ac()));
+    print(disaridan(kapa()));
+    print(ileri(Sonra::Iki));
+    print(ileriGeneric(Kutu::Dolu(7)));
+    print(ileriGeneric(Kutu::<i32>::Bos));
+    print(derinlik(A::AV(box B::BV(box A::AV(box B::BNil)))));
+    print(derinlik(A::ANil));
+    return 0;
+}

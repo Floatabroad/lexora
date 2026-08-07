@@ -15,8 +15,8 @@ for arg in "$@"; do
     esac
 done
 
-echo ">> build (release)"
-cargo build --release --quiet 2>/dev/null || { echo "build basarisiz"; exit 1; }
+echo ">> build (release, inkwell)"
+cargo build --release --features inkwell --quiet 2>/dev/null || { echo "build basarisiz"; exit 1; }
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP" output.ll output.o output' EXIT

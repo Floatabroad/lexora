@@ -63,7 +63,11 @@ pub fn to_diagnostic(err: &LexoraError) -> Diagnostic {
             Some("yeniden tanimlandi".to_string()),
         ),
         LexoraError::InvalidCast {from, to, ..} => {
-            notes.push((NoteKind::Note, "gecerli cast'ler: i32 -> i64, i64 -> i32".to_string()));
+            notes.push((
+                NoteKind::Note,
+                "gecerli cast'ler: i32 <-> i64, f32 <-> f64, i32/i64 -> f32/f64, f32/f64 -> i32/i64"
+                    .to_string(),
+            ));
             (
                 format!("gecersiz cast: {} -> {}", from, to),
                 Some(format!("`{}` -> `{}` desteklenmiyor", from, to)),

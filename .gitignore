@@ -1,3 +1,7 @@
 /target
 .idea/
-/output.ll
+__pycache__/
+output
+output.ll
+output.s
+output.o

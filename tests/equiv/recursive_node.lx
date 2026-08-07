@@ -1,0 +1,35 @@
+enum Opt<T> {
+    Some(T),
+    None,
+}
+
+struct Node {
+    val: i32,
+    next: Opt<Box<Node>>,
+}
+
+struct Kutu {
+    ad: String,
+    ic: Opt<Box<Kutu>>,
+}
+
+fn bas(n: Node) -> i32 {
+    return n.val;
+}
+
+fn main() -> i32 {
+    let c: Node = Node { val: 3, next: Opt::<Box<Node>>::None };
+    let b: Node = Node { val: 2, next: Opt::Some(box c) };
+    let a: Node = Node { val: 1, next: Opt::Some(box b) };
+    print(a.val);
+    print(bas(a));
+
+    let k2: Kutu = Kutu { ad: string("ic"), ic: Opt::<Box<Kutu>>::None };
+    let k1: Kutu = Kutu { ad: string("dis"), ic: Opt::Some(box k2) };
+    print(k1.ad);
+    print(len(k1.ad));
+
+    let d: Node = Node { val: 9, next: Opt::<Box<Node>>::None };
+    print(d.val);
+    return 0;
+}

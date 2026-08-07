@@ -5,4 +5,9 @@ error: tanimsiz degisken: z
   |                    ^^^^^^^^^^^^^^^^^^^^ bu kapsamda tanimli degil
   |
   = help: bunu mu demek istediniz: `x`?
-error: 1 hata yuzunden durduruldu
+error: 'Point' struct'i icin eksik alan: 'y'
+ --> tests/diagnostics/unknown_field.lx:7:20
+  |
+7 |     let p: Point = Point { x: 1, z: 2 };
+  |                    ^^^^^^^^^^^^^^^^^^^^
+error: 2 hata yuzunden durduruldu

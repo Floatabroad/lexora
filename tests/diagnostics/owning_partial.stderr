@@ -1,31 +1,26 @@
-error: owning alan struct'tan tasinamaz; yerinde odunc alin
- --> tests/diagnostics/owning_partial.lx:7:21
-  |
-7 |     let n: String = k.ad;
-  |                     ^^^^
 error: owning eleman diziden tasinamaz; yerinde odunc alin
  --> tests/diagnostics/owning_partial.lx:9:21
   |
 9 |     let e: String = d[0];
   |                     ^^^^
-error: owning alan struct'tan tasinamaz; yerinde odunc alin
-  --> tests/diagnostics/owning_partial.lx:10:21
+error: gecici deger uzerinden alan/eleman/deref erisimi yapilamaz; once bir degiskene baglayin
+  --> tests/diagnostics/owning_partial.lx:11:21
    |
-10 |     let f: String = k.ad + "!";
+11 |     let t: String = mk().ad;
    |                     ^^^^
-error: owning hedefe yeniden atama henuz desteklenmiyor (eski deger sizardi)
-  --> tests/diagnostics/owning_partial.lx:11:5
+error: owning alan yalnizca yerel bir degiskenin alan zincirinden tasinabilir; dizi elemani ve Box icerigi yerinde odunc alinir
+  --> tests/diagnostics/owning_partial.lx:14:22
    |
-11 |     k.ad = string("yeni");
-   |     ^^^^^^^^^^^^^^^^^^^^^^
-error: owning hedefe yeniden atama henuz desteklenmiyor (eski deger sizardi)
-  --> tests/diagnostics/owning_partial.lx:12:5
+14 |     let v: String = (*bx).ad;
+   |                      ^^^^^^^
+error: kismen tasinmis deger kullanildi; alanlari ayri ayri kullanin
+  --> tests/diagnostics/owning_partial.lx:18:15
    |
-12 |     d[1] = string("baska");
-   |     ^^^^^^^^^^^^^^^^^^^^^^^
-error: owning alan struct'tan tasinamaz; yerinde odunc alin
-  --> tests/diagnostics/owning_partial.lx:13:15
+18 |     print(yut(k));
+   |               ^
+error: tasinmis deger tekrar kullanildi
+  --> tests/diagnostics/owning_partial.lx:22:22
    |
-13 |     print(yut(k.ad));
-   |               ^^^^
-error: 6 hata yuzunden durduruldu
+22 |     let n2: String = k2.ad;
+   |                      ^^^^^
+error: 5 hata yuzunden durduruldu

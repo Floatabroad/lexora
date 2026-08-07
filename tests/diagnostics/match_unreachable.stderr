@@ -1,11 +1,11 @@
 error: bu kol asla eslesmez: onceki '_' tum durumlari kapsiyor
- --> tests/diagnostics/match_unreachable.lx:7:17
+ --> tests/diagnostics/match_unreachable.lx:7:9
   |
 7 |         E::A => { print(2); }
-  |                 ^^^^^^^^^^^^^
+  |         ^^^^
 error: 'E::A' zaten onceki bir kolda kapsandi
-  --> tests/diagnostics/match_unreachable.lx:12:17
+  --> tests/diagnostics/match_unreachable.lx:12:9
    |
 12 |         E::A => { print(4); }
-   |                 ^^^^^^^^^^^^^
+   |         ^^^^
 error: 2 hata yuzunden durduruldu

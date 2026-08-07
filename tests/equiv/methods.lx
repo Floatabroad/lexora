@@ -1,0 +1,77 @@
+struct Nokta {
+    x: i32,
+    y: i32,
+}
+
+struct Kutu {
+    ad: String,
+    n: Nokta,
+}
+
+enum Renk {
+    Kirmizi,
+    Mavi,
+}
+
+impl Nokta {
+    fn kare(self) -> i32 {
+        return self.x * self.x + self.y * self.y;
+    }
+    fn topla(self, dx: i32, dy: i32) -> i32 {
+        return self.x + dx + self.y + dy;
+    }
+    fn tasi(self, d: i32) -> void {
+        self.x = self.x + d;
+        self.y = self.y + d;
+    }
+    fn kopya(self) -> Nokta {
+        return Nokta { x: self.x, y: self.y };
+    }
+    fn iki_kat(self) -> i32 {
+        return self.kare() + self.kare();
+    }
+}
+
+impl Kutu {
+    fn uzunluk(self) -> i32 {
+        return len(self.ad);
+    }
+    fn goster(self) -> i32 {
+        print(self.ad);
+        return self.n.kare();
+    }
+}
+
+impl Renk {
+    fn kod(self) -> i32 {
+        return match self { Renk::Kirmizi => 1, Renk::Mavi => 2 };
+    }
+}
+
+fn main() -> i32 {
+    let p: Nokta = Nokta { x: 3, y: 4 };
+    print(p.kare());
+    print(p.topla(1, 2));
+    print(p.iki_kat());
+
+    p.tasi(1);
+    print(p.x);
+    print(p.y);
+    print(p.kare());
+
+    print(p.kopya().kare());
+
+    let k: Kutu = Kutu { ad: string("selam"), n: Nokta { x: 1, y: 2 } };
+    print(k.uzunluk());
+    print(k.uzunluk());
+    print(k.goster());
+
+    let arr: [Nokta; 2] = [Nokta { x: 1, y: 1 }, Nokta { x: 2, y: 2 }];
+    print(arr[1].kare());
+    arr[0].tasi(5);
+    print(arr[0].kare());
+
+    let r: Renk = Renk::Mavi;
+    print(r.kod());
+    return 0;
+}

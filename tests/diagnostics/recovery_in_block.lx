@@ -1,0 +1,34 @@
+enum E { A, B }
+
+fn if_kolu() -> i32 {
+    if true {
+        let x: i32 = 1 let y: i32 = 2;
+    }
+    return 0;
+}
+
+fn match_kolu(e: E) -> i32 {
+    match e {
+        E::A => { let a: i32 = 1 let b: i32 = 2; }
+        E::B => { print(0); }
+    }
+    return 0;
+}
+
+fn ic_ice() -> i32 {
+    if true {
+        if true {
+            let q: i32 = 1 let r: i32 = 2;
+        }
+    }
+    let saglam: i32 = 1 + 2 + 3;
+    print(saglam);
+    return 0;
+}
+
+fn main() -> i32 {
+    print(if_kolu());
+    print(match_kolu(E::A));
+    print(ic_ice());
+    return 0;
+}

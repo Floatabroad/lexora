@@ -1,0 +1,69 @@
+error: 'Kotu::A' alani icin desteklenmeyen tip: [f64; 2] — enum alani skaler (i32/i64/f32/f64/bool/str/String) veya Box<T> olabilir
+ --> tests/diagnostics/float_gate.lx:2:7
+  |
+2 |     A([f64; 2]),
+  |       ^^^^^^^^
+error: tip uyusmazligi: beklenen f64, bulunan i32
+ --> tests/diagnostics/float_gate.lx:7:18
+  |
+7 |     let a: f64 = 1.0 + 2;
+  |                  ^^^^^^^ bu ifade `i32` tipinde
+  |
+  = help: beklenen tip: `f64`
+error: tip uyusmazligi: beklenen f32, bulunan f64
+ --> tests/diagnostics/float_gate.lx:8:5
+  |
+8 |     let b: f32 = 1.5;
+  |     ^^^^^^^^^^^^^^^^^ bu ifade `f64` tipinde
+  |
+  = help: beklenen tip: `f32`
+error: gecersiz cast: f64 -> bool
+ --> tests/diagnostics/float_gate.lx:9:19
+  |
+9 |     let c: bool = 1.0 as bool;
+  |                   ^^^^^^^^^^^ `f64` -> `bool` desteklenmiyor
+  |
+  = note: gecerli cast'ler: i32 <-> i64, f32 <-> f64, i32/i64 -> f32/f64, f32/f64 -> i32/i64
+error: gecersiz cast: bool -> f64
+  --> tests/diagnostics/float_gate.lx:10:18
+   |
+10 |     let d: f64 = true as f64;
+   |                  ^^^^^^^^^^^ `bool` -> `f64` desteklenmiyor
+   |
+   = note: gecerli cast'ler: i32 <-> i64, f32 <-> f64, i32/i64 -> f32/f64, f32/f64 -> i32/i64
+error: tip uyusmazligi: beklenen bool, bulunan f64
+  --> tests/diagnostics/float_gate.lx:11:19
+   |
+11 |     let e: bool = 1.0 and true;
+   |                   ^^^^^^^^^^^^ bu ifade `f64` tipinde
+   |
+   = help: beklenen tip: `bool`
+error: tip uyusmazligi: beklenen bool, bulunan f64
+  --> tests/diagnostics/float_gate.lx:12:19
+   |
+12 |     let f: bool = not 1.0;
+   |                   ^^^^^^^ bu ifade `f64` tipinde
+   |
+   = help: beklenen tip: `bool`
+error: tip uyusmazligi: beklenen i32, bulunan f64
+  --> tests/diagnostics/float_gate.lx:14:11
+   |
+14 |     print(g[1.0]);
+   |           ^^^^^^ bu ifade `f64` tipinde
+   |
+   = help: beklenen tip: `i32`
+error: gecersiz cast: f64 -> f64
+  --> tests/diagnostics/float_gate.lx:15:18
+   |
+15 |     let h: f64 = 1.0 as f64;
+   |                  ^^^^^^^^^^ `f64` -> `f64` desteklenmiyor
+   |
+   = note: gecerli cast'ler: i32 <-> i64, f32 <-> f64, i32/i64 -> f32/f64, f32/f64 -> i32/i64
+error: tip uyusmazligi: beklenen i32, bulunan f64
+  --> tests/diagnostics/float_gate.lx:16:5
+   |
+16 |     let i: i32 = -1.0;
+   |     ^^^^^^^^^^^^^^^^^^ bu ifade `f64` tipinde
+   |
+   = help: beklenen tip: `i32`
+error: 10 hata yuzunden durduruldu

@@ -1,0 +1,18 @@
+enum S {
+    R(i32, i64),
+    T(i32, i32, i32),
+    D,
+}
+
+fn area(s: S) -> i32 {
+    match s {
+        S::R(w, w) => w,
+        S::T(a, b, a) => a + b,
+        S::D => 0,
+    }
+}
+
+fn main() -> i32 {
+    print(area(S::R(3, 9000000000)));
+    return 0;
+}

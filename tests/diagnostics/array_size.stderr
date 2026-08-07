@@ -1,0 +1,36 @@
+error: dizi cok buyuk: toplam 5000000000 eleman (sinir 16384) — absurt boyutta dizi derleyiciyi cokertiyor, bu bir politika siniri
+ --> tests/diagnostics/array_size.lx:1:21
+  |
+1 | struct Kutu { veri: [i32; 5000000000] }
+  |                     ^^^^^^^^^^^^^^^^^
+error: dizi cok buyuk: toplam 5000000000 eleman (sinir 16384) — absurt boyutta dizi derleyiciyi cokertiyor, bu bir politika siniri
+ --> tests/diagnostics/array_size.lx:3:13
+  |
+3 | fn param(a: [i32; 5000000000]) -> i32 {
+  |             ^^^^^^^^^^^^^^^^^
+error: dizi cok buyuk: toplam 4294967296 eleman (sinir 16384) — absurt boyutta dizi derleyiciyi cokertiyor, bu bir politika siniri
+ --> tests/diagnostics/array_size.lx:7:15
+  |
+7 | fn donus() -> [i64; 4294967296] {
+  |               ^^^^^^^^^^^^^^^^^
+error: dizi cok buyuk: toplam 4294967296 eleman (sinir 16384) — absurt boyutta dizi derleyiciyi cokertiyor, bu bir politika siniri
+ --> tests/diagnostics/array_size.lx:8:12
+  |
+8 |     let a: [i64; 4294967296] = [1];
+  |            ^^^^^^^^^^^^^^^^^
+error: dizi cok buyuk: toplam 3000000000 eleman (sinir 16384) — absurt boyutta dizi derleyiciyi cokertiyor, bu bir politika siniri
+  --> tests/diagnostics/array_size.lx:13:16
+   |
+13 |     let yerel: [i32; 3000000000] = [1];
+   |                ^^^^^^^^^^^^^^^^^
+error: dizi cok buyuk: toplam 1000000 eleman (sinir 16384) — absurt boyutta dizi derleyiciyi cokertiyor, bu bir politika siniri
+  --> tests/diagnostics/array_size.lx:18:14
+   |
+18 | fn ic_ice(m: [[i64; 1000]; 1000]) -> i32 {
+   |              ^^^^^^^^^^^^^^^^^^^
+error: dizi cok buyuk: toplam 16385 eleman (sinir 16384) — absurt boyutta dizi derleyiciyi cokertiyor, bu bir politika siniri
+  --> tests/diagnostics/array_size.lx:22:13
+   |
+22 | fn sinir(s: [i32; 16385]) -> i32 {
+   |             ^^^^^^^^^^^^
+error: 7 hata yuzunden durduruldu

@@ -1,0 +1,18 @@
+enum Kotu {
+    A([f64; 2]),
+    B,
+}
+
+fn main() -> i32 {
+    let a: f64 = 1.0 + 2;
+    let b: f32 = 1.5;
+    let c: bool = 1.0 as bool;
+    let d: f64 = true as f64;
+    let e: bool = 1.0 and true;
+    let f: bool = not 1.0;
+    let g: [i32; 2] = [1, 2];
+    print(g[1.0]);
+    let h: f64 = 1.0 as f64;
+    let i: i32 = -1.0;
+    return 0;
+}

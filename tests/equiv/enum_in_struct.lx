@@ -1,0 +1,46 @@
+enum W { A(i64), B(i32, i32), C }
+
+struct H { a: i32, s: W, b: i32, c: i32 }
+
+struct Pair { left: W, right: W }
+
+fn show(h: H) -> i32 {
+    print(h.a);
+    print(h.b);
+    print(h.c);
+    match h.s {
+        W::A(v) => print(v),
+        W::B(x, y) => print(x + y),
+        W::C => print(0),
+    }
+    return h.a + h.b + h.c;
+}
+
+fn main() -> i32 {
+    let h: H = H { a: 11, s: W::A(9000000000), b: 22, c: 33 };
+    print(show(h));
+
+    let g: H = H { a: 1, s: W::B(4, 5), b: 2, c: 3 };
+    print(show(g));
+
+    let p: Pair = Pair { left: W::C, right: W::A(7 as i64) };
+    match p.right {
+        W::A(v) => print(v),
+        W::B(x, y) => print(x + y),
+        W::C => print(0),
+    }
+    match p.left {
+        W::A(v) => print(v),
+        W::B(x, y) => print(x + y),
+        W::C => print(0),
+    }
+
+    let arr: [H; 2] = [H { a: 1, s: W::C, b: 2, c: 3 }, H { a: 4, s: W::B(6, 7), b: 5, c: 6 }];
+    print(arr[1].c);
+    match arr[1].s {
+        W::A(v) => print(v),
+        W::B(x, y) => print(x * y),
+        W::C => print(0),
+    }
+    return 0;
+}

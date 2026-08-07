@@ -1,0 +1,17 @@
+fn bozuk() -> {
+    return 1;
+}
+
+enum Renk { Kirmizi, Yesil }
+
+struct Nokta { x: i32 }
+
+fn main() -> i32 {
+    let c: Renk = Renk::Kirmizi;
+    let n: Nokta = Nokta { x: 1 };
+    match c {
+        Renk::Kirmizi => print(n.x),
+        Renk::Yesil => print(2),
+    }
+    return 0;
+}

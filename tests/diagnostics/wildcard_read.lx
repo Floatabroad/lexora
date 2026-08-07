@@ -1,0 +1,14 @@
+enum S {
+    R(i32, i64),
+    N,
+}
+
+fn main() -> i32 {
+    let _: i32 = 7;
+    let _: i64 = 9000000000;
+    print(_);
+    let s: S = S::R(1, 2 as i64);
+    print(match s { S::R(_, _) => _, S::N => 0 });
+    let a: i32 = _ + 1;
+    return 0;
+}

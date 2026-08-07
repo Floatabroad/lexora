@@ -1,0 +1,19 @@
+enum M {
+    S(String),
+    N,
+}
+
+fn main() -> i32 {
+    let _ = string("bir");
+    let _ = string("ikiii");
+    let m: M = M::S(string("uc"));
+    match m {
+        _ => { print(0); }
+    }
+    for _ in 0..2 {
+        print(1);
+    }
+    let d: M = M::S(string("dort"));
+    print(match d { M::S(_) => 1, M::N => 0 });
+    return 0;
+}

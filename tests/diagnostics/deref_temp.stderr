@@ -1,0 +1,21 @@
+error: gecici deger uzerinden alan/eleman/deref erisimi yapilamaz; once bir degiskene baglayin
+  --> tests/diagnostics/deref_temp.lx:11:55
+   |
+11 | fn h(n: i32) -> Result<i32, str> { return Result::Ok(*g(n)? + 1); }
+   |                                                       ^^^^^
+error: gecici deger uzerinden alan/eleman/deref erisimi yapilamaz; once bir degiskene baglayin
+  --> tests/diagnostics/deref_temp.lx:15:12
+   |
+15 |     print(*mk());
+   |            ^^^^
+error: gecici deger uzerinden alan/eleman/deref erisimi yapilamaz; once bir degiskene baglayin
+  --> tests/diagnostics/deref_temp.lx:16:12
+   |
+16 |     print(*p.kutu());
+   |            ^^^^^^^^
+error: gecici deger uzerinden alan/eleman/deref erisimi yapilamaz; once bir degiskene baglayin
+  --> tests/diagnostics/deref_temp.lx:17:13
+   |
+17 |     print(*(box 5));
+   |             ^^^^^
+error: 4 hata yuzunden durduruldu

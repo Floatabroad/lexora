@@ -1,0 +1,21 @@
+error: 'self' tasinamaz (sahipli alicida deger olarak kacamaz); yerinde odunc alin
+  --> tests/diagnostics/method_move.lx:11:20
+   |
+11 |         let k: K = self;
+   |                    ^^^^
+error: 'self' tasinamaz (sahipli alicida deger olarak kacamaz); yerinde odunc alin
+  --> tests/diagnostics/method_move.lx:15:16
+   |
+15 |         return self;
+   |                ^^^^
+error: 'self' tasinamaz (sahipli alicida deger olarak kacamaz); yerinde odunc alin
+  --> tests/diagnostics/method_move.lx:18:20
+   |
+18 |         return yut(self);
+   |                    ^^^^
+error: 'self' alanlari tasinamaz (odunc alinan alicidan cikamaz); yerinde odunc alin
+  --> tests/diagnostics/method_move.lx:21:25
+   |
+21 |         let n: String = self.ad;
+   |                         ^^^^^^^
+error: 4 hata yuzunden durduruldu

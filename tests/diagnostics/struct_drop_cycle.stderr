@@ -1,0 +1,26 @@
+error: 'Kendi.b' alani struct'i Box/dizi dolayimiyla kendine dahil ediyor; boyle bir degerin tabani olamaz ve drop kodu sonsuz aciliyor — zinciri sonlandirmak icin araya bir enum koyun, ornegin Opt<Box<Kendi>>
+ --> tests/diagnostics/struct_drop_cycle.lx:2:8
+  |
+2 |     b: Box<Kendi>,
+  |        ^^^^^^^^^^
+error: 'A.b' alani struct'i Box/dizi dolayimiyla kendine dahil ediyor; boyle bir degerin tabani olamaz ve drop kodu sonsuz aciliyor — zinciri sonlandirmak icin araya bir enum koyun, ornegin Opt<Box<A>>
+ --> tests/diagnostics/struct_drop_cycle.lx:6:8
+  |
+6 |     b: Box<B>,
+  |        ^^^^^^
+error: 'B.a' alani struct'i Box/dizi dolayimiyla kendine dahil ediyor; boyle bir degerin tabani olamaz ve drop kodu sonsuz aciliyor — zinciri sonlandirmak icin araya bir enum koyun, ornegin Opt<Box<B>>
+  --> tests/diagnostics/struct_drop_cycle.lx:10:8
+   |
+10 |     a: Box<A>,
+   |        ^^^^^^
+error: 'Dizili.a' alani struct'i Box/dizi dolayimiyla kendine dahil ediyor; boyle bir degerin tabani olamaz ve drop kodu sonsuz aciliyor — zinciri sonlandirmak icin araya bir enum koyun, ornegin Opt<Box<Dizili>>
+  --> tests/diagnostics/struct_drop_cycle.lx:14:8
+   |
+14 |     a: [Box<Dizili>; 2],
+   |        ^^^^^^^^^^^^^^^^
+error: 'Duz.d' alani struct'i kendine dahil ediyor (sonsuz boyut); dolayim icin Box<Duz> kullanin
+  --> tests/diagnostics/struct_drop_cycle.lx:18:8
+   |
+18 |     d: Duz,
+   |        ^^^
+error: 5 hata yuzunden durduruldu

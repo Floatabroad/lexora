@@ -1,0 +1,85 @@
+struct Nokta {
+    x: f64,
+    y: f32,
+}
+
+enum Sayi {
+    Kesirli(f64),
+    Tam(i32),
+}
+
+fn kare(x: f64) -> f64 {
+    return x * x;
+}
+
+fn toplaf32(a: f32, b: f32) -> f32 {
+    return a + b;
+}
+
+fn secim(c: bool) -> f64 {
+    return if c { 1.25 } else { -2.5 };
+}
+
+fn main() -> i32 {
+    let a: f64 = 1.5;
+    let b: f64 = 2.25;
+    print(a + b);
+    print(a - b);
+    print(a * b);
+    print(b / a);
+    print(-a);
+    print(kare(3.0));
+
+    let c: f32 = 1.5 as f32;
+    print(c);
+    print(c as f64);
+    print(toplaf32(1.25 as f32, 2.25 as f32));
+
+    let e: i32 = 7;
+    print(e as f64);
+    print(b as i32);
+    print(9000000000 as f64);
+
+    print(1e3);
+    print(1.5e-2);
+    print(0.5);
+
+    print(a < b);
+    print(a > b);
+    print(a == a);
+    print(a != b);
+    print(a <= a);
+    print(b >= a);
+
+    let inf: f64 = 1.0 / 0.0;
+    print(inf);
+    let nan: f64 = 0.0 / 0.0;
+    print(nan);
+    print(nan == nan);
+    print(nan < 1.0);
+    print(1.0e308 * 10.0);
+
+    let p: Nokta = Nokta { x: 2.5, y: 0.5 as f32 };
+    print(p.x);
+    print(p.y);
+
+    let arr: [f64; 3] = [1.5, 2.5, 3.5];
+    for i in 0..3 {
+        print(arr[i]);
+    }
+    arr[1] = 9.75;
+    print(arr[1]);
+
+    let s: Sayi = Sayi::Kesirli(4.75);
+    print(match s { Sayi::Kesirli(v) => v, Sayi::Tam(n) => 0.0 });
+    let t: Sayi = Sayi::Tam(3);
+    print(match t { Sayi::Kesirli(v) => 0, Sayi::Tam(n) => n });
+
+    print(secim(true));
+    print(secim(false));
+
+    let sifir: f64 = 0.0;
+    let toplam: f64 = sifir + 0.25 + 0.25 + 0.5;
+    print(toplam);
+    return 0;
+}

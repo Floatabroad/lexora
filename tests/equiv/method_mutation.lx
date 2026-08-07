@@ -1,0 +1,42 @@
+struct N {
+    x: i32,
+}
+
+struct Ic {
+    n: N,
+}
+
+impl N {
+    fn tasi(self) -> void {
+        self.x = self.x + 100;
+    }
+}
+
+fn bump(n: N) -> void {
+    n.x = n.x + 100;
+}
+
+fn mk() -> N {
+    return N { x: 7 };
+}
+
+fn main() -> i32 {
+    let a: N = N { x: 1 };
+    a.tasi();
+    print(a.x);
+
+    let b: N = N { x: 1 };
+    bump(b);
+    print(b.x);
+
+    print(mk().x);
+
+    let o: Ic = Ic { n: N { x: 5 } };
+    o.n.tasi();
+    print(o.n.x);
+
+    let kutu: Box<N> = box N { x: 2 };
+    (*kutu).tasi();
+    print((*kutu).x);
+    return 0;
+}

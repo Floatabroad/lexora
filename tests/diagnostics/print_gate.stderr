@@ -1,19 +1,19 @@
-error: print bu tipi yazdiramaz: Box<i32> — yazdirilabilir tipler i32/i64/bool/str/String
+error: print bu tipi yazdiramaz: Box<i32> — yazdirilabilir tipler i32/i64/f32/f64/bool/str/String
   --> tests/diagnostics/print_gate.lx:10:11
    |
 10 |     print(b);
    |           ^
-error: print bu tipi yazdiramaz: P — yazdirilabilir tipler i32/i64/bool/str/String
+error: print bu tipi yazdiramaz: P — yazdirilabilir tipler i32/i64/f32/f64/bool/str/String
   --> tests/diagnostics/print_gate.lx:11:11
    |
 11 |     print(p);
    |           ^
-error: print bu tipi yazdiramaz: [i32; 2] — yazdirilabilir tipler i32/i64/bool/str/String
+error: print bu tipi yazdiramaz: [i32; 2] — yazdirilabilir tipler i32/i64/f32/f64/bool/str/String
   --> tests/diagnostics/print_gate.lx:12:11
    |
 12 |     print(arr);
    |           ^^^
-error: print bu tipi yazdiramaz: C — yazdirilabilir tipler i32/i64/bool/str/String
+error: print bu tipi yazdiramaz: C — yazdirilabilir tipler i32/i64/f32/f64/bool/str/String
   --> tests/diagnostics/print_gate.lx:13:11
    |
 13 |     print(c);

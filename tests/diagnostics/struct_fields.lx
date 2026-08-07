@@ -1,0 +1,9 @@
+struct P { x: i32, y: i32, z: i32 }
+
+fn main() -> i32 {
+    let a: P = P { x: 1 };
+    let b: P = P { x: 1, x: 2, y: 3, z: 4 };
+    let c: P = P { x: 1, y: 2, z: 3, w: 4 };
+    print(a.x + b.x + c.x);
+    return 0;
+}

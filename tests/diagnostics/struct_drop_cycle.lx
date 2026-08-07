@@ -1,0 +1,23 @@
+struct Kendi {
+    b: Box<Kendi>,
+}
+
+struct A {
+    b: Box<B>,
+}
+
+struct B {
+    a: Box<A>,
+}
+
+struct Dizili {
+    a: [Box<Dizili>; 2],
+}
+
+struct Duz {
+    d: Duz,
+}
+
+fn main() -> i32 {
+    return 0;
+}

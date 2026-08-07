@@ -1,0 +1,31 @@
+error: tanimsiz tip 'Quux'
+ --> tests/diagnostics/undefined_type.lx:6:7
+  |
+6 |     A(Box<Quux>),
+  |       ^^^^^^^^^
+error: tanimsiz tip 'Poimt'; bunu mu demek istediniz: 'Point'?
+  --> tests/diagnostics/undefined_type.lx:10:9
+   |
+10 | fn f(q: Poimt) -> i32 {
+   |         ^^^^^
+error: tanimsiz tip 'Zork'
+  --> tests/diagnostics/undefined_type.lx:14:17
+   |
+14 | fn g(n: i32) -> Zork {
+   |                 ^^^^
+error: tanimsiz tip 'Nope'
+  --> tests/diagnostics/undefined_type.lx:19:12
+   |
+19 |     inner: Nope,
+   |            ^^^^
+error: tanimsiz tip 'Nada'
+  --> tests/diagnostics/undefined_type.lx:20:10
+   |
+20 |     arr: [Nada; 2],
+   |          ^^^^^^^^^
+error: tanimsiz tip 'Wat'
+  --> tests/diagnostics/undefined_type.lx:24:12
+   |
+24 |     let v: Wat = 5;
+   |            ^^^
+error: 6 hata yuzunden durduruldu

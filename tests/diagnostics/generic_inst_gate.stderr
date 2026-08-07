@@ -1,0 +1,6 @@
+error: 'Opt<[i32; 2]>::Some' alani icin desteklenmeyen tip: [i32; 2] — enum alani skaler (i32/i64/f32/f64/bool/str/String) veya Box<T> olabilir
+  --> tests/diagnostics/generic_inst_gate.lx:12:5
+   |
+12 |     sar::<[i32; 2]>(a);
+   |     ^^^^^^^^^^^^^^^^^^
+error: 1 hata yuzunden durduruldu

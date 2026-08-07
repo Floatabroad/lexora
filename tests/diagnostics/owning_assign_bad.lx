@@ -1,0 +1,20 @@
+struct Ic { ad: String }
+
+struct K { a: String, b: String }
+
+struct Dis { ic: Ic, s: i32 }
+
+fn yut(k: K) -> i32 { return 0; }
+
+fn yutic(i: Ic) -> i32 { return 0; }
+
+fn main() -> i32 {
+    let k: K = K { a: string("x"), b: string("y") };
+    print(yut(k));
+    k.a = string("z");
+
+    let o: Dis = Dis { ic: Ic { ad: string("d") }, s: 1 };
+    print(yutic(o.ic));
+    o.ic.ad = string("w");
+    return 0;
+}

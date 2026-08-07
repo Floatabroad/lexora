@@ -1,0 +1,31 @@
+error: ifade cok derin ic ice (sinir 128)
+ --> tests/diagnostics/deep_expr_forms.lx:6:138
+  |
+6 |     return ----------------------------------------------------------------------------------------------------------------------------------5;
+  |                                                                                                                                          ^
+error: ifade cok derin ic ice (sinir 128)
+  --> tests/diagnostics/deep_expr_forms.lx:10:516
+   |
+10 |     return not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not true;
+   |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    ^^^
+error: ifade cok derin ic ice (sinir 128)
+  --> tests/diagnostics/deep_expr_forms.lx:14:138
+   |
+14 |     return ****************************************************************************************************************************************c;
+   |                                                                                                                                          ^
+error: ifade cok derin ic ice (sinir 128)
+  --> tests/diagnostics/deep_expr_forms.lx:18:265
+   |
+18 |     return e.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p.p;
+   |                                                                                                                                                                                                                                                                         ^
+error: ifade cok derin ic ice (sinir 128)
+  --> tests/diagnostics/deep_expr_forms.lx:22:389
+   |
+22 |     return g[0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0];
+   |                                                                                                                                                                                                                                                                                                                                                                                                     ^
+error: ifade cok derin ic ice (sinir 128)
+  --> tests/diagnostics/deep_expr_forms.lx:26:139
+   |
+26 |     return x???????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????;
+   |                                                                                                                                           ^
+error: 6 hata yuzunden durduruldu

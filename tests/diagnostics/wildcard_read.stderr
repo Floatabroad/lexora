@@ -1,0 +1,16 @@
+error: '_' bir deger degil; yalnizca desende ve baglama hedefinde kullanilabilir
+ --> tests/diagnostics/wildcard_read.lx:9:11
+  |
+9 |     print(_);
+  |           ^
+error: '_' bir deger degil; yalnizca desende ve baglama hedefinde kullanilabilir
+  --> tests/diagnostics/wildcard_read.lx:11:35
+   |
+11 |     print(match s { S::R(_, _) => _, S::N => 0 });
+   |                                   ^
+error: '_' bir deger degil; yalnizca desende ve baglama hedefinde kullanilabilir
+  --> tests/diagnostics/wildcard_read.lx:12:18
+   |
+12 |     let a: i32 = _ + 1;
+   |                  ^
+error: 3 hata yuzunden durduruldu

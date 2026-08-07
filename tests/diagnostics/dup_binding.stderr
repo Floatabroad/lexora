@@ -1,0 +1,11 @@
+error: 'w' bu desende birden fazla kez baglaniyor
+ --> tests/diagnostics/dup_binding.lx:9:9
+  |
+9 |         S::R(w, w) => w,
+  |         ^^^^^^^^^^
+error: 'a' bu desende birden fazla kez baglaniyor
+  --> tests/diagnostics/dup_binding.lx:10:9
+   |
+10 |         S::T(a, b, a) => a + b,
+   |         ^^^^^^^^^^^^^
+error: 2 hata yuzunden durduruldu

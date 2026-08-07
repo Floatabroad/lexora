@@ -1,0 +1,33 @@
+fn bound() -> i32 {
+    print(99);
+    return 3;
+}
+
+fn main() -> i32 {
+    let n: i32 = 5;
+    for i in 0..n {
+        print(i);
+        n = n - 1;
+    }
+    print(n);
+
+    for j in 0..bound() {
+        print(j);
+    }
+
+    let z: i32 = 0;
+    for k in 0..z {
+        print(777);
+    }
+
+    for m in 2..2 {
+        print(888);
+    }
+
+    let acc: i32 = 0;
+    for q in 1..4 {
+        acc = acc + q;
+    }
+    print(acc);
+    return 0;
+}
