@@ -1,0 +1,48 @@
+struct P {
+    a: String,
+}
+
+fn yut(s: String) -> bool {
+    print(s);
+    true
+}
+
+fn tam(s: String) -> i32 {
+    while yut(s) {
+        print(1);
+    }
+    0
+}
+
+fn kismi(p: P) -> i32 {
+    while yut(p.a) {
+        print(2);
+    }
+    0
+}
+
+fn deref(b: Box<String>) -> i32 {
+    while yut(*b) {
+        print(3);
+    }
+    0
+}
+
+fn kisa_devre(s: String) -> i32 {
+    let n: i32 = 0;
+    while n < 5 and yut(s) {
+        n = n + 1;
+    }
+    0
+}
+
+fn birlestir(s: String) -> i32 {
+    while (s + "x") == "ax" {
+        print(5);
+    }
+    0
+}
+
+fn main() -> i32 {
+    0
+}

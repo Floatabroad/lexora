@@ -1,0 +1,61 @@
+struct Kutu<T> { v: T }
+struct Ic<T> { v: T }
+struct Dis<T> { ic: Ic<T> }
+struct Cift<A, B> { a: A, b: B }
+enum Opt<T> { Var(T), Yok }
+
+impl<T> Kutu<T> {
+    fn bir(self) -> i32 { return 1; }
+    fn iki(self) -> i32 { return self.bir() + self.bir(); }
+    fn uc(self) -> i32 { return self.iki() + self.bir(); }
+    fn esle(self, o: Kutu<T>) -> i32 { return o.iki(); }
+    fn say(self, n: i32) -> i32 {
+        if n <= 0 { return 0; }
+        return 1 + self.say(n - 1);
+    }
+}
+
+impl<T> Ic<T> {
+    fn bes(self) -> i32 { return 5; }
+}
+
+impl<T> Dis<T> {
+    fn topla(self) -> i32 { return self.ic.bes() + 1; }
+}
+
+impl<A, B> Cift<A, B> {
+    fn bir(self) -> i32 { return 1; }
+    fn iki(self) -> i32 { return self.bir() + 1; }
+}
+
+impl<T> Opt<T> {
+    fn kod(self) -> i32 { return 7; }
+    fn kod2(self) -> i32 { return self.kod() + 1; }
+}
+
+fn disardan<T>(k: Kutu<T>) -> i32 { return k.uc(); }
+
+fn main() -> i32 {
+    let a: Kutu<i32> = Kutu { v: 5 };
+    print(a.bir());
+    print(a.iki());
+    print(a.uc());
+
+    let b: Kutu<i32> = Kutu { v: 6 };
+    print(a.esle(b));
+    print(a.say(4));
+    print(disardan(a));
+
+    let s: Kutu<String> = Kutu { v: string("q") };
+    print(s.uc());
+
+    let d: Dis<i32> = Dis { ic: Ic { v: 2 } };
+    print(d.topla());
+
+    let c: Cift<i32, bool> = Cift { a: 1, b: true };
+    print(c.iki());
+
+    let o: Opt<i32> = Opt::Var(3);
+    print(o.kod2());
+    return 0;
+}

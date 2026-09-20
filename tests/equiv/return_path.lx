@@ -1,0 +1,76 @@
+enum D {
+    A,
+    B,
+}
+
+fn yut(s: String) -> i32 {
+    len(s)
+}
+
+fn ret_then_use(c: bool) -> i32 {
+    let s: String = string("abc");
+    if c {
+        print(yut(s));
+        return 1;
+    }
+    print(len(s));
+    return 0;
+}
+
+fn match_ret(d: D) -> i32 {
+    let s: String = string("abcd");
+    match d {
+        D::A => { print(yut(s)); return 1; }
+        D::B => print(0)
+    }
+    print(len(s));
+    return 0;
+}
+
+fn nested_ret(c: bool, e: bool) -> i32 {
+    let s: String = string("xy");
+    if c {
+        if e {
+            print(yut(s));
+            return 1;
+        }
+        return 2;
+    }
+    print(len(s));
+    return 0;
+}
+
+fn both_ret(c: bool) -> i32 {
+    let s: String = string("qwe");
+    if c {
+        return 1;
+    } else {
+        print(yut(s));
+        return 2;
+    }
+}
+
+fn disjoint(c: bool) -> i32 {
+    let s: String = string("zz");
+    if c {
+        print(yut(s));
+        return 1;
+    }
+    print(yut(s));
+    return 0;
+}
+
+fn main() -> i32 {
+    print(ret_then_use(true));
+    print(ret_then_use(false));
+    print(match_ret(D::A));
+    print(match_ret(D::B));
+    print(nested_ret(true, true));
+    print(nested_ret(true, false));
+    print(nested_ret(false, false));
+    print(both_ret(true));
+    print(both_ret(false));
+    print(disjoint(true));
+    print(disjoint(false));
+    return 0;
+}

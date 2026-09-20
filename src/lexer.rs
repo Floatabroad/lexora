@@ -1,6 +1,5 @@
-use crate::span::Span;
 use crate::error::LexoraError;
-
+use crate::span::Span;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token<'src> {
@@ -9,24 +8,66 @@ pub enum Token<'src> {
     Identifier(&'src str),
     StringLiteral(&'src str),
 
-    Let, Fn, Return, If, Else,
-    True, False, While, For, In,
-    And, Or, Not, As, Import, Struct, Box, Enum, Match, Impl, SelfKw,
+    Let,
+    Fn,
+    Return,
+    If,
+    Else,
+    True,
+    False,
+    While,
+    For,
+    In,
+    And,
+    Or,
+    Not,
+    As,
+    Import,
+    Struct,
+    Box,
+    Enum,
+    Match,
+    Impl,
+    SelfKw,
+    Break,
+    Continue,
 
-    I32, I64,F32,F64, Bool, Void, Str,
+    I32,
+    I64,
+    F32,
+    F64,
+    Bool,
+    Void,
+    Str,
 
-    Plus, Minus, Star, Slash,
-    Equals, EqualsEquals,
-    Bang, BangEquals,
-    Less, Greater, LessEq, GreaterEq,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Equals,
+    EqualsEquals,
+    Bang,
+    BangEquals,
+    Less,
+    Greater,
+    LessEq,
+    GreaterEq,
     FatArrow,
 
-    Semicolon, Colon, Comma,
-    Arrow, Dot, DotDot,
-    LeftParen, RightParen,
-    LeftBrace, RightBrace,
-    LeftBracket, RightBracket,
-    ColonColon,Question,
+    Semicolon,
+    Colon,
+    Comma,
+    Arrow,
+    Dot,
+    DotDot,
+    LeftParen,
+    RightParen,
+    LeftBrace,
+    RightBrace,
+    LeftBracket,
+    RightBracket,
+    ColonColon,
+    Question,
 
     Eof,
     Error,
@@ -37,10 +78,9 @@ pub struct SpannedToken<'src> {
     pub span: Span,
 }
 
-
 pub struct Lexer<'src> {
-    source:   &'src str,
-    pos:      usize,
+    source: &'src str,
+    pos: usize,
     pub line: usize,
     base: u32,
     errors: Vec<LexoraError>,
@@ -53,7 +93,13 @@ impl<'src> Lexer<'src> {
         } else {
             0
         };
-        Lexer { source, pos, line: 1, base, errors: Vec::new() }
+        Lexer {
+            source,
+            pos,
+            line: 1,
+            base,
+            errors: Vec::new(),
+        }
     }
     pub fn take_errors(&mut self) -> Vec<LexoraError> {
         std::mem::take(&mut self.errors)
@@ -64,7 +110,7 @@ impl<'src> Lexer<'src> {
     fn current(&self) -> u8 {
         if self.pos < self.source.len() {
             self.source.as_bytes()[self.pos]
-        }else {
+        } else {
             0
         }
     }
@@ -75,7 +121,7 @@ impl<'src> Lexer<'src> {
             0
         }
     }
-   
+
     fn advance(&mut self) {
         if self.pos < self.source.len() {
             if self.source.as_bytes()[self.pos] == b'\n' {
@@ -88,14 +134,16 @@ impl<'src> Lexer<'src> {
         loop {
             while self.pos < self.source.len()
                 && (self.current() == b' '
-                || self.current() == b'\t'
-                || self.current() == b'\r'
-                || self.current() == b'\n') {
+                    || self.current() == b'\t'
+                    || self.current() == b'\r'
+                    || self.current() == b'\n')
+            {
                 self.advance();
             }
             if self.current() == b'/'
                 && self.pos + 1 < self.source.len()
-                && self.source.as_bytes()[self.pos + 1] == b'/' {
+                && self.source.as_bytes()[self.pos + 1] == b'/'
+            {
                 while self.pos < self.source.len() && self.current() != b'\n' {
                     self.advance();
                 }
@@ -116,56 +164,122 @@ impl<'src> Lexer<'src> {
         }
         let ch = self.current();
         let token = match ch {
-            b'+' => {self.advance(); Token::Plus}
+            b'+' => {
+                self.advance();
+                Token::Plus
+            }
             b'-' => {
                 self.advance();
-                if self.current() == b'>' {self.advance(); Token::Arrow}
-                else {Token::Minus}
+                if self.current() == b'>' {
+                    self.advance();
+                    Token::Arrow
+                } else {
+                    Token::Minus
+                }
             }
-            b'*' => {self.advance(); Token::Star}
-            b'/' => {self.advance(); Token::Slash}
-            b';' => {self.advance(); Token::Semicolon}
+            b'*' => {
+                self.advance();
+                Token::Star
+            }
+            b'/' => {
+                self.advance();
+                Token::Slash
+            }
+            b';' => {
+                self.advance();
+                Token::Semicolon
+            }
             b':' => {
                 self.advance();
-                if self.current() == b':' { self.advance(); Token::ColonColon }
-                else { Token::Colon }
+                if self.current() == b':' {
+                    self.advance();
+                    Token::ColonColon
+                } else {
+                    Token::Colon
+                }
             }
-            b',' => {self.advance(); Token::Comma}
-            b'(' => {self.advance(); Token::LeftParen}
-            b')' => {self.advance(); Token::RightParen}
-            b'{' => {self.advance(); Token::LeftBrace}
-            b'}' => {self.advance(); Token::RightBrace}
-            b'[' => {self.advance(); Token::LeftBracket}
-            b']' => {self.advance(); Token::RightBracket}
+            b',' => {
+                self.advance();
+                Token::Comma
+            }
+            b'(' => {
+                self.advance();
+                Token::LeftParen
+            }
+            b')' => {
+                self.advance();
+                Token::RightParen
+            }
+            b'{' => {
+                self.advance();
+                Token::LeftBrace
+            }
+            b'}' => {
+                self.advance();
+                Token::RightBrace
+            }
+            b'[' => {
+                self.advance();
+                Token::LeftBracket
+            }
+            b']' => {
+                self.advance();
+                Token::RightBracket
+            }
             b'.' => {
                 self.advance();
-                if self.current() == b'.' {self.advance();Token::DotDot}
-                else {Token::Dot}
+                if self.current() == b'.' {
+                    self.advance();
+                    Token::DotDot
+                } else {
+                    Token::Dot
+                }
             }
             b'<' => {
                 self.advance();
-                if self.current() == b'=' {self.advance(); Token::LessEq}
-                else {Token::Less}
+                if self.current() == b'=' {
+                    self.advance();
+                    Token::LessEq
+                } else {
+                    Token::Less
+                }
             }
             b'>' => {
                 self.advance();
-                if self.current() == b'=' {self.advance(); Token::GreaterEq}
-                else {Token::Greater}
+                if self.current() == b'=' {
+                    self.advance();
+                    Token::GreaterEq
+                } else {
+                    Token::Greater
+                }
             }
             b'=' => {
                 self.advance();
-                if self.current() == b'=' { self.advance(); Token::EqualsEquals }
-                else if self.current() == b'>' { self.advance(); Token::FatArrow }
-                else { Token::Equals }
+                if self.current() == b'=' {
+                    self.advance();
+                    Token::EqualsEquals
+                } else if self.current() == b'>' {
+                    self.advance();
+                    Token::FatArrow
+                } else {
+                    Token::Equals
+                }
             }
             b'!' => {
                 self.advance();
-                if self.current() == b'=' {self.advance(); Token::BangEquals}
-                else {Token::Bang}
+                if self.current() == b'=' {
+                    self.advance();
+                    Token::BangEquals
+                } else {
+                    Token::Bang
+                }
             }
-           b'?' => {self.advance(); Token::Question}
+            b'?' => {
+                self.advance();
+                Token::Question
+            }
             b'0'..=b'9' => self.read_integer(),
-            b'"'        => self.read_string(start),
+            b'"' => self.read_string(start),
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.read_identifier(),
             _ => {
                 let c = self.source[self.pos..].chars().next().unwrap();
@@ -178,36 +292,38 @@ impl<'src> Lexer<'src> {
             }
         };
         let end = self.pos as u32;
-        SpannedToken { token, span: self.span(start, end) }
+        SpannedToken {
+            token,
+            span: self.span(start, end),
+        }
     }
 
     fn read_integer(&mut self) -> Token<'src> {
         let start = self.pos;
-        while self.pos < self.source.len()
-            && self.source.as_bytes()[self.pos].is_ascii_digit() {
+        while self.pos < self.source.len() && self.source.as_bytes()[self.pos].is_ascii_digit() {
             self.advance();
         }
         let mut is_float = false;
         if self.current() == b'.' && self.peek_byte(1).is_ascii_digit() {
             is_float = true;
             self.advance();
-            while self.pos < self.source.len()
-                && self.source.as_bytes()[self.pos].is_ascii_digit() {
+            while self.pos < self.source.len() && self.source.as_bytes()[self.pos].is_ascii_digit()
+            {
                 self.advance();
             }
         }
         if (self.current() == b'e' || self.current() == b'E')
             && (self.peek_byte(1).is_ascii_digit()
-            || ((self.peek_byte(1) == b'+' || self.peek_byte(1) == b'-')
-            && self.peek_byte(2).is_ascii_digit()))
+                || ((self.peek_byte(1) == b'+' || self.peek_byte(1) == b'-')
+                    && self.peek_byte(2).is_ascii_digit()))
         {
             is_float = true;
             self.advance();
             if self.current() == b'+' || self.current() == b'-' {
                 self.advance();
             }
-            while self.pos < self.source.len()
-                && self.source.as_bytes()[self.pos].is_ascii_digit() {
+            while self.pos < self.source.len() && self.source.as_bytes()[self.pos].is_ascii_digit()
+            {
                 self.advance();
             }
         }
@@ -257,7 +373,8 @@ impl<'src> Lexer<'src> {
         let start = self.pos;
         while self.pos < self.source.len()
             && (self.source.as_bytes()[self.pos].is_ascii_alphanumeric()
-            || self.source.as_bytes()[self.pos] == b'_') {
+                || self.source.as_bytes()[self.pos] == b'_')
+        {
             self.advance();
         }
         let ident = &self.source[start..self.pos];
@@ -288,10 +405,11 @@ impl<'src> Lexer<'src> {
             "str" => Token::Str,
             "enum" => Token::Enum,
             "match" => Token::Match,
+            "break" => Token::Break,
+            "continue" => Token::Continue,
             "impl" => Token::Impl,
             "self" => Token::SelfKw,
             _ => Token::Identifier(ident),
         }
     }
 }
-

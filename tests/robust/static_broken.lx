@@ -1,0 +1,17 @@
+struct N { x: i32 }
+enum E { A, B }
+impl N {
+    fn yap(a: i32) -> N { return N { x: a + }; }
+    fn bozuk() -> N { N { x: }
+    fn iyi(k: i32) -> N { return N { x: k }; }
+}
+impl E {
+    fn kur() -> E { match { E::A }
+    fn A() -> E { return E::B; }
+}
+fn main() -> i32 {
+    let p: N = N::yap(1;
+    let q: N = N::iyi(2);
+    let r: N = N::yoktur(3);
+    return q.x + N::;
+}

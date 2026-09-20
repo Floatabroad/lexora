@@ -1,0 +1,66 @@
+struct K {
+    ad: String,
+    n: i32,
+    m: i32,
+}
+
+struct Ic {
+    ad: String,
+    say: i32,
+}
+
+struct Dis {
+    ic: Ic,
+    kod: i32,
+}
+
+enum Kutu {
+    Sayi(i32),
+    Yok,
+}
+
+fn iki_kat(v: i32) -> i32 {
+    v * 2
+}
+
+fn topla(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+fn son(k: K) -> i32 {
+    let t: String = k.ad;
+    print(t);
+    return k.n;
+}
+
+fn main() -> i32 {
+    let k: K = K { ad: string("bir"), n: 21, m: 4 };
+    let tasinan: String = k.ad;
+    print(tasinan);
+    print(k.n);
+    print(k.n + 1);
+    let d: i32 = k.n;
+    print(d);
+    print(iki_kat(k.n));
+    print(topla(k.n, k.m));
+    let arr: [i32; 3] = [k.n, k.m, 7];
+    print(arr[0] + arr[1] + arr[2]);
+    if k.n > 20 {
+        print(k.m * 10);
+    }
+    let p: K = K { ad: string("iki"), n: k.n, m: k.m };
+    print(p.n + p.m);
+
+    let dd: Dis = Dis { ic: Ic { ad: string("derin"), say: 7 }, kod: 3 };
+    let ic_ad: String = dd.ic.ad;
+    print(ic_ad);
+    print(dd.ic.say * dd.kod);
+    let ku: Kutu = Kutu::Sayi(dd.kod);
+    match ku {
+        Kutu::Sayi(v) => print(v),
+        Kutu::Yok => print(0)
+    }
+
+    print(son(K { ad: string("son"), n: 9, m: 0 }));
+    return 0;
+}

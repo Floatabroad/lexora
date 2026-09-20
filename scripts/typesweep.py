@@ -55,6 +55,9 @@ POSITIONS = {
     "field": "struct Z {\n    z: %s,\n}\n\nfn f(x: Z) -> i32 {\n    return 0;\n}\n",
     "ret": "fn f(x: i32) -> %s {\n    return g();\n}\n\nfn g() -> %s {\n    return h();\n}\n",
     "boxret": "fn f(x: i32) -> Box<%s> {\n    return g();\n}\n\nfn g() -> Box<%s> {\n    return f(1);\n}\n",
+    "mparam": "struct Z {\n    z: i32,\n}\n\nimpl Z {\n    fn m(self, x: %s) -> i32 {\n        return 0;\n    }\n}\n",
+    "mret": "struct Z {\n    z: i32,\n}\n\nimpl Z {\n    fn m(self, x: %s) -> %s {\n        return x;\n    }\n}\n",
+    "epayload": "enum W {\n    WA(%s),\n    WB,\n}\n",
 }
 
 RECURSIVE = [

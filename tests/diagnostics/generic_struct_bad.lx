@@ -1,0 +1,18 @@
+struct Kutu<T> { v: T }
+struct Cift<A, B> { a: A, b: B }
+struct Duz { n: i32 }
+struct Bos<T> { n: i32 }
+
+fn cok(k: Kutu<i32, bool>) -> i32 { return 0; }
+fn eksik(k: Kutu) -> i32 { return 0; }
+fn duz(d: Duz<i32>) -> i32 { return 0; }
+
+fn main() -> i32 {
+    let a: Kutu<i32> = Kutu { v: true };
+    let b: Cift<i32, bool> = Cift { a: 1 };
+    let c: Kutu<i32> = Kutu { v: 1, w: 2 };
+    let d = Bos { n: 1 };
+    let e: Kutu<i64> = a;
+    let f: Kutu<Yoktur> = Kutu { v: 1 };
+    return 0;
+}

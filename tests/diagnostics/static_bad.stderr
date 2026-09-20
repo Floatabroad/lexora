@@ -1,0 +1,49 @@
+error: 'E::A' bir varyant adiyla cakisiyor; statik metot varyantla ayni adi alamaz
+ --> tests/diagnostics/static_bad.lx:5:5
+  |
+5 |       fn A(v: i32) -> E {
+  | ______^
+6 | |         return E::B;
+7 | |     }
+  | |_____^
+error: zaten tanimli: P.yeni
+  --> tests/diagnostics/static_bad.lx:14:5
+   |
+14 |       fn yeni(self) -> i32 {
+   | ______^
+15 | |         return self.x;
+16 | |     }
+   | |_____^ yeniden tanimlandi
+error: 'P.yeni' bir statik metot ('self' almiyor); 'P::yeni(...)' seklinde cagirin
+  --> tests/diagnostics/static_bad.lx:24:11
+   |
+24 |     print(p.yeni());
+   |           ^^^^^^^^
+error: 'P' tipinde 'yenii' statik metodu yok; bunu mu demek istediniz: 'yeni'?
+  --> tests/diagnostics/static_bad.lx:25:11
+   |
+25 |     print(P::yenii(1).x);
+   |           ^^^^^^^^^^^
+error: 'P::yeni' 1 arguman bekliyor, 2 verildi
+  --> tests/diagnostics/static_bad.lx:26:11
+   |
+26 |     print(P::yeni(1, 2).x);
+   |           ^^^^^^^^^^^^^
+error: tip uyusmazligi: beklenen i32, bulunan bool
+  --> tests/diagnostics/static_bad.lx:27:19
+   |
+27 |     print(P::yeni(true).x);
+   |                   ^^^^ bu ifade `bool` tipinde
+   |
+   = help: beklenen tip: `i32`
+error: 'P' generic degil, tip argumani almaz
+  --> tests/diagnostics/static_bad.lx:28:11
+   |
+28 |     print(P::<i32>::yeni(1).x);
+   |           ^^^^^^^^^^^^^^^^^
+error: 'P.oku' bir metot ('self' aliyor); 'P::oku(...)' degil, '<deger>.oku(...)' seklinde cagirin
+  --> tests/diagnostics/static_bad.lx:29:11
+   |
+29 |     print(P::oku(p));
+   |           ^^^^^^^^^
+error: 8 hata yuzunden durduruldu

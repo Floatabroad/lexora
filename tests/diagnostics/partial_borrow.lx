@@ -1,0 +1,25 @@
+struct K {
+    ad: String,
+    n: i32,
+}
+
+impl K {
+    fn goster(self) -> void {
+        print(self.ad);
+    }
+}
+
+fn yut(s: String) -> i32 {
+    len(s)
+}
+
+fn main() -> i32 {
+    let k: K = K { ad: string("x"), n: 1 };
+    let m: String = k.ad;
+    k.goster();
+    print(k.ad);
+    print(len(k.ad));
+    print(k.ad == "x");
+    print(yut(m));
+    return 0;
+}

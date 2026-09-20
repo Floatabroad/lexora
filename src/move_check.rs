@@ -11,13 +11,18 @@ enum MoveState {
     MaybeMoved,
 }
 
-#[derive(Clone,  PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum BindState {
     Copy,
-    Owning{
+    Owning {
         paths: Vec<Vec<u32>>,
         states: Vec<MoveState>,
     },
+}
+
+struct LoopCtx {
+    breaks: Vec<Vec<HashMap<Symbol, BindState>>>,
+    continues: Vec<Vec<HashMap<Symbol, BindState>>>,
 }
 
 pub struct MoveChecker<'a> {
@@ -27,8 +32,10 @@ pub struct MoveChecker<'a> {
     moves: HashMap<ExprId, Vec<u32>>,
     errors: Vec<LexoraError>,
     cur_self: Option<Symbol>,
-    structs: HashMap<Symbol, Vec<(Symbol, Type)>>,
+    structs: HashMap<Symbol, (Vec<Symbol>, Vec<(Symbol, Type)>)>,
     enums: HashMap<Symbol, (Vec<Symbol>, Vec<(Symbol, Vec<Type>)>)>,
+    terminated: bool,
+    loops: Vec<LoopCtx>,
 }
 
 impl<'a> MoveChecker<'a> {
@@ -42,6 +49,8 @@ impl<'a> MoveChecker<'a> {
             cur_self: None,
             structs: HashMap::new(),
             enums: HashMap::new(),
+            terminated: false,
+            loops: Vec::new(),
         }
     }
     pub fn check(mut self, program: &Program) -> (HashMap<ExprId, Vec<u32>>, Vec<LexoraError>) {
@@ -50,7 +59,7 @@ impl<'a> MoveChecker<'a> {
                 .insert(e.name, (e.params.clone(), e.variants.clone()));
         }
         for s in &program.structs {
-            self.structs.insert(s.name, s.fields.clone());
+            self.structs.insert(s.name, (s.params.clone(), s.fields.clone()));
         }
         for func in &program.functions {
             self.check_function(func);
@@ -88,6 +97,19 @@ impl<'a> MoveChecker<'a> {
     fn lookup_mut(&mut self, sym: Symbol) -> Option<&mut BindState> {
         self.scopes.iter_mut().rev().find_map(|s| s.get_mut(&sym))
     }
+    fn fields_for(&self, sym: Symbol, args: &[Type]) -> Option<Vec<(Symbol, Type)>> {
+        let (params, fields) = self.structs.get(&sym)?;
+        if params.is_empty() || args.is_empty() {
+            return Some(fields.clone());
+        }
+        let map: HashMap<Symbol, Type> = params.iter().copied().zip(args.iter().cloned()).collect();
+        Some(
+            fields
+                .iter()
+                .map(|(f, t)| (*f, t.substitute(&map)))
+                .collect(),
+        )
+    }
     fn variants_for(&self, sym: Symbol, args: &[Type]) -> Option<Vec<(Symbol, Vec<Type>)>> {
         let (params, variants) = self.enums.get(&sym)?;
         if params.is_empty() || args.is_empty() {
@@ -110,9 +132,8 @@ impl<'a> MoveChecker<'a> {
                 vs.iter()
                     .any(|(_, ftys)| ftys.iter().any(|t| self.is_owning(t)))
             }),
-            Type::Struct(s) => self
-                .structs
-                .get(s)
+            Type::Struct(s, args) => self
+                .fields_for(*s, args)
                 .map_or(false, |fs| fs.iter().any(|(_, t)| self.is_owning(t))),
             Type::Array(elem, _) => self.is_owning(elem),
             _ => false,
@@ -123,9 +144,9 @@ impl<'a> MoveChecker<'a> {
             return;
         }
         out.push(prefix.clone());
-        if let Type::Struct(s) = ty {
-            let fields = match self.structs.get(s) {
-                Some(f) => f.clone(),
+        if let Type::Struct(s, args) = ty {
+            let fields = match self.fields_for(*s, args) {
+                Some(f) => f,
                 None => return,
             };
             for (i, (_, fty)) in fields.iter().enumerate() {
@@ -141,12 +162,13 @@ impl<'a> MoveChecker<'a> {
             Expr::FieldAccess { object, field, .. } => {
                 let (sym, mut path) = self.place_path(object)?;
                 let sty = match self.types.get(&object.id())? {
-                    Type::Struct(s) => *s,
+                    Type::Struct(s,_) => *s,
                     _ => return None,
                 };
                 let idx = self
                     .structs
                     .get(&sty)?
+                    .1
                     .iter()
                     .position(|(n, _)| n == field)?;
                 path.push(idx as u32);
@@ -254,8 +276,14 @@ impl<'a> MoveChecker<'a> {
             });
         }
     }
-
+    fn read_field(&mut self, expr: &Expr, object: &Expr, span: Span) {
+        match self.place_path(expr) {
+            Some((sym, path)) => self.check_path_live(sym, &path, span, false),
+            None => self.read_place(object),
+        }
+    }
     fn check_function(&mut self, func: &Function) {
+        self.terminated = false;
         self.enter();
         self.cur_self = if func.self_param {
             func.params.first().map(|(s, _)| *s)
@@ -289,7 +317,10 @@ impl<'a> MoveChecker<'a> {
                 self.consume_expr(value);
                 self.mark_path_live(*name, &[]);
             }
-            Stmt::Return(expr, _) => self.consume_expr(expr),
+            Stmt::Return(expr, _) => {
+                self.consume_expr(expr);
+                self.terminated = true;
+            }
             Stmt::Expr(expr, span) => {
                 if self.expr_is_owning(expr) {
                     self.errors.push(LexoraError::Custom {
@@ -306,8 +337,7 @@ impl<'a> MoveChecker<'a> {
                 body,
                 span,
             } => {
-                self.consume_expr(condition);
-                self.check_loop(body, *span, None);
+                self.check_loop(Some(condition), body, *span, None);
             }
             Stmt::For {
                 var,
@@ -318,28 +348,56 @@ impl<'a> MoveChecker<'a> {
             } => {
                 self.consume_expr(from);
                 self.consume_expr(to);
-                self.check_loop(body, *span, Some(*var));
+                self.check_loop(None, body, *span, Some(*var));
             }
-            Stmt::AssignPlace { target, value, span } => {
-                match self.place_path(target) {
-                    Some((sym, path))
-                    if matches!(self.lookup(sym), Some(BindState::Owning { .. })) =>
-                        {
-                            self.check_assign_target(sym, &path, *span);
-                            self.consume_expr(value);
-                            self.mark_path_live(sym, &path);
-                        }
-                    _ => {
-                        self.read_place(target);
-                        self.consume_expr(value);
-                    }
+            Stmt::AssignPlace {
+                target,
+                value,
+                span,
+            } => match self.place_path(target) {
+                Some((sym, path)) if matches!(self.lookup(sym), Some(BindState::Owning { .. })) => {
+                    self.check_assign_target(sym, &path, *span);
+                    self.consume_expr(value);
+                    self.mark_path_live(sym, &path);
                 }
+                _ => {
+                    self.read_place(target);
+                    self.consume_expr(value);
+                }
+            },
+            Stmt::Break(_) => {
+                let st = self.scopes.clone();
+                if let Some(ctx) = self.loops.last_mut() {
+                    ctx.breaks.push(st);
+                }
+                self.terminated = true;
+            }
+            Stmt::Continue(_) => {
+                let st = self.scopes.clone();
+                if let Some(ctx) = self.loops.last_mut() {
+                    ctx.continues.push(st);
+                }
+                self.terminated = true;
             }
             Stmt::Error(_) => {}
         }
     }
-    fn check_loop(&mut self, body: &Block, span: Span, loop_var: Option<Symbol>) {
+    fn check_loop(
+        &mut self,
+        cond: Option<&Expr>,
+        body: &Block,
+        span: Span,
+        loop_var: Option<Symbol>,
+    ) {
         let entry = self.scopes.clone();
+        if let Some(c) = cond {
+            self.consume_expr(c);
+        }
+        self.loops.push(LoopCtx {
+            breaks: Vec::new(),
+            continues: Vec::new(),
+        });
+        self.terminated = false;
         self.enter();
         if let Some(v) = loop_var {
             self.bind(v, None);
@@ -351,29 +409,44 @@ impl<'a> MoveChecker<'a> {
             self.consume_expr(t);
         }
         self.exit();
-        let mut moved_outer = false;
-        for (i, scope) in entry.iter().enumerate() {
-            for (sym, st) in scope.iter() {
-                if let BindState::Owning { states, .. } = st {
-                    if states.iter().all(|s| *s == MoveState::Owned) {
-                        if let Some(BindState::Owning { states: s2, .. }) =
-                            self.scopes.get(i).and_then(|m| m.get(sym))
-                        {
-                            if s2.iter().any(|s| *s != MoveState::Owned) {
-                                moved_outer = true;
+        let ctx = self.loops.pop().unwrap();
+
+        let mut back: Vec<(Vec<HashMap<Symbol, BindState>>, bool)> =
+            vec![(self.scopes.clone(), self.terminated)];
+        for c in ctx.continues {
+            back.push((c, false));
+        }
+        if back.iter().any(|(_, t)| !*t) {
+            let back_state = join_paths(&back, &entry);
+            let mut moved_outer = false;
+            for (i, scope) in entry.iter().enumerate() {
+                for (sym, st) in scope.iter() {
+                    if let BindState::Owning { states, .. } = st {
+                        if states.iter().all(|s| *s == MoveState::Owned) {
+                            if let Some(BindState::Owning { states: s2, .. }) =
+                                back_state.get(i).and_then(|m| m.get(sym))
+                            {
+                                if s2.iter().any(|s| *s != MoveState::Owned) {
+                                    moved_outer = true;
+                                }
                             }
                         }
                     }
                 }
             }
+            if moved_outer {
+                self.errors.push(LexoraError::Custom{
+                    message: "dongu her turda ayni owning degeri tasiyor; deger ikinci turda gecersiz olur".to_string(),
+                    span,
+                });
+            }
         }
-        if moved_outer {
-            self.errors.push(LexoraError::Custom {
-                message: "dongu govdesinde owning deger disari tasinamaz".to_string(),
-                span,
-            });
+        let mut exits: Vec<(Vec<HashMap<Symbol, BindState>>, bool)> = vec![(entry.clone(), false)];
+        for b in ctx.breaks {
+            exits.push((b, false));
         }
-        self.scopes = entry;
+        self.terminated = false;
+        self.scopes = join_paths(&exits, &entry);
     }
     fn consume_expr(&mut self, expr: &Expr) {
         match expr {
@@ -410,7 +483,7 @@ impl<'a> MoveChecker<'a> {
             }
             Expr::Call { name, args, .. } => {
                 let fname = self.interner.resolve(*name);
-                if fname == "print" || fname == "len" {
+                if is_borrowing_builtin(fname) {
                     for arg in args.iter() {
                         if self.expr_is_owning(arg)
                             && !arg.is_place()
@@ -484,20 +557,22 @@ impl<'a> MoveChecker<'a> {
                 self.read_place(array);
                 self.consume_expr(index);
             }
-            Expr::FieldAccess { object, span, id,.. } => {
+            Expr::FieldAccess {
+                object, span, id, ..
+            } => {
                 self.check_place_base(object);
                 if !self.expr_is_owning(expr) {
-                    self.read_place(object);
+                    self.read_field(expr, object, *span);
                     return;
                 }
                 match self.place_path(expr) {
                     Some((sym, path))
-                    if matches!(self.lookup(sym), Some(BindState::Owning { .. })) =>
-                        {
-                            self.check_path_live(sym, &path, *span, true);
-                            self.mark_path_moved(sym, &path);
-                            self.moves.insert(*id, path);
-                        }
+                        if matches!(self.lookup(sym), Some(BindState::Owning { .. })) =>
+                    {
+                        self.check_path_live(sym, &path, *span, true);
+                        self.mark_path_moved(sym, &path);
+                        self.moves.insert(*id, path);
+                    }
                     Some((sym, _)) if Some(sym) == self.cur_self => {
                         self.errors.push(LexoraError::Custom {
                             message: "'self' alanlari tasinamaz (odunc alinan alicidan cikamaz); yerinde odunc alin".to_string(),
@@ -541,9 +616,10 @@ impl<'a> MoveChecker<'a> {
                     _ => Vec::new(),
                 };
                 let entry = self.scopes.clone();
-                let mut joined: Option<Vec<HashMap<Symbol, BindState>>> = None;
+                let mut paths: Vec<(Vec<HashMap<Symbol, BindState>>, bool)> = Vec::new();
                 for (pat, body) in arms.iter() {
                     self.scopes = entry.clone();
+                    self.terminated = false;
                     self.enter();
                     if let Pattern::Variant {
                         enum_name,
@@ -571,15 +647,11 @@ impl<'a> MoveChecker<'a> {
                         self.consume_expr(t);
                     }
                     self.exit();
-                    let after = self.scopes.clone();
-                    joined = Some(match joined {
-                        None => after,
-                        Some(j) => join_scopes(&j, &after),
-                    });
+                    paths.push((self.scopes.clone(), self.terminated));
                 }
-                if let Some(j) = joined {
-                    self.scopes = j;
-                }
+                let all_term = !paths.is_empty() && paths.iter().all(|(_, t)| *t);
+                self.scopes = join_paths(&paths, &entry);
+                self.terminated = all_term;
             }
             Expr::If {
                 condition,
@@ -589,6 +661,7 @@ impl<'a> MoveChecker<'a> {
             } => {
                 self.consume_expr(condition);
                 let entry = self.scopes.clone();
+                self.terminated = false;
                 self.enter();
                 for s in then_body.stmts.iter() {
                     self.check_stmt(s);
@@ -598,7 +671,9 @@ impl<'a> MoveChecker<'a> {
                 }
                 self.exit();
                 let after_then = self.scopes.clone();
+                let then_term = self.terminated;
                 self.scopes = entry.clone();
+                self.terminated = false;
                 if let Some(eb) = else_body {
                     self.enter();
                     for s in eb.stmts.iter() {
@@ -610,7 +685,10 @@ impl<'a> MoveChecker<'a> {
                     self.exit();
                 }
                 let after_else = self.scopes.clone();
-                self.scopes = join_scopes(&after_then, &after_else);
+                let else_term = self.terminated;
+                self.scopes =
+                    join_paths(&[(after_then, then_term), (after_else, else_term)], &entry);
+                self.terminated = then_term && else_term;
             }
             Expr::MethodCall { receiver, args, .. } => {
                 self.check_place_base(receiver);
@@ -642,16 +720,15 @@ impl<'a> MoveChecker<'a> {
             }
             Expr::FieldAccess { object, span, .. } => {
                 self.check_place_base(object);
-                match self.place_path(expr) {
-                    Some((sym, path)) => self.check_path_live(sym, &path, *span, false),
-                    None => self.read_place(object),
-                }
+                self.read_field(expr, object, *span);
             }
             other => self.consume_expr(other),
         }
     }
 }
-
+fn is_borrowing_builtin(name: &str) -> bool {
+    matches!(name, "print" | "len" | "clone")
+}
 fn is_comparison(op: &BinaryOperator) -> bool {
     matches!(
         op,
@@ -667,23 +744,17 @@ fn is_comparison(op: &BinaryOperator) -> bool {
 fn join_state(a: &BindState, b: &BindState) -> BindState {
     match (a, b) {
         (BindState::Owning { paths, states: sa }, BindState::Owning { states: sb, .. })
-        if sa.len() == sb.len() =>
-            {
-                BindState::Owning {
-                    paths: paths.clone(),
-                    states: sa
-                        .iter()
-                        .zip(sb.iter())
-                        .map(|(x, y)| {
-                            if x == y {
-                                *x
-                            } else {
-                                MoveState::MaybeMoved
-                            }
-                        })
-                        .collect(),
-                }
+            if sa.len() == sb.len() =>
+        {
+            BindState::Owning {
+                paths: paths.clone(),
+                states: sa
+                    .iter()
+                    .zip(sb.iter())
+                    .map(|(x, y)| if x == y { *x } else { MoveState::MaybeMoved })
+                    .collect(),
             }
+        }
         _ => a.clone(),
     }
 }
@@ -704,7 +775,22 @@ fn join_scopes(
         })
         .collect()
 }
-
+fn join_paths(
+    paths: &[(Vec<HashMap<Symbol, BindState>>, bool)],
+    fallback: &[HashMap<Symbol, BindState>],
+) -> Vec<HashMap<Symbol, BindState>> {
+    let mut out: Option<Vec<HashMap<Symbol, BindState>>> = None;
+    for (state, terminated) in paths {
+        if *terminated {
+            continue;
+        }
+        out = Some(match out {
+            None => state.clone(),
+            Some(j) => join_scopes(&j, state),
+        });
+    }
+    out.unwrap_or_else(|| fallback.to_vec())
+}
 fn collect_idents(expr: &Expr, out: &mut HashSet<Symbol>) {
     match expr {
         Expr::Identifier(sym, _, _) => {
@@ -796,7 +882,7 @@ fn collect_block_idents(block: &Block, out: &mut HashSet<Symbol>) {
                 collect_idents(to, out);
                 collect_block_idents(body, out);
             }
-            Stmt::Error(_) => {}
+            Stmt::Error(_) | Stmt::Break(_) | Stmt::Continue(_) => {}
         }
     }
     if let Some(t) = block.tail {

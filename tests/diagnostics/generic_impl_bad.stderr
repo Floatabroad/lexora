@@ -1,0 +1,36 @@
+error: 'Kutu' generic; impl basligi 'impl<T> Kutu<T>' seklinde yazilmali
+ --> tests/diagnostics/generic_impl_bad.lx:5:6
+  |
+5 | impl Kutu {
+  |      ^^^^
+error: 'Duz' generic degil; impl tip parametresi almaz
+ --> tests/diagnostics/generic_impl_bad.lx:8:9
+  |
+8 | impl<T> Duz {
+  |         ^^^
+error: 'Kutu' impl basliginda tip parametreleri birebir baglanmali (ornek: impl<T> Kutu<T>)
+  --> tests/diagnostics/generic_impl_bad.lx:11:9
+   |
+11 | impl<T> Kutu<i32> {
+   |         ^^^^
+error: 'Kutu' impl basliginda tip parametreleri birebir baglanmali (ornek: impl<T> Kutu<T>)
+  --> tests/diagnostics/generic_impl_bad.lx:14:12
+   |
+14 | impl<A, B> Kutu<A> {
+   |            ^^^^
+error: 'Kutu.yeni' generic tipte statik metot olamaz; statik metotlar yalnizca non-generic tiplere yazilir
+  --> tests/diagnostics/generic_impl_bad.lx:18:5
+   |
+18 |     fn yeni(x: T) -> Kutu<T> { return Kutu { v: x }; }
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: 'Kutu.e' kendi tip parametresini alamaz; metot generic'leri henuz yok
+  --> tests/diagnostics/generic_impl_bad.lx:19:5
+   |
+19 |     fn e<U>(self) -> i32 { return 0; }
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: zaten tanimli: Opt.f
+  --> tests/diagnostics/generic_impl_bad.lx:23:5
+   |
+23 |     fn f(self) -> i32 { return 1; }
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ yeniden tanimlandi
+error: 7 hata yuzunden durduruldu

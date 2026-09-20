@@ -1,0 +1,5 @@
+struct Bol<T> { v: T }
+
+impl<T> Bol<T> {
+    fn bir(self) -> i32 { return 1; }
+}

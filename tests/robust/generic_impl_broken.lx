@@ -1,0 +1,12 @@
+struct A<T> { v: T }
+impl< A<T> { fn f(self) -> i32 { 1 } }
+impl<T A<T> { fn g(self) -> i32 { 1 } }
+impl<T> A< { fn h(self) -> i32 { 1 } }
+impl<T> A<T { fn i(self) -> i32 { 1 } }
+impl<> A<> { fn j(self) -> i32 { 1 } }
+impl<T> A<T> { fn k(self) -> i32 { if self.v > 0 { 1 } else }
+impl<T> A<T> { fn l(self) -> i32 { return 1; }
+enum E<T> { X(T) }
+impl<T> E<T> { fn m(self) -> i32 { match self { } }
+fn saglam(a: i32) -> i32 { return a + 1; }
+fn main() -> i32 { return saglam(1); }

@@ -1,0 +1,24 @@
+struct Kutu<T> { v: T }
+struct Cift<A, B> { a: A, b: B }
+struct IcIce<T> { ic: Kutu<T>, n: i32 }
+enum Sarmal<T> { Var(T), Yok }
+struct Duz { n: i32 }
+
+impl Duz {
+    fn yeni(k: i32) -> Duz { return Duz { n: k }; }
+    fn oku(self) -> i32 { return self.n; }
+}
+
+fn kimlik<T>(x: T) -> T { return x; }
+
+fn main() -> i32 {
+    let d: Duz = Duz::yeni(7);
+    print(d.oku());
+    print(kimlik(3));
+    let s: Sarmal<i32> = Sarmal::Var(9);
+    match s {
+        Sarmal::Var(v) => print(v),
+        Sarmal::Yok => print(0)
+    }
+    return 0;
+}

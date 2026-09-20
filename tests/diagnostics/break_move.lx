@@ -1,0 +1,31 @@
+fn yut(s: String) -> i32 {
+    len(s)
+}
+
+fn break_sonrasi_kullan(c: i32) -> i32 {
+    let s: String = string("abc");
+    for i in 0..3 {
+        if i == c {
+            print(yut(s));
+            break;
+        }
+    }
+    print(len(s));
+    return 0;
+}
+
+fn continue_atlar(n: i32) -> i32 {
+    let s: String = string("xy");
+    for i in 0..n {
+        print(yut(s));
+        if i == 0 {
+            continue;
+        }
+        s = string("zz");
+    }
+    return 0;
+}
+
+fn main() -> i32 {
+    return 0;
+}

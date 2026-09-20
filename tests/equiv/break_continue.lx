@@ -1,0 +1,156 @@
+struct K {
+    ad: String,
+}
+
+enum D {
+    A,
+    B,
+    C,
+}
+
+fn yut(s: String) -> i32 {
+    len(s)
+}
+
+fn ilk_bolen(n: i32) -> i32 {
+    let sonuc: i32 = 0;
+    for d in 2..n {
+        if n / d * d == n {
+            sonuc = d;
+            break;
+        }
+    }
+    return sonuc;
+}
+
+fn tek_topla(n: i32) -> i32 {
+    let t: i32 = 0;
+    for i in 0..n {
+        if i / 2 * 2 == i {
+            continue;
+        }
+        t = t + i;
+    }
+    return t;
+}
+
+fn while_break(n: i32) -> i32 {
+    let i: i32 = 0;
+    while i < 1000 {
+        i = i + 1;
+        if i == n {
+            break;
+        }
+    }
+    return i;
+}
+
+fn while_continue(n: i32) -> i32 {
+    let i: i32 = 0;
+    let t: i32 = 0;
+    while i < n {
+        i = i + 1;
+        if i == 3 {
+            continue;
+        }
+        t = t + 1;
+    }
+    return t;
+}
+
+fn ic_ice() -> i32 {
+    let t: i32 = 0;
+    for i in 0..4 {
+        for j in 0..4 {
+            if j == 2 {
+                break;
+            }
+            t = t + 1;
+        }
+        if i == 2 {
+            break;
+        }
+    }
+    return t;
+}
+
+fn owning_break(n: i32) -> i32 {
+    let dis: K = K { ad: string("dis") };
+    for i in 0..6 {
+        let ic: K = K { ad: string("icerik") };
+        if i == n {
+            break;
+        }
+        print(len(ic.ad));
+    }
+    return len(dis.ad);
+}
+
+fn owning_continue(n: i32) -> i32 {
+    let t: i32 = 0;
+    for i in 0..5 {
+        let a: K = K { ad: string("aa") };
+        if i == n {
+            continue;
+        }
+        let b: K = K { ad: string("bbb") };
+        t = t + len(a.ad) + len(b.ad);
+    }
+    return t;
+}
+
+fn tasi_ve_cik(c: i32) -> i32 {
+    let s: String = string("tasinan");
+    let i: i32 = 0;
+    while i < 10 {
+        if i == c {
+            print(yut(s));
+            break;
+        }
+        i = i + 1;
+    }
+    return i;
+}
+
+fn dongude_yeniden(n: i32) -> i32 {
+    let s: String = string("a");
+    for i in 0..n {
+        print(yut(s));
+        s = string("bb");
+        if i == 0 {
+            continue;
+        }
+    }
+    return len(s);
+}
+
+fn match_kolu(d: D) -> i32 {
+    let t: i32 = 0;
+    for i in 0..5 {
+        match d {
+            D::A => { t = t + 1; }
+            D::B => { continue; }
+            D::C => { break; }
+        }
+        t = t + 10;
+    }
+    return t;
+}
+
+fn main() -> i32 {
+    print(ilk_bolen(91));
+    print(ilk_bolen(13));
+    print(tek_topla(10));
+    print(while_break(7));
+    print(while_break(5000));
+    print(while_continue(6));
+    print(ic_ice());
+    print(owning_break(3));
+    print(owning_continue(2));
+    print(tasi_ve_cik(4));
+    print(dongude_yeniden(3));
+    print(match_kolu(D::A));
+    print(match_kolu(D::B));
+    print(match_kolu(D::C));
+    return 0;
+}

@@ -1,0 +1,25 @@
+error: tasinmis deger kullanildi
+  --> tests/diagnostics/return_path_bad.lx:17:15
+   |
+17 |     print(len(s));
+   |               ^
+error: kosullu tasinmis olabilecek deger kullanildi
+  --> tests/diagnostics/return_path_bad.lx:26:15
+   |
+26 |     print(len(s));
+   |               ^
+error: kosullu tasinmis olabilecek deger kullanildi
+  --> tests/diagnostics/return_path_bad.lx:36:15
+   |
+36 |     print(len(s));
+   |               ^
+error: dongu her turda ayni owning degeri tasiyor; deger ikinci turda gecersiz olur
+  --> tests/diagnostics/return_path_bad.lx:43:5
+   |
+43 |       while i < t {
+   | ______^
+44 | |         print(yut(s));
+45 | |         i = i + 1;
+46 | |     }
+   | |_____^
+error: 4 hata yuzunden durduruldu

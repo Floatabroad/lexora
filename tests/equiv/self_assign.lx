@@ -1,0 +1,94 @@
+struct K {
+    ad: String,
+}
+
+struct I {
+    ad: String,
+}
+
+struct O {
+    ic: I,
+    n: i32,
+}
+
+struct P {
+    x: i32,
+}
+
+enum M {
+    S(String),
+    N,
+}
+
+impl K {
+    fn degistir(self) -> i32 {
+        self = K { ad: string("k-yeni") };
+        0
+    }
+    fn goster(self) -> i32 {
+        print(self.ad);
+        0
+    }
+}
+
+impl O {
+    fn butun(self) -> i32 {
+        self = O { ic: I { ad: string("o-yeni") }, n: 2 };
+        0
+    }
+    fn alan(self) -> i32 {
+        self.ic.ad = string("o-alan");
+        0
+    }
+    fn goster(self) -> i32 {
+        print(self.ic.ad);
+        print(self.n);
+        0
+    }
+}
+
+impl P {
+    fn sifirla(self) -> i32 {
+        self = P { x: 99 };
+        0
+    }
+}
+
+impl M {
+    fn bosalt(self) -> i32 {
+        self = M::N;
+        0
+    }
+}
+
+fn main() -> i32 {
+    let k: K = K { ad: string("k-eski") };
+    k.goster();
+    k.degistir();
+    k.goster();
+
+    let o: O = O { ic: I { ad: string("o-eski") }, n: 1 };
+    o.goster();
+    o.butun();
+    o.goster();
+    o.alan();
+    o.goster();
+
+    let p: P = P { x: 1 };
+    p.sifirla();
+    print(p.x);
+
+    let m: M = M::S(string("m-icerik"));
+    m.bosalt();
+    match m {
+        M::S(v) => print(v),
+        M::N => print("m-bos"),
+    }
+
+    let m2: M = M::S(string("m2-icerik"));
+    match m2 {
+        M::S(v) => print(v),
+        M::N => print("m2-bos"),
+    }
+    0
+}

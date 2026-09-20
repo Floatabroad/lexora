@@ -1,0 +1,25 @@
+struct K<T> { v: T }
+
+impl<T> K<T> {
+    fn a0(self) -> i32 { return 0; }
+}
+
+impl<T> K<T> {
+    fn a1(self) -> i32 { return self.a0() + 1; }
+    fn a2(self) -> i32 { return self.a1() + 1; }
+    fn a3(self) -> i32 { return self.a2() + 1; }
+    fn dogru(self, n: i32) -> i32 {
+        if n <= 0 { return self.a3(); }
+        return self.dogru(n - 1);
+    }
+}
+
+fn main() -> i32 {
+    let a: K<i32> = K { v: 1 };
+    let b: K<String> = K { v: string("x") };
+    let c: K<bool> = K { v: true };
+    print(a.dogru(200));
+    print(b.dogru(200));
+    print(c.dogru(200));
+    return 0;
+}

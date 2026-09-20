@@ -80,6 +80,9 @@ fn main() {
             &checker.instances,
             &checker.fn_instances,
             &checker.call_targs,
+            &checker.static_calls,
+            &checker.struct_instances,
+            &checker.method_instances,
         ),
         "inkwell" => run_inkwell(
             &interner,
@@ -92,6 +95,9 @@ fn main() {
             &checker.instances,
             &checker.fn_instances,
             &checker.call_targs,
+            &checker.static_calls,
+            &checker.struct_instances,
+            &checker.method_instances,
         ),
         other => {
             eprintln!("bilinmeyen backend: '{}' (string-ir veya inkwell)", other);
@@ -244,6 +250,9 @@ fn run_string_ir(
     instances: &HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>,
     fn_instances: &HashMap<(Symbol, Vec<Type>), (Vec<Type>, Type)>,
     call_targs: &HashMap<ExprId, Vec<Type>>,
+    static_calls: &HashMap<ExprId, Symbol>,
+    struct_instances: &HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Type)>>,
+    method_instances: &HashMap<(Symbol, Vec<Type>, Symbol), (Vec<Type>, Type)>,
 ) {
     use lexora::backend::string_ir::builder::IrBuilder;
     use lexora::backend::string_ir::codegen::CodeGen;
@@ -255,6 +264,9 @@ fn run_string_ir(
         instances,
         fn_instances,
         call_targs,
+        static_calls,
+        struct_instances,
+        method_instances,
     );
     let ir = match codegen.gen_program(program) {
         Ok(s) => s,
@@ -282,6 +294,9 @@ fn run_inkwell(
     instances: &HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>,
     fn_instances: &HashMap<(Symbol, Vec<Type>), (Vec<Type>, Type)>,
     call_targs: &HashMap<ExprId, Vec<Type>>,
+    static_calls: &HashMap<ExprId, Symbol>,
+    struct_instances: &HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Type)>>,
+    method_instances: &HashMap<(Symbol, Vec<Type>, Symbol), (Vec<Type>, Type)>,
 ) {
     use inkwell::context::Context;
     use lexora::backend::inkwell::codegen::CodeGen;
@@ -299,6 +314,9 @@ fn run_inkwell(
         instances,
         fn_instances,
         call_targs,
+        static_calls,
+       struct_instances,
+       method_instances
     );
     if let Err(e) = codegen.compile(program) {
         eprintln!(
@@ -375,6 +393,9 @@ fn run_inkwell(
     _instances: &HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>,
     _fn_instances: &HashMap<(Symbol, Vec<Type>), (Vec<Type>, Type)>,
     _call_targs: &HashMap<ExprId, Vec<Type>>,
+    _static_calls: &HashMap<ExprId, Symbol>,
+    _struct_instances: &HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Type)>>,
+    _method_instances: &HashMap<(Symbol, Vec<Type>, Symbol), (Vec<Type>, Type)>,
 ) {
     eprintln!("inkwell backend bu binary'de derlenmemis; `cargo run --features inkwell` ile derle");
     std::process::exit(1);

@@ -1,0 +1,91 @@
+import "../equiv_lib/static_lib.lx";
+
+struct P { x: i32, y: i32 }
+struct S { ad: String, n: i32 }
+enum E { A(i32), B }
+enum M { S(String), N }
+enum Result<T, E> { Ok(T), Err(E) }
+
+impl P {
+    fn yeni(a: i32, b: i32) -> P { P { x: a, y: b } }
+    fn birim() -> P { P::yeni(1, 1) }
+    fn topla(self) -> i32 { self.x + self.y }
+}
+
+impl E {
+    fn kur(v: i32) -> E { E::A(v) }
+    fn kod(self) -> i32 { match self { E::A(v) => v, E::B => 0 } }
+}
+
+impl M {
+    fn kur(t: str) -> M { M::S(string(t)) }
+}
+
+impl S {
+    fn yeni(t: str, k: i32) -> S { S { ad: string(t), n: k } }
+    fn yut(a: String) -> i32 { len(a) }
+    fn boxlu(v: i32) -> Box<i32> { box v }
+    fn geri(k: i32) -> Result<i32, String> {
+        if k < 0 {
+            return Result::Err(string("negatif"));
+        }
+        return Result::Ok(k * 2);
+    }
+    fn zincir(k: i32) -> Result<i32, String> {
+        let v: i32 = S::geri(k)?;
+        return Result::Ok(v + 1);
+    }
+    fn fakt(k: i32) -> i32 {
+        if k <= 1 {
+            return 1;
+        }
+        return k * S::fakt(k - 1);
+    }
+}
+
+fn yeni(a: i32) -> i32 { a * 2 }
+fn kimlik<T>(x: T) -> T { x }
+fn al(s: S) -> i32 { len(s.ad) + s.n }
+
+fn main() -> i32 {
+    let p: P = P::yeni(3, 4);
+    print(p.topla());
+    print(P::birim().topla());
+    print(E::kur(7).kod());
+    print(E::B.kod());
+    print(yeni(21));
+
+    let s: S = S::yeni("abcd", 5);
+    print(al(s));
+    let t: String = string("xyz");
+    print(S::yut(t));
+    let b: Box<i32> = S::boxlu(9);
+    print(*b);
+    print(al(S::yeni("ef", 1)));
+    print(S::fakt(6));
+
+    match S::zincir(3) {
+        Result::Ok(v) => print(v),
+        Result::Err(e) => print(e)
+    }
+    match S::zincir(-1) {
+        Result::Ok(v) => print(v),
+        Result::Err(e) => print(e)
+    }
+
+    let m: M = M::kur("mno");
+    match m {
+        M::S(w) => print(len(w)),
+        M::N => print(0)
+    }
+
+    print(Sayac::sifir().oku());
+    print(Sayac::kur(41).oku());
+    let c: Sayac = kimlik(Sayac::kur(12));
+    print(c.oku());
+    match Renk::varsayilan() {
+        Renk::Kirmizi => print(1),
+        Renk::Mavi => print(2)
+    }
+    return 0;
+}

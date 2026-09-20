@@ -1,0 +1,7 @@
+fn yut(s: String) -> bool { print(s); true }
+fn f(s: String) -> i32 {
+    while yut(s { print(1); }
+    while yut(s) { let q: i32 = ; }
+    0
+}
+fn main() -> i32 { 0 }

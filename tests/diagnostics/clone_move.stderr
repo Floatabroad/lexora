@@ -1,0 +1,16 @@
+error: tasinmis deger kullanildi
+ --> tests/diagnostics/clone_move.lx:6:27
+  |
+6 |     let b: String = clone(a);
+  |                           ^
+error: owning gecici deger odunc alan cagriya verilemez; once bir degiskene baglayin
+ --> tests/diagnostics/clone_move.lx:8:32
+  |
+8 |     let c: Box<String> = clone(box string("y"));
+  |                                ^^^^^^^^^^^^^^^
+error: owning deger bir degiskene baglanmali (sahipsiz kalamaz)
+  --> tests/diagnostics/clone_move.lx:10:5
+   |
+10 |     clone(d);
+   |     ^^^^^^^^^
+error: 3 hata yuzunden durduruldu

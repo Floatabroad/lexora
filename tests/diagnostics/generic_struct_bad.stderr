@@ -1,0 +1,52 @@
+error: 'Kutu' 1 tip parametresi bekliyor, 2 verildi
+ --> tests/diagnostics/generic_struct_bad.lx:6:11
+  |
+6 | fn cok(k: Kutu<i32, bool>) -> i32 { return 0; }
+  |           ^^^^^^^^^^^^^^^
+error: 'Kutu' 1 tip parametresi bekliyor, 0 verildi
+ --> tests/diagnostics/generic_struct_bad.lx:7:13
+  |
+7 | fn eksik(k: Kutu) -> i32 { return 0; }
+  |             ^^^^
+error: 'Duz' generic degil, tip argumani almaz
+ --> tests/diagnostics/generic_struct_bad.lx:8:11
+  |
+8 | fn duz(d: Duz<i32>) -> i32 { return 0; }
+  |           ^^^^^^^^
+error: tip uyusmazligi: beklenen i32, bulunan bool
+  --> tests/diagnostics/generic_struct_bad.lx:11:24
+   |
+11 |     let a: Kutu<i32> = Kutu { v: true };
+   |                        ^^^^^^^^^^^^^^^^ bu ifade `bool` tipinde
+   |
+   = help: beklenen tip: `i32`
+error: 'Cift' struct'i icin eksik alan: 'b'
+  --> tests/diagnostics/generic_struct_bad.lx:12:30
+   |
+12 |     let b: Cift<i32, bool> = Cift { a: 1 };
+   |                              ^^^^^^^^^^^^^
+error: tanimsiz degisken: w
+  --> tests/diagnostics/generic_struct_bad.lx:13:24
+   |
+13 |     let c: Kutu<i32> = Kutu { v: 1, w: 2 };
+   |                        ^^^^^^^^^^^^^^^^^^^ bu kapsamda tanimli degil
+   |
+   = help: bunu mu demek istediniz: `v`?
+error: 'Bos' icin 'T' tip parametresi cikarilamiyor; alan degerlerinden ya da beklenen tipten belirlenemedi
+  --> tests/diagnostics/generic_struct_bad.lx:14:13
+   |
+14 |     let d = Bos { n: 1 };
+   |             ^^^^^^^^^^^^
+error: tip uyusmazligi: beklenen Kutu<i64>, bulunan Kutu<i32>
+  --> tests/diagnostics/generic_struct_bad.lx:15:5
+   |
+15 |     let e: Kutu<i64> = a;
+   |     ^^^^^^^^^^^^^^^^^^^^^ bu ifade `Kutu<i32>` tipinde
+   |
+   = help: beklenen tip: `Kutu<i64>`
+error: tanimsiz tip 'Yoktur'
+  --> tests/diagnostics/generic_struct_bad.lx:16:12
+   |
+16 |     let f: Kutu<Yoktur> = Kutu { v: 1 };
+   |            ^^^^^^^^^^^^
+error: 9 hata yuzunden durduruldu

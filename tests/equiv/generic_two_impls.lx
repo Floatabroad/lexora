@@ -1,0 +1,45 @@
+import "../equiv_lib/generic_impl_lib.lx";
+
+struct K<T> { v: T }
+enum Se<T> { Var(T), Yok }
+
+impl<T> K<T> {
+    fn bir(self) -> i32 { return 1; }
+}
+
+impl<T> K<T> {
+    fn iki(self) -> i32 { return 2; }
+    fn uc(self) -> i32 { return self.bir() + self.iki(); }
+}
+
+impl<T> Bol<T> {
+    fn iki(self) -> i32 { return 2; }
+    fn uc(self) -> i32 { return self.bir() + self.iki(); }
+}
+
+impl<T> Se<T> {
+    fn kod(self) -> i32 { return 4; }
+}
+
+impl<T> Se<T> {
+    fn kod2(self) -> i32 { return self.kod() + 1; }
+}
+
+fn main() -> i32 {
+    let k: K<i32> = K { v: 5 };
+    print(k.bir());
+    print(k.iki());
+    print(k.uc());
+
+    let s: K<String> = K { v: string("x") };
+    print(s.uc());
+
+    let b: Bol<i32> = Bol { v: 1 };
+    print(b.bir());
+    print(b.iki());
+    print(b.uc());
+
+    let e: Se<i32> = Se::Var(9);
+    print(e.kod2());
+    return 0;
+}

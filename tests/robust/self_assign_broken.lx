@@ -1,0 +1,7 @@
+struct K { ad: String }
+impl K {
+    fn a(self) -> void { self = K { ad: }; }
+    fn b(self) -> void { self = ; }
+    fn c(self) -> void { self = K { ad: string("ok") }; }
+}
+fn main() -> i32 { 0 }

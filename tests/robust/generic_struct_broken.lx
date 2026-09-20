@@ -1,0 +1,12 @@
+struct A< { v: i32 }
+struct B<> { v: i32 }
+struct C<T { v: T }
+struct D<T,> { v: T }
+struct E<T, U { a: T, b: U }
+struct F<123> { v: i32 }
+struct G<T> { v: }
+struct H<T> { v: T
+impl<T> A<T> { fn f(self) -> i32 { 1 } }
+enum I<T> { X(T) }
+fn saglam(a: i32) -> i32 { return a + 1; }
+fn main() -> i32 { return saglam(1); }

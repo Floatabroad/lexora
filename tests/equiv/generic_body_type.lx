@@ -1,0 +1,48 @@
+enum Opt<T> { Var(T), Yok }
+struct W<T> { a: T }
+struct K<T> { v: T }
+
+impl<T> K<T> {
+    fn sar(self, x: T) -> i32 {
+        let o: Opt<T> = Opt::Var(x);
+        match o {
+            Opt::Var(_) => 1,
+            Opt::Yok => 0,
+        }
+    }
+    fn kutula(self, x: T) -> i32 {
+        let w: W<T> = W { a: x };
+        let w2: W<W<T>> = W { a: w };
+        return 2;
+    }
+    fn imza(self) -> Opt<T> { return Opt::<T>::Yok; }
+}
+
+fn genel<T>(x: T) -> i32 {
+    let o: Opt<T> = Opt::Var(x);
+    match o {
+        Opt::Var(_) => 3,
+        Opt::Yok => 0,
+    }
+}
+
+fn kutu_genel<T>(x: T) -> i32 {
+    let w: W<T> = W { a: x };
+    let w2: W<W<T>> = W { a: w };
+    return 4;
+}
+
+fn main() -> i32 {
+    let k: K<i32> = K { v: 5 };
+    print(k.sar(3));
+    print(k.kutula(4));
+    print(genel(7));
+    print(kutu_genel(8));
+
+    let s: K<String> = K { v: string("a") };
+    print(s.sar(string("b")));
+    print(s.kutula(string("c")));
+    print(genel(string("d")));
+    print(kutu_genel(string("e")));
+    return 0;
+}

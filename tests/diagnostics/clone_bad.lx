@@ -1,0 +1,20 @@
+struct K { ad: String, n: i32 }
+enum M { S(String), N }
+
+fn genel<T>(x: T) -> T {
+    return clone(x);
+}
+
+fn main() -> i32 {
+    let k: K = K { ad: string("a"), n: 1 };
+    let k2: K = clone(k);
+    let m: M = M::N;
+    let m2: M = clone(m);
+    let ka: [K; 2] = [K { ad: string("b"), n: 2 }, K { ad: string("c"), n: 3 }];
+    let ka2: [K; 2] = clone(ka);
+    let v: i32 = clone(1, 2);
+    let w: i32 = clone();
+    let z: i32 = clone(print(5));
+    let y: i32 = clonee(1);
+    return 0;
+}

@@ -1,0 +1,21 @@
+error: 'break' yalnizca dongu govdesinde kullanilabilir
+ --> tests/diagnostics/break_bad.lx:2:5
+  |
+2 |     break;
+  |     ^^^^^^
+error: 'continue' yalnizca dongu govdesinde kullanilabilir
+  --> tests/diagnostics/break_bad.lx:10:5
+   |
+10 |     continue;
+   |     ^^^^^^^^^
+error: 'break' yalnizca dongu govdesinde kullanilabilir
+  --> tests/diagnostics/break_bad.lx:20:5
+   |
+20 |     break;
+   |     ^^^^^^
+error: 'continue' yalnizca dongu govdesinde kullanilabilir
+  --> tests/diagnostics/break_bad.lx:25:5
+   |
+25 |     continue;
+   |     ^^^^^^^^^
+error: 4 hata yuzunden durduruldu

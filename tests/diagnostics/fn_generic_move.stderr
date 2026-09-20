@@ -8,7 +8,7 @@ error: tasinmis deger tekrar kullanildi
   |
 6 |     return [x, x];
   |                ^
-error: dongu govdesinde owning deger disari tasinamaz
+error: dongu her turda ayni owning degeri tasiyor; deger ikinci turda gecersiz olur
   --> tests/diagnostics/fn_generic_move.lx:10:5
    |
 10 |       for i in 0..2 {

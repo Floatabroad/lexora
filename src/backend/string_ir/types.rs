@@ -1,4 +1,3 @@
-use crate::symbol::Symbol;
 #[derive(Debug, Clone, PartialEq)]
 pub enum LlvmType {
     I1,
@@ -9,7 +8,7 @@ pub enum LlvmType {
     Ptr,
     Void,
     Array(Box<LlvmType>, usize),
-    Struct(Symbol),
+    Struct(String),
     Enum(String),
 }
 
@@ -25,7 +24,7 @@ impl LlvmType {
             LlvmType::Ptr => "ptr".to_string(),
             LlvmType::Void => "void".to_string(),
             LlvmType::Array(t, n) => format!("[{} x {}]", n, t.to_ir_str()),
-            LlvmType::Struct(s) => format!("%struct.{}", s.0),
+            LlvmType::Struct(s) => format!("%struct.{}", s),
             LlvmType::Enum(e) => format!("%enum.{}", e),
         }
     }

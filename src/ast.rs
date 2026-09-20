@@ -159,7 +159,8 @@ pub enum Stmt<'arena> {
         value: Expr<'arena>,
         span: Span,
     },
-
+    Break(Span),
+    Continue(Span),
     Error(Span),
 }
 
@@ -173,7 +174,7 @@ pub enum Type {
     Void,
     Str,
     Array(Box<Type>, usize),
-    Struct(Symbol),
+    Struct(Symbol, Vec<Type>),
     Box(Box<Type>),
     String,
     Error,
@@ -188,6 +189,9 @@ impl Type {
             Type::Array(elem, n) => Type::Array(Box::new(elem.substitute(map)), *n),
             Type::Box(inner) => Type::Box(Box::new(inner.substitute(map))),
             Type::Enum(s, args) => Type::Enum(*s, args.iter().map(|t| t.substitute(map)).collect()),
+            Type::Struct(s, args) => {
+                Type::Struct(*s, args.iter().map(|t| t.substitute(map)).collect())
+            }
             other => other.clone(),
         }
     }
@@ -203,7 +207,14 @@ impl Type {
             Type::String => "string".to_string(),
             Type::Box(inner) => format!("box.{}", inner.mangle()),
             Type::Array(elem, n) => format!("arr{}.{}", n, elem.mangle()),
-            Type::Struct(s) => format!("s{}", s.0),
+            Type::Struct(s, args) => {
+                let mut out = format!("s{}", s.0);
+                for a in args {
+                    out.push('.');
+                    out.push_str(&a.mangle());
+                }
+                out
+            }
             Type::Enum(s, args) => {
                 let mut out = format!("e{}", s.0);
                 for a in args {
@@ -240,6 +251,7 @@ pub struct Function<'arena> {
 #[derive(Debug, Clone)]
 pub struct StructDef {
     pub name: Symbol,
+    pub params: Vec<Symbol>,
     pub fields: Vec<(Symbol, Type)>,
     pub field_spans: Vec<Span>,
     pub span: Span,
@@ -259,6 +271,8 @@ pub struct ImplBlock<'arena> {
     pub type_span: Span,
     pub methods: Vec<Function<'arena>>,
     pub span: Span,
+    pub params: Vec<Symbol>,
+    pub type_args: Vec<Type>,
 }
 
 #[derive(Debug, Clone)]
@@ -366,6 +380,8 @@ impl<'arena> Stmt<'arena> {
             Stmt::For { span, .. } => *span,
             Stmt::AssignPlace { span, .. } => *span,
 
+            Stmt::Break(span) => *span,
+            Stmt::Continue(span) => *span,
             Stmt::Error(span) => *span,
         }
     }

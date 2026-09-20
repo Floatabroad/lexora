@@ -1,0 +1,60 @@
+struct Kutu<T> { v: T }
+struct Cift<A, B> { a: A, b: B }
+struct Sayac<T> { v: T, n: i32 }
+struct Duz { n: i32 }
+
+impl<T> Kutu<T> {
+    fn ayarla(self, x: T) -> void { self.v = x; }
+    fn sabit(self) -> i32 { return 42; }
+}
+
+impl<A, B> Cift<A, B> {
+    fn ilk_yaz(self, x: A) -> void { self.a = x; }
+    fn kod(self) -> i32 { return 3; }
+}
+
+impl<T> Sayac<T> {
+    fn artir(self) -> void { self.n = self.n + 1; }
+    fn oku_n(self) -> i32 { return self.n; }
+    fn kur(self, x: T) -> i32 { self.v = x; return self.n; }
+}
+
+impl Duz {
+    fn oku(self) -> i32 { return self.n; }
+    fn yeni(k: i32) -> Duz { return Duz { n: k }; }
+}
+
+fn main() -> i32 {
+    let a: Kutu<i32> = Kutu { v: 5 };
+    print(a.v);
+    a.ayarla(9);
+    print(a.v);
+    print(a.sabit());
+
+    let b: Kutu<i64> = Kutu { v: 9000000000 };
+    print(b.v);
+    b.ayarla(7 as i64);
+    print(b.v);
+
+    let c: Cift<i32, bool> = Cift { a: 7, b: true };
+    c.ilk_yaz(11);
+    print(c.a);
+    print(c.b);
+    print(c.kod());
+
+    let s: Sayac<i32> = Sayac { v: 1, n: 10 };
+    s.artir();
+    print(s.oku_n());
+    print(s.kur(7));
+    print(s.v);
+
+    let t: Sayac<String> = Sayac { v: string("eski"), n: 3 };
+    t.artir();
+    print(t.oku_n());
+    print(t.kur(string("yeni")));
+    print(t.v);
+
+    let d: Duz = Duz::yeni(21);
+    print(d.oku());
+    return 0;
+}

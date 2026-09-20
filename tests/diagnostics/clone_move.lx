@@ -1,0 +1,12 @@
+fn yut(s: String) -> i32 { return len(s); }
+
+fn main() -> i32 {
+    let a: String = string("x");
+    print(yut(a));
+    let b: String = clone(a);
+
+    let c: Box<String> = clone(box string("y"));
+    let d: String = clone(string("z") + "w");
+    clone(d);
+    return 0;
+}

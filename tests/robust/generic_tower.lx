@@ -1,0 +1,15 @@
+struct W<T> { a: T }
+struct K<T> { v: T }
+
+impl<T> K<T> {
+    fn m(self) -> i32 {
+        let x: K<W<T>> = K { v: W { a: self.v } };
+        return x.m();
+    }
+}
+
+fn main() -> i32 {
+    let k: K<i32> = K { v: 1 };
+    print(k.m());
+    return 0;
+}

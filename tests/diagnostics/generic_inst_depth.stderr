@@ -1,0 +1,6 @@
+error: somutlama sinirina ulasildi (sinir 64): generic bir govde kendi tipini buyuterek sonsuz somutluyor
+ --> tests/diagnostics/generic_inst_depth.lx:6:16
+  |
+6 |         let x: K<W<T>> = K { v: W { a: self.v } };
+  |                ^^^^^^^
+error: 1 hata yuzunden durduruldu

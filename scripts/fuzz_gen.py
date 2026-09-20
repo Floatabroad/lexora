@@ -3,6 +3,55 @@ import sys
 
 I32, I64, BOOL, STR = "i32", "i64", "bool", "str"
 SCALARS = [I32, I64, BOOL]
+KEYWORDS = {
+    "let", "fn", "return", "if", "else", "true", "false", "while", "for", "in",
+    "and", "or", "not", "as", "import", "struct", "box", "enum", "match", "impl",
+    "self", "i32", "i64", "f32", "f64", "bool", "void", "str", "String", "print",
+    "string", "len",
+}
+OWN_PREAMBLE = """struct OwnBox { ad: String }
+
+struct PartK { ad: String, n: i32, m: i32 }
+
+struct GKutu<T> { v: T }
+
+struct GCift<A, B> { a: A, b: B }
+
+enum GOpt<T> { Var(T), Yok }
+
+impl<T> GKutu<T> {
+    fn ayarla(self, x: T) -> void { self.v = x; }
+    fn sabit(self) -> i32 { return 7; }
+}
+
+impl<T> GKutu<T> {
+    fn iki_sabit(self) -> i32 { return self.sabit() + self.sabit(); }
+    fn sar(self, x: T) -> i32 {
+        let o: GOpt<T> = GOpt::Var(x);
+        match o {
+            GOpt::Var(_) => 1,
+            GOpt::Yok => 0,
+        }
+    }
+}
+
+impl<A, B> GCift<A, B> {
+    fn ilk_yaz(self, x: A) -> void { self.a = x; }
+    fn kod(self) -> i32 { return 5; }
+}
+
+impl<A, B> GCift<A, B> {
+    fn kod2(self) -> i32 { return self.kod() + 1; }
+}
+
+fn iki_kat(v: i32) -> i32 { v / 2 }
+
+impl OwnBox {
+    fn yenile(self, s: str) -> void { self = OwnBox { ad: string(s) }; }
+    fn koy(self, s: str) -> void { self.ad = string(s); }
+    fn goster(self) -> void { print(self.ad); }
+}
+"""
 
 
 class Gen:
@@ -13,12 +62,26 @@ class Gen:
         self.fns = []
         self.methods = []
         self.setters = {}
+        self.ctors = {}
         self.loopvars = set()
         self.n = 0
 
+    def mk_struct(self, sname, fields, env, depth):
+        init = ", ".join(f"{n}: {self.expr(t, env, depth)}" for n, t in fields)
+        lit = f"{sname} {{ {init} }}"
+        ctor = self.ctors.get(sname)
+        if ctor is None or self.rng.random() < 0.5:
+            return lit
+        args = ", ".join(self.expr(t, env, depth) for _, t in fields)
+        return f"{sname}::{ctor}({args})"
+
     def fresh(self, p="v"):
         self.n += 1
-        return f"{p}{self.n}"
+        name = f"{p}{self.n}"
+        while name in KEYWORDS:
+            self.n += 1
+            name = f"{p}{self.n}"
+        return name
 
     def lit(self, ty):
         r = self.rng
@@ -119,10 +182,8 @@ class Gen:
                     if fty == ty:
 
                         def fld(sname=sname, fields=fields, fn_=fn_):
-                            init = ", ".join(
-                                f"{n}: {self.expr(t, env, depth-1)}" for n, t in fields
-                            )
-                            return f"({sname} {{ {init} }}).{fn_}"
+                            base = self.mk_struct(sname, fields, env, depth - 1)
+                            return f"({base}).{fn_}"
 
                         cands.append(fld)
             for sname, mname, ptys, mret in self.methods:
@@ -130,11 +191,9 @@ class Gen:
 
                     def meth(sname=sname, mname=mname, ptys=ptys):
                         fields = dict(self.structs)[sname]
-                        init = ", ".join(
-                            f"{n}: {self.expr(t, env, depth-1)}" for n, t in fields
-                        )
+                        base = self.mk_struct(sname, fields, env, depth - 1)
                         args = ", ".join(self.expr(t, env, depth - 1) for t in ptys)
-                        return f"({sname} {{ {init} }}).{mname}({args})"
+                        return f"({base}).{mname}({args})"
 
                     cands.append(meth)
             if ty == I32:
@@ -155,7 +214,7 @@ class Gen:
         out = []
         env = dict(env)
         for _ in range(budget):
-            k = r.randint(0, 10)
+            k = r.randint(0, 16)
             if k <= 2:
                 ty = r.choice(SCALARS)
                 name = self.fresh()
@@ -213,7 +272,7 @@ class Gen:
             elif k == 8:
                 sv = self.fresh("s")
                 out.append(f"{pad}let {sv}: String = string({self.lit(STR)});")
-                choice = r.randint(0, 4)
+                choice = r.randint(0, 5)
                 if choice == 4:
                     out.append(f"{pad}{sv} = string({self.lit(STR)});")
                     out.append(f"{pad}print({sv});")
@@ -228,15 +287,56 @@ class Gen:
                     bv = self.fresh("s")
                     out.append(f"{pad}let {bv}: String = {sv} + {self.lit(STR)};")
                     out.append(f"{pad}print({bv});")
+                elif choice == 5:
+                    cv = self.fresh("cs")
+                    out.append(f"{pad}let {cv}: String = clone({sv});")
+                    out.append(f"{pad}print({sv});")
+                    out.append(f"{pad}print({cv});")
+                    out.append(f"{pad}{sv} = {sv} + {self.lit(STR)};")
+                    out.append(f"{pad}print({sv});")
+                    out.append(f"{pad}print(len({cv}));")
                 else:
                     bx = self.fresh("bx")
                     out.append(f"{pad}let {bx}: Box<i32> = box {self.expr(I32, env, 1)};")
                     out.append(f"{pad}print(*{bx});")
+            elif k == 16:
+                gv = self.fresh("gk")
+                ty = r.choice([I32, I64, BOOL, STR])
+                out.append(
+                    f"{pad}let {gv}: GKutu<{ty}> = GKutu {{ v: {self.expr(ty, env, 1)} }};"
+                )
+                out.append(f"{pad}print({gv}.v);")
+                if r.random() < 0.6:
+                    out.append(f"{pad}{gv}.ayarla({self.expr(ty, env, 1)});")
+                    out.append(f"{pad}print({gv}.v);")
+                    out.append(f"{pad}print({gv}.sabit());")
+                out.append(f"{pad}print({gv}.iki_sabit());")
+                out.append(f"{pad}print({gv}.sar({self.expr(ty, env, 1)}));")
+                if r.random() < 0.5:
+                    gc = self.fresh("gc")
+                    t2 = r.choice([I32, BOOL])
+                    out.append(
+                        f"{pad}let {gc}: GCift<{ty}, {t2}> = GCift {{"
+                        f" a: {self.expr(ty, env, 1)}, b: {self.expr(t2, env, 1)} }};"
+                    )
+                    out.append(f"{pad}{gc}.ilk_yaz({self.expr(ty, env, 1)});")
+                    out.append(f"{pad}print({gc}.a);")
+                    out.append(f"{pad}print({gc}.b);")
+                    out.append(f"{pad}print({gc}.kod2());")
+                else:
+                    gs = self.fresh("gs")
+                    out.append(
+                        f"{pad}let {gs}: GKutu<String> = GKutu {{ v: string({self.lit(STR)}) }};"
+                    )
+                    out.append(f"{pad}print({gs}.v);")
+                    out.append(f"{pad}print(len({gs}.v));")
+                    out.append(f"{pad}print({gs}.iki_sabit());")
+                    out.append(f"{pad}print({gs}.sar(string({self.lit(STR)})));")
             elif k == 9 and self.structs:
                 sname, fields = r.choice(self.structs)
                 sv = self.fresh("sv")
-                init = ", ".join(f"{n}: {self.expr(t, env, depth-1)}" for n, t in fields)
-                out.append(f"{pad}let {sv}: {sname} = {sname} {{ {init} }};")
+                base = self.mk_struct(sname, fields, env, depth - 1)
+                out.append(f"{pad}let {sv}: {sname} = {base};")
                 setter, sfield, sty = self.setters[sname]
                 out.append(f"{pad}{sv}.{setter}({self.expr(sty, env, depth-1)});")
                 out.append(f"{pad}print({sv}.{sfield});")
@@ -245,6 +345,101 @@ class Gen:
                     _, mn, ptys, _ = r.choice(own)
                     args = ", ".join(self.expr(t, env, depth - 1) for t in ptys)
                     out.append(f"{pad}print({sv}.{mn}({args}));")
+            elif k == 11:
+                ob = self.fresh("ob")
+                out.append(f"{pad}let {ob}: OwnBox = OwnBox {{ ad: string({self.lit(STR)}) }};")
+                out.append(f"{pad}{ob}.goster();")
+                for _ in range(r.randint(1, 3)):
+                    if r.random() < 0.5:
+                        out.append(f"{pad}{ob}.yenile({self.lit(STR)});")
+                    else:
+                        out.append(f"{pad}{ob}.koy({self.lit(STR)});")
+                    out.append(f"{pad}{ob}.goster();")
+            elif k == 12:
+                rs = self.fresh("rs")
+                rn = self.fresh("rn")
+                out.append(f"{pad}let {rs}: String = string({self.lit(STR)});")
+                out.append(f"{pad}let {rn}: i32 = 0;")
+                out.append(f"{pad}while {rn} < {r.randint(1, 3)} {{")
+                out.append(f"{pad}    print({rs});")
+                out.append(f"{pad}    {rs} = {rs} + {self.lit(STR)};")
+                out.append(f"{pad}    {rn} = {rn} + 1;")
+                out.append(f"{pad}}}")
+                out.append(f"{pad}print({rs});")
+            elif k == 13:
+                ec = self.fresh("ec")
+                out.append(f"{pad}let {ec}: i32 = {self.expr(I32, env, depth)};")
+                e2 = dict(env)
+                e2[ec] = I32
+                levels = r.randint(2, 5)
+                if r.random() < 0.5:
+                    er = self.fresh("er")
+                    out.append(f"{pad}let {er}: i32 = 0;")
+                    out.append(f"{pad}if {ec} == 0 {{ {er} = 100; }}")
+                    for i in range(1, levels):
+                        out.append(f"{pad}else if {ec} == {i} {{ {er} = {100 + i}; }}")
+                    out.append(f"{pad}else {{ {er} = -1; }}")
+                    out.append(f"{pad}print({er});")
+                    env[ec] = I32
+                    env[er] = I32
+                else:
+                    ev = self.fresh("ev")
+                    head = f"{pad}let {ev}: i32 = if {ec} == 0 {{ 100 }}"
+                    for i in range(1, levels):
+                        head += f" else if {ec} == {i} {{ {100 + i} }}"
+                    head += " else { -1 };"
+                    out.append(head)
+                    out.append(f"{pad}print({ev});")
+                    env[ec] = I32
+                    env[ev] = I32
+            elif k == 15:
+                bt = self.fresh("bt")
+                bi = self.fresh("bi")
+                lim = r.randint(2, 5)
+                cut = r.randint(0, lim)
+                out.append(f"{pad}let {bt}: i32 = 0;")
+                if r.random() < 0.5:
+                    out.append(f"{pad}for {bi} in 0..{lim} {{")
+                    if r.random() < 0.5:
+                        out.append(f"{pad}    if {bi} == {cut} {{ break; }}")
+                    else:
+                        out.append(f"{pad}    if {bi} == {cut} {{ continue; }}")
+                    out.append(f"{pad}    {bt} = {bt} + 1;")
+                    out.append(f"{pad}}}")
+                else:
+                    bw = self.fresh("bw")
+                    out.append(f"{pad}let {bw}: i32 = 0;")
+                    out.append(f"{pad}while {bw} < {lim} {{")
+                    out.append(f"{pad}    {bw} = {bw} + 1;")
+                    out.append(f"{pad}    if {bw} == {cut} {{ continue; }}")
+                    out.append(f"{pad}    if {bw} > {lim} {{ break; }}")
+                    out.append(f"{pad}    {bt} = {bt} + 1;")
+                    out.append(f"{pad}}}")
+                    env[bw] = I32
+                out.append(f"{pad}print({bt});")
+                env[bt] = I32
+            elif k == 14:
+                pk = self.fresh("pk")
+                tn = self.fresh("pt")
+                dn = self.fresh("pd")
+                out.append(
+                    f"{pad}let {pk}: PartK = PartK {{ ad: string({self.lit(STR)}),"
+                    f" n: {self.expr(I32, env, 1)}, m: {self.expr(I32, env, 1)} }};"
+                )
+                if r.random() < 0.5:
+                    out.append(f"{pad}let {tn}: String = clone({pk}.ad);")
+                    out.append(f"{pad}print(len({pk}.ad));")
+                else:
+                    out.append(f"{pad}let {tn}: String = {pk}.ad;")
+                out.append(f"{pad}print({tn});")
+                out.append(f"{pad}print({pk}.n);")
+                out.append(f"{pad}let {dn}: i32 = {pk}.m;")
+                out.append(f"{pad}print({dn});")
+                if r.random() < 0.5:
+                    out.append(f"{pad}print(iki_kat({pk}.n));")
+                else:
+                    out.append(f"{pad}let {self.fresh('pa')}: [i32; 2] = [{pk}.n, {pk}.m];")
+                env[dn] = I32
             else:
                 name = self.fresh("a")
                 n = r.randint(1, 3)
@@ -259,6 +454,7 @@ class Gen:
     def program(self):
         r = self.rng
         out = []
+        out.append(OWN_PREAMBLE)
         for si in range(r.randint(0, 2)):
             fields = [(f"f{j}", r.choice(SCALARS)) for j in range(r.randint(1, 3))]
             name = f"S{si}"
@@ -285,6 +481,13 @@ class Gen:
                     f"    fn {mname}(self, q: {fty}) -> {fty} {{ return self.{fn_} {op} q; }}"
                 )
                 self.methods.append((sname, mname, [fty], fty))
+            ctor = f"{sname.lower()}yap"
+            cparams = ", ".join(f"p{i}: {t}" for i, (_, t) in enumerate(fields))
+            cinit = ", ".join(f"{n}: p{i}" for i, (n, _) in enumerate(fields))
+            body.append(
+                f"    fn {ctor}({cparams}) -> {sname} {{ return {sname} {{ {cinit} }}; }}"
+            )
+            self.ctors[sname] = ctor
             sfield, sty = fields[0]
             setter = f"{sname.lower()}set"
             body.append(f"    fn {setter}(self, v: {sty}) -> void {{ self.{sfield} = v; }}")

@@ -1,0 +1,55 @@
+struct Kutu<T> { v: T }
+struct Cift<A, B> { a: A, b: B }
+struct IcIce<T> { ic: Kutu<T>, n: i32 }
+enum Opt<T> { Var(T), Yok }
+
+fn yut(k: Kutu<String>) -> i32 { return len(k.v); }
+fn topla(c: Cift<i32, i32>) -> i32 { return c.a + c.b; }
+fn kimlik<T>(x: T) -> T { return x; }
+
+fn main() -> i32 {
+    let a: Kutu<i32> = Kutu { v: 5 };
+    print(a.v);
+    let b: Kutu<i64> = Kutu { v: 9000000000 };
+    print(b.v);
+    let c: Cift<i32, bool> = Cift { a: 7, b: true };
+    print(c.a);
+    print(c.b);
+
+    let d: IcIce<i32> = IcIce { ic: Kutu { v: 3 }, n: 2 };
+    print(d.ic.v);
+    print(d.n);
+
+    let e: Kutu<i32> = Kutu { v: 10 };
+    e.v = e.v + 5;
+    print(e.v);
+
+    print(topla(Cift { a: 4, b: 6 }));
+
+    let f: Kutu<String> = Kutu { v: string("sahipli") };
+    print(len(f.v));
+    print(yut(f));
+
+    let g: Kutu<Box<i32>> = Kutu { v: box 42 };
+    print(*g.v);
+
+    let h: Cift<String, Box<i32>> = Cift { a: string("ab"), b: box 9 };
+    print(len(h.a));
+    print(*h.b);
+
+    let arr: [Kutu<i32>; 2] = [Kutu { v: 1 }, Kutu { v: 2 }];
+    print(arr[1].v);
+
+    let i: Kutu<i32> = kimlik(Kutu { v: 77 });
+    print(i.v);
+
+    let j: Kutu<Opt<i32>> = Kutu { v: Opt::Var(8) };
+    match j.v {
+        Opt::Var(x) => print(x),
+        Opt::Yok => print(0)
+    }
+
+    let k: Kutu<Kutu<i32>> = Kutu { v: Kutu { v: 99 } };
+    print(k.v.v);
+    return 0;
+}

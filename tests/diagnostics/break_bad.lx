@@ -1,0 +1,27 @@
+fn dongu_disi() -> i32 {
+    break;
+    return 0;
+}
+
+fn dongu_sonrasi() -> i32 {
+    for i in 0..3 {
+        print(i);
+    }
+    continue;
+    return 0;
+}
+
+fn ic_ice_sonrasi() -> i32 {
+    for i in 0..2 {
+        for j in 0..2 {
+            print(j);
+        }
+    }
+    break;
+    return 0;
+}
+
+fn main() -> i32 {
+    continue;
+    return 0;
+}

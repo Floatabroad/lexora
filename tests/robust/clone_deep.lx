@@ -1,0 +1,18 @@
+struct N { x: i32 }
+fn main() -> i32 {
+    let s: String = string("derinlik");
+    let a: String = clone(clone(clone(clone(clone(clone(clone(clone(s)))))))); 
+    print(a);
+    let b: Box<Box<Box<Box<Box<String>>>>> = box box box box box string("ic");
+    let c: Box<Box<Box<Box<Box<String>>>>> = clone(b);
+    print(*****c);
+    let arr: [[String; 4]; 4] = [
+        [string("a"), string("b"), string("c"), string("d")],
+        [string("e"), string("f"), string("g"), string("h")],
+        [string("i"), string("j"), string("k"), string("l")],
+        [string("m"), string("n"), string("o"), string("p")]
+    ];
+    let ac: [[String; 4]; 4] = clone(arr);
+    print(ac[3][3]);
+    return 0;
+}

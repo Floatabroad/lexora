@@ -1,0 +1,84 @@
+enum D { A(i32), B }
+
+fn deger_if() -> i32 {
+    let t: i32 = 0;
+    for i in 0..6 {
+        let x: i32 = if i > 3 { break; 99 } else { i };
+        t = t + x;
+    }
+    return t;
+}
+
+fn kol_continue() -> i32 {
+    let s: i32 = 0;
+    for i in 0..6 {
+        let d: D = D::A(i);
+        let y: i32 = match d {
+            D::A(v) => { if v == 4 { continue; } v }
+            D::B => 0
+        };
+        s = s + y;
+    }
+    return s;
+}
+
+fn hepsi_break() -> i32 {
+    let d: D = D::B;
+    let t: i32 = 0;
+    for i in 0..5 {
+        t = t + 1;
+        match d {
+            D::A(v) => { break; }
+            D::B => { break; }
+        }
+        t = t + 100;
+    }
+    return t;
+}
+
+fn iki_kol() -> i32 {
+    let u: i32 = 0;
+    while u < 10 {
+        u = u + 1;
+        if u > 2 {
+            break;
+        } else {
+            continue;
+        }
+    }
+    return u;
+}
+
+fn owning_deger() -> i32 {
+    let t: i32 = 0;
+    for i in 0..6 {
+        let a: String = string("abc");
+        let x: i32 = if i > 3 { break; 99 } else { len(a) };
+        t = t + x;
+    }
+    return t;
+}
+
+fn owning_continue() -> i32 {
+    let t: i32 = 0;
+    let u: i32 = 0;
+    while u < 6 {
+        u = u + 1;
+        let b: String = string("de");
+        if u == 3 {
+            continue;
+        }
+        t = t + len(b);
+    }
+    return t;
+}
+
+fn main() -> i32 {
+    print(deger_if());
+    print(kol_continue());
+    print(hepsi_break());
+    print(iki_kol());
+    print(owning_deger());
+    print(owning_continue());
+    return 0;
+}

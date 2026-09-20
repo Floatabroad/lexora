@@ -1,0 +1,21 @@
+error: kismen tasinmis deger kullanildi; alanlari ayri ayri kullanin
+  --> tests/diagnostics/partial_borrow.lx:19:5
+   |
+19 |     k.goster();
+   |     ^
+error: tasinmis deger kullanildi
+  --> tests/diagnostics/partial_borrow.lx:20:11
+   |
+20 |     print(k.ad);
+   |           ^^^^
+error: tasinmis deger kullanildi
+  --> tests/diagnostics/partial_borrow.lx:21:15
+   |
+21 |     print(len(k.ad));
+   |               ^^^^
+error: tasinmis deger kullanildi
+  --> tests/diagnostics/partial_borrow.lx:22:11
+   |
+22 |     print(k.ad == "x");
+   |           ^^^^
+error: 4 hata yuzunden durduruldu

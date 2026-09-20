@@ -1,0 +1,26 @@
+struct Kutu<T> { v: T }
+struct Duz { n: i32 }
+enum Opt<T> { Var(T), Yok }
+
+impl Kutu {
+    fn a(self) -> i32 { return 0; }
+}
+impl<T> Duz {
+    fn b(self) -> i32 { return 0; }
+}
+impl<T> Kutu<i32> {
+    fn c(self) -> i32 { return 0; }
+}
+impl<A, B> Kutu<A> {
+    fn d(self) -> i32 { return 0; }
+}
+impl<T> Kutu<T> {
+    fn yeni(x: T) -> Kutu<T> { return Kutu { v: x }; }
+    fn e<U>(self) -> i32 { return 0; }
+}
+impl<T> Opt<T> {
+    fn f(self) -> i32 { return 0; }
+    fn f(self) -> i32 { return 1; }
+}
+
+fn main() -> i32 { return 0; }

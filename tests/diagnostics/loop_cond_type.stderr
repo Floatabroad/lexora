@@ -1,0 +1,36 @@
+error: tip uyusmazligi: beklenen bool, bulunan i32
+ --> tests/diagnostics/loop_cond_type.lx:8:11
+  |
+8 |     while n {
+  |           ^ bu ifade `i32` tipinde
+  |
+  = help: beklenen tip: `bool`
+error: tip uyusmazligi: beklenen bool, bulunan K
+  --> tests/diagnostics/loop_cond_type.lx:12:11
+   |
+12 |     while k {
+   |           ^ bu ifade `K` tipinde
+   |
+   = help: beklenen tip: `bool`
+error: tip uyusmazligi: beklenen bool, bulunan i32
+  --> tests/diagnostics/loop_cond_type.lx:16:8
+   |
+16 |     if n {
+   |        ^ bu ifade `i32` tipinde
+   |
+   = help: beklenen tip: `bool`
+error: tip uyusmazligi: beklenen i32, bulunan bool
+  --> tests/diagnostics/loop_cond_type.lx:20:14
+   |
+20 |     for i in b..n {
+   |              ^ bu ifade `bool` tipinde
+   |
+   = help: beklenen tip: `i32`
+error: tip uyusmazligi: beklenen i32, bulunan bool
+  --> tests/diagnostics/loop_cond_type.lx:24:17
+   |
+24 |     for i in 0..b {
+   |                 ^ bu ifade `bool` tipinde
+   |
+   = help: beklenen tip: `i32`
+error: 5 hata yuzunden durduruldu

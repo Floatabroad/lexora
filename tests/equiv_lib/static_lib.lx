@@ -1,0 +1,12 @@
+struct Sayac { n: i32 }
+enum Renk { Kirmizi, Mavi }
+
+impl Sayac {
+    fn sifir() -> Sayac { Sayac { n: 0 } }
+    fn kur(k: i32) -> Sayac { Sayac { n: k } }
+    fn oku(self) -> i32 { self.n }
+}
+
+impl Renk {
+    fn varsayilan() -> Renk { Renk::Mavi }
+}

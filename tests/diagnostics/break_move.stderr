@@ -1,0 +1,18 @@
+error: kosullu tasinmis olabilecek deger kullanildi
+  --> tests/diagnostics/break_move.lx:13:15
+   |
+13 |     print(len(s));
+   |               ^
+error: dongu her turda ayni owning degeri tasiyor; deger ikinci turda gecersiz olur
+  --> tests/diagnostics/break_move.lx:19:5
+   |
+19 |       for i in 0..n {
+   | ______^
+20 | |         print(yut(s));
+21 | |         if i == 0 {
+22 | |             continue;
+23 | |         }
+24 | |         s = string("zz");
+25 | |     }
+   | |_____^
+error: 2 hata yuzunden durduruldu

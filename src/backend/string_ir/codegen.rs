@@ -20,6 +20,13 @@ struct DropLocal {
     pointee: Type,
 }
 
+#[derive(Clone)]
+struct LoopFrame {
+    break_label: String,
+    continue_label: String,
+    drop_depth: usize,
+}
+
 impl VarTable {
     fn new() -> Self {
         VarTable { scopes: Vec::new() }
@@ -46,28 +53,35 @@ pub struct CodeGen<'i> {
     builder: IrBuilder<'i>,
     locals: VarTable,
     functions: HashMap<(Symbol, Vec<Type>), (Vec<LlvmType>, LlvmType)>,
-    methods: HashMap<(Symbol, Symbol), (Vec<LlvmType>, LlvmType)>,
-    structs: HashMap<Symbol, Vec<(Symbol, LlvmType)>>,
-    struct_fields_ast: HashMap<Symbol, Vec<(Symbol, Type)>>,
+    methods: HashMap<(Symbol, Vec<Type>, Symbol), (Vec<LlvmType>, LlvmType)>,
+    structs: HashMap<(Symbol, Vec<Type>), Vec<(Symbol, LlvmType)>>,
+    struct_fields_ast: HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Type)>>,
     current_ret_ty: LlvmType,
     cur_ret_ast: Type,
     types: &'i HashMap<ExprId, Type>,
-    moves:  &'i HashMap<ExprId, Vec<u32>>,
+    moves: &'i HashMap<ExprId, Vec<u32>>,
     drop_scopes: Vec<Vec<DropLocal>>,
+    loop_stack: Vec<LoopFrame>,
     enums: HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>,
     instances: &'i HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>,
     fn_instances: &'i HashMap<(Symbol, Vec<Type>), (Vec<Type>, Type)>,
     call_targs: &'i HashMap<ExprId, Vec<Type>>,
+    static_calls: &'i HashMap<ExprId, Symbol>,
+    struct_instances: &'i HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Type)>>,
+    method_instances: &'i HashMap<(Symbol, Vec<Type>, Symbol), (Vec<Type>, Type)>,
     cur_subst: HashMap<Symbol, Type>,
 }
 impl<'i> CodeGen<'i> {
     pub fn new(
         builder: IrBuilder<'i>,
         types: &'i HashMap<ExprId, Type>,
-        moves:  &'i HashMap<ExprId, Vec<u32>>,
+        moves: &'i HashMap<ExprId, Vec<u32>>,
         instances: &'i HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>,
         fn_instances: &'i HashMap<(Symbol, Vec<Type>), (Vec<Type>, Type)>,
         call_targs: &'i HashMap<ExprId, Vec<Type>>,
+        static_calls: &'i HashMap<ExprId, Symbol>,
+        struct_instances: &'i HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Type)>>,
+        method_instances: &'i HashMap<(Symbol, Vec<Type>, Symbol), (Vec<Type>, Type)>,
     ) -> Self {
         CodeGen {
             builder,
@@ -81,10 +95,14 @@ impl<'i> CodeGen<'i> {
             types,
             moves,
             drop_scopes: Vec::new(),
+            loop_stack: Vec::new(),
             enums: HashMap::new(),
             instances,
+            static_calls,
             fn_instances,
             call_targs,
+            struct_instances,
+            method_instances,
             cur_subst: HashMap::new(),
         }
     }
@@ -101,13 +119,16 @@ impl<'i> CodeGen<'i> {
             }
         }
     }
-    fn free_all_live(&mut self) {
-        let scopes: Vec<Vec<DropLocal>> = self.drop_scopes.clone();
+    fn free_scopes_above(&mut self, depth: usize) {
+        let scopes: Vec<Vec<DropLocal>> = self.drop_scopes[depth..].to_vec();
         for scope in scopes.iter().rev() {
             for d in scope.iter().rev() {
                 self.gen_drop(d);
             }
         }
+    }
+    fn free_all_live(&mut self) {
+        self.free_scopes_above(0);
     }
 
     fn drop_in_place(&mut self, ptr: Value, ty: &Type) {
@@ -127,16 +148,18 @@ impl<'i> CodeGen<'i> {
                     self.builder.build_call_drop_enum(&name, ptr);
                 }
             }
-            Type::Struct(s) => {
-                let fields = match self.struct_fields_ast.get(s) {
+            Type::Struct(s, args) => {
+                let key = (*s, args.clone());
+                let fields = match self.struct_fields_ast.get(&key) {
                     Some(f) => f.clone(),
                     None => return,
                 };
+                let name = Self::inst_name(key.0, &key.1);
                 for (i, (_, fty)) in fields.iter().enumerate() {
                     if !self.is_owning_type(fty) {
                         continue;
                     }
-                    let fptr = self.builder.build_gep_struct(*s, ptr.clone(), i as u32);
+                    let fptr = self.builder.build_gep_struct(&name, ptr.clone(), i as u32);
                     self.drop_in_place(fptr, fty);
                 }
             }
@@ -155,7 +178,36 @@ impl<'i> CodeGen<'i> {
             _ => {}
         }
     }
-
+    fn clone_in_place(&mut self, ptr: Value, ty: &Type) {
+        match ty {
+            Type::String => {
+                let old = self.builder.build_load(&LlvmType::Ptr, ptr.clone());
+                let new = self.builder.build_call_str_new(old);
+                self.builder.build_store(&LlvmType::Ptr, new, ptr);
+            }
+            Type::Box(inner) => {
+                let old = self.builder.build_load(&LlvmType::Ptr, ptr.clone());
+                let ity = self.ast_type_to_llvm(inner);
+                let v = self.builder.build_load(&ity, old);
+                let newbox = self.builder.build_box(&ity, v);
+                self.clone_in_place(newbox.clone(), inner);
+                self.builder.build_store(&LlvmType::Ptr, newbox, ptr);
+            }
+            Type::Array(elem, n) => {
+                if !self.is_owning_type(elem) {
+                    return;
+                }
+                let ety = self.ast_type_to_llvm(elem);
+                for i in 0..*n {
+                    let eptr =
+                        self.builder
+                            .build_gep_array(&ety, *n, ptr.clone(), Value::Const(i as i64));
+                    self.clone_in_place(eptr, elem);
+                }
+            }
+            _ => {}
+        }
+    }
     fn gen_drop(&mut self, d: &DropLocal) {
         let f = self.builder.build_load(&LlvmType::I1, d.flag.clone());
         let do_label = self.builder.fresh_block("do_drop");
@@ -224,8 +276,18 @@ impl<'i> CodeGen<'i> {
         self.builder.build_ret(&LlvmType::Void, Value::Void);
         self.builder.emit_function_end();
     }
-    fn method_name(&self, ty: Symbol, m: Symbol) -> String {
-        format!("{}.{}", self.builder.resolve(ty), self.builder.resolve(m))
+    fn method_name(&self, ty: Symbol, targs: &[Type], m: Symbol) -> String {
+        if targs.is_empty() {
+            format!("{}.{}", self.builder.resolve(ty), self.builder.resolve(m))
+        } else {
+            let mm: Vec<String> = targs.iter().map(|t| t.mangle()).collect();
+            format!(
+                "{}.{}.{}",
+                self.builder.resolve(ty),
+                mm.join("."),
+                self.builder.resolve(m)
+            )
+        }
     }
     fn fn_name(&self, sym: Symbol, targs: &[Type]) -> String {
         if targs.is_empty() {
@@ -243,7 +305,7 @@ impl<'i> CodeGen<'i> {
             format!("{}.{}", sym.0, m.join("."))
         }
     }
-
+    
     fn find_flags(&self, sym: Symbol, path: &[u32]) -> Vec<Value> {
         for scope in self.drop_scopes.iter().rev() {
             if !scope.iter().any(|d| d.sym == sym) {
@@ -262,13 +324,13 @@ impl<'i> CodeGen<'i> {
             Expr::Identifier(sym, _, _) => Some((*sym, Vec::new())),
             Expr::FieldAccess { object, field, .. } => {
                 let (sym, mut path) = self.place_path_of(object)?;
-                let s = match self.ty_of(object) {
-                    Type::Struct(s) => s,
+                let key = match self.ty_of(object) {
+                    Type::Struct(s, args) => (s, args),
                     _ => return None,
                 };
                 let idx = self
                     .struct_fields_ast
-                    .get(&s)?
+                    .get(&key)?
                     .iter()
                     .position(|(n, _)| *n == *field)?;
                 path.push(idx as u32);
@@ -335,7 +397,7 @@ impl<'i> CodeGen<'i> {
             Type::Str => LlvmType::Ptr,
             Type::Array(t, n) => LlvmType::Array(Box::new(self.ast_type_to_llvm(t)), *n),
             Type::String => LlvmType::Ptr,
-            Type::Struct(s) => LlvmType::Struct(*s),
+            Type::Struct(s, args) => LlvmType::Struct(Self::inst_name(*s, args)),
             Type::Box(_) => LlvmType::Ptr,
             Type::Enum(e, args) => {
                 if self.enum_has_payload(&(*e, args.clone())) {
@@ -477,16 +539,36 @@ impl<'i> CodeGen<'i> {
             }
         }
 
-        for s in &program.structs {
-            let field_llvm_tys: Vec<(Symbol, LlvmType)> = s
-                .fields
+        let mut struct_keys: Vec<(Symbol, Vec<Type>)> = program
+            .structs
+            .iter()
+            .filter(|s| s.params.is_empty())
+            .map(|s| (s.name, Vec::new()))
+            .collect();
+        let mut sinst: Vec<(Symbol, Vec<Type>)> = self.struct_instances.keys().cloned().collect();
+        sinst.sort_by_key(|(s, a)| Self::inst_name(*s, a));
+        struct_keys.extend(sinst);
+        for key in &struct_keys {
+            let fields: Vec<(Symbol, Type)> = if key.1.is_empty() {
+                match program.structs.iter().find(|s| s.name == key.0) {
+                    Some(s) => s.fields.clone(),
+                    None => continue,
+                }
+            } else {
+                match self.struct_instances.get(key) {
+                    Some(f) => f.clone(),
+                    None => continue,
+                }
+            };
+            let field_llvm_tys: Vec<(Symbol, LlvmType)> = fields
                 .iter()
                 .map(|(sym, ty)| (*sym, self.ast_type_to_llvm(ty)))
                 .collect();
             let llvm_tys: Vec<LlvmType> = field_llvm_tys.iter().map(|(_, t)| t.clone()).collect();
-            self.builder.emit_struct_type(s.name, &llvm_tys);
-            self.structs.insert(s.name, field_llvm_tys);
-            self.struct_fields_ast.insert(s.name, s.fields.clone());
+            let name = Self::inst_name(key.0, &key.1);
+            self.builder.emit_struct_type(&name, &llvm_tys);
+            self.structs.insert(key.clone(), field_llvm_tys);
+            self.struct_fields_ast.insert(key.clone(), fields);
         }
 
         for key in &enum_keys {
@@ -517,16 +599,16 @@ impl<'i> CodeGen<'i> {
             self.functions.insert(key.clone(), (param_tys, ret_ty));
         }
         for imp in &program.impls {
+            if !imp.params.is_empty() {
+                continue;
+            }
             for m in &imp.methods {
-                if !m.self_param {
-                    continue;
-                }
                 let param_tys: Vec<LlvmType> = m
                     .params
                     .iter()
                     .enumerate()
                     .map(|(i, (_, ty))| {
-                        if i == 0 {
+                        if i == 0 && m.self_param {
                             LlvmType::Ptr
                         } else {
                             self.ast_type_to_llvm(ty)
@@ -535,14 +617,59 @@ impl<'i> CodeGen<'i> {
                     .collect();
                 let ret_ty = self.ast_type_to_llvm(&m.return_type);
                 self.methods
-                    .insert((imp.type_name, m.name), (param_tys, ret_ty));
+                    .insert((imp.type_name, Vec::new(), m.name), (param_tys, ret_ty));
             }
         }
+        let mut minst: Vec<(usize, usize, Vec<Type>)> = Vec::new();
+        for (ii, imp) in program.impls.iter().enumerate() {
+            if imp.params.is_empty() {
+                continue;
+            }
+            for (mi, m) in imp.methods.iter().enumerate() {
+                for (s, targs, mm) in self.method_instances.keys() {
+                    if *s == imp.type_name && *mm == m.name {
+                        minst.push((ii, mi, targs.clone()));
+                    }
+                }
+            }
+        }
+        minst.sort_by_key(|(ii, mi, a)| {
+            let imp = &program.impls[*ii];
+            self.method_name(imp.type_name, a, imp.methods[*mi].name)
+        });
+        minst.dedup();
+        for (ii, mi, targs) in &minst {
+            let imp = &program.impls[*ii];
+            let m = &imp.methods[*mi];
+            self.cur_subst = imp
+                .params
+                .iter()
+                .copied()
+                .zip(targs.iter().cloned())
+                .collect();
+            let param_tys: Vec<LlvmType> = m
+                .params
+                .iter()
+                .enumerate()
+                .map(|(i, (_, ty))| {
+                    if i == 0 && m.self_param {
+                        LlvmType::Ptr
+                    } else {
+                        self.ast_type_to_llvm(&self.subst(ty))
+                    }
+                })
+                .collect();
+            let ret_ty = self.ast_type_to_llvm(&self.subst(&m.return_type));
+            self.cur_subst.clear();
+            self.methods
+                .insert((imp.type_name, targs.clone(), m.name), (param_tys, ret_ty));
+        }
+
         for func in &program.functions {
             if !func.type_params.is_empty() {
                 continue;
             }
-            self.gen_function(func, &[], None)?;
+            self.gen_function(func, &func.type_params, &[], None)?;
         }
         for key in &fn_keys {
             let func = match program.functions.iter().find(|f| f.name == key.0) {
@@ -553,14 +680,19 @@ impl<'i> CodeGen<'i> {
                     });
                 }
             };
-            self.gen_function(func, &key.1, None)?;
+            self.gen_function(func, &func.type_params, &key.1, None)?;
         }
         for imp in &program.impls {
-            for m in &imp.methods {
-                if m.self_param {
-                    self.gen_function(m, &[], Some(imp.type_name))?;
-                }
+            if !imp.params.is_empty() {
+                continue;
             }
+            for m in &imp.methods {
+                self.gen_function(m, &[], &[], Some(imp.type_name))?;
+            }
+        }
+        for (ii, mi, targs) in &minst {
+            let imp = &program.impls[*ii];
+            self.gen_function(&imp.methods[*mi], &imp.params, targs, Some(imp.type_name))?;
         }
         Ok(self.builder.finish())
     }
@@ -576,8 +708,8 @@ impl<'i> CodeGen<'i> {
         })
     }
     fn owning_paths(&self, ty: &Type, prefix: &mut Vec<u32>, out: &mut Vec<(Vec<u32>, Type)>) {
-        if let Type::Struct(s) = ty {
-            let fields = match self.struct_fields_ast.get(s) {
+        if let Type::Struct(s, args) = ty {
+            let fields = match self.struct_fields_ast.get(&(*s, args.clone())) {
                 Some(f) => f.clone(),
                 None => return,
             };
@@ -618,12 +750,13 @@ impl<'i> CodeGen<'i> {
         let mut ptr = base;
         let mut ty = root.clone();
         for &i in path {
-            let s = match ty {
-                Type::Struct(s) => s,
+            let key = match ty {
+                Type::Struct(s, args) => (s, args),
                 _ => break,
             };
-            ptr = self.builder.build_gep_struct(s, ptr, i);
-            ty = self.struct_fields_ast.get(&s).unwrap()[i as usize]
+            let name = Self::inst_name(key.0, &key.1);
+            ptr = self.builder.build_gep_struct(&name, ptr, i);
+            ty = self.struct_fields_ast.get(&key).unwrap()[i as usize]
                 .1
                 .clone();
         }
@@ -635,9 +768,9 @@ impl<'i> CodeGen<'i> {
             Type::Box(_) => true,
             Type::String => true,
             Type::Enum(e, args) => self.enum_is_owning(&(*e, args.clone())),
-            Type::Struct(s) => self
+            Type::Struct(s, args) => self
                 .struct_fields_ast
-                .get(s)
+                .get(&(*s, args.clone()))
                 .map_or(false, |fs| fs.iter().any(|(_, t)| self.is_owning_type(t))),
             Type::Array(elem, _) => self.is_owning_type(elem),
             _ => false,
@@ -738,15 +871,11 @@ impl<'i> CodeGen<'i> {
     fn gen_function<'arena>(
         &mut self,
         func: &Function<'arena>,
+        params: &[Symbol],
         targs: &[Type],
         owner: Option<Symbol>,
     ) -> Result<(), LexoraError> {
-        self.cur_subst = func
-            .type_params
-            .iter()
-            .copied()
-            .zip(targs.iter().cloned())
-            .collect();
+        self.cur_subst = params.iter().copied().zip(targs.iter().cloned()).collect();
         self.locals = VarTable::new();
         self.locals.enter();
         self.drop_enter();
@@ -767,7 +896,7 @@ impl<'i> CodeGen<'i> {
             })
             .collect();
         let fname = match owner {
-            Some(t) => self.method_name(t, func.name),
+            Some(t) => self.method_name(t, targs, func.name),
             None => self.fn_name(func.name, targs),
         };
         let ret_llvm = self.current_ret_ty.clone();
@@ -834,7 +963,6 @@ impl<'i> CodeGen<'i> {
                 self.locals.insert(*name, (llvm_ty, ptr.clone()));
                 let vty = self.ty_of(value);
                 self.register_drop(*name, ptr, &vty);
-
             }
 
             Stmt::Assign { name, value, span } => {
@@ -849,7 +977,14 @@ impl<'i> CodeGen<'i> {
                     }
                 };
                 let val = self.gen_expr(value)?;
-                self.drop_before_assign(*name, &[]);
+                if self.matching_drops(*name, &[]).is_empty() {
+                    let ast_ty = self.ty_of(value);
+                    if self.is_owning_type(&ast_ty) {
+                        self.drop_in_place(ptr.clone(), &ast_ty);
+                    }
+                } else {
+                    self.drop_before_assign(*name, &[]);
+                }
                 self.builder.build_store(&llvm_ty, val, ptr);
                 self.set_flags_live(*name, &[]);
             }
@@ -868,6 +1003,11 @@ impl<'i> CodeGen<'i> {
                     .build_cond_br(cond_val, &body_label.clone(), &end_label.clone());
 
                 self.builder.emit_label(&body_label);
+                self.loop_stack.push(LoopFrame {
+                    break_label: end_label.clone(),
+                    continue_label: cond_label.clone(),
+                    drop_depth: self.drop_scopes.len(),
+                });
                 self.locals.enter();
                 self.drop_enter();
                 for s in body.stmts.iter() {
@@ -880,6 +1020,7 @@ impl<'i> CodeGen<'i> {
                 }
                 self.drop_exit();
                 self.locals.exit();
+                self.loop_stack.pop();
                 self.builder.build_br(&cond_label);
 
                 self.builder.emit_label(&end_label);
@@ -895,6 +1036,7 @@ impl<'i> CodeGen<'i> {
                 let cond_label = self.builder.fresh_block("for_cond");
                 let body_label = self.builder.fresh_block("for_body");
                 let end_label = self.builder.fresh_block("for_end");
+                let inc_label = self.builder.fresh_block("for_inc");
 
                 self.locals.enter();
                 let from_val = self.gen_expr(from)?;
@@ -915,8 +1057,12 @@ impl<'i> CodeGen<'i> {
                 let cond = self.builder.build_icmp("slt", &LlvmType::I32, cur, to_cur);
                 self.builder
                     .build_cond_br(cond, &body_label.clone(), &end_label.clone());
-
                 self.builder.emit_label(&body_label);
+                self.loop_stack.push(LoopFrame {
+                    break_label: end_label.clone(),
+                    continue_label: inc_label.clone(),
+                    drop_depth: self.drop_scopes.len(),
+                });
                 self.locals.enter();
                 self.drop_enter();
                 for s in body.stmts.iter() {
@@ -929,6 +1075,10 @@ impl<'i> CodeGen<'i> {
                 }
                 self.drop_exit();
                 self.locals.exit();
+                self.loop_stack.pop();
+                self.builder.build_br(&inc_label);
+
+                self.builder.emit_label(&inc_label);
                 let cur2 = self.builder.build_load(&LlvmType::I32, ptr.clone());
                 let inc_val = self
                     .builder
@@ -961,9 +1111,23 @@ impl<'i> CodeGen<'i> {
                         self.builder.build_store(&ty, val, ptr);
                     }
                 }
-
             }
-
+            Stmt::Break(_) | Stmt::Continue(_) => {
+                let frame = match self.loop_stack.last() {
+                    Some(f) => f.clone(),
+                    None => {
+                        return Err(LexoraError::Codegen {
+                            message: "break/continue dongu disinda (TC kacirmali)".to_string(),
+                        });
+                    }
+                };
+                self.free_scopes_above(frame.drop_depth);
+                let target = match stmt {
+                    Stmt::Break(_) => frame.break_label,
+                    _ => frame.continue_label,
+                };
+                self.builder.build_br(&target);
+            }
             Stmt::Error(_) => {
                 return Err(LexoraError::Codegen {
                     message: "poison statement codegen'e ulasti".to_string(),
@@ -989,8 +1153,8 @@ impl<'i> CodeGen<'i> {
                 ..
             } => {
                 let base = self.gen_place(object)?;
-                let struct_sym = match self.ty_of(object) {
-                    Type::Struct(s) => s,
+                let key = match self.ty_of(object) {
+                    Type::Struct(s, args) => (s, args),
                     _ => {
                         return Err(LexoraError::Custom {
                             message: "alan erisimi: struct degil".to_string(),
@@ -998,12 +1162,13 @@ impl<'i> CodeGen<'i> {
                         });
                     }
                 };
-                let field_defs = self.structs.get(&struct_sym).unwrap().clone();
+                let field_defs = self.structs.get(&key).unwrap().clone();
                 let idx = field_defs
                     .iter()
                     .position(|(sym, _)| *sym == *field)
                     .unwrap();
-                Ok(self.builder.build_gep_struct(struct_sym, base, idx as u32))
+                let name = Self::inst_name(key.0, &key.1);
+                Ok(self.builder.build_gep_struct(&name, base, idx as u32))
             }
             Expr::Index {
                 array, index, span, ..
@@ -1065,8 +1230,17 @@ impl<'i> CodeGen<'i> {
                 }
                 Ok(())
             }
-            Expr::StructLiteral { name, fields, .. } => {
-                let field_defs = self.structs.get(name).unwrap().clone();
+            Expr::StructLiteral { fields, .. } => {
+                let key = match self.ty_of(expr) {
+                    Type::Struct(s, args) => (s, args),
+                    _ => {
+                        return Err(LexoraError::Codegen {
+                            message: "struct literalinin tipi struct degil".to_string(),
+                        });
+                    }
+                };
+                let sname = Self::inst_name(key.0, &key.1);
+                let field_defs = self.structs.get(&key).unwrap().clone();
                 for (i, (fsym, fty)) in field_defs.iter().enumerate() {
                     let fexpr = fields
                         .iter()
@@ -1074,11 +1248,11 @@ impl<'i> CodeGen<'i> {
                         .map(|(_, v)| v)
                         .unwrap();
                     if fexpr.is_aggregate_literal() {
-                        let fptr = self.builder.build_gep_struct(*name, ptr.clone(), i as u32);
+                        let fptr = self.builder.build_gep_struct(&sname, ptr.clone(), i as u32);
                         self.gen_into(fexpr, fptr)?;
                     } else {
                         let val = self.gen_expr(fexpr)?;
-                        let fptr = self.builder.build_gep_struct(*name, ptr.clone(), i as u32);
+                        let fptr = self.builder.build_gep_struct(&sname, ptr.clone(), i as u32);
                         self.builder.build_store(fty, val, fptr);
                     }
                 }
@@ -1264,7 +1438,7 @@ impl<'i> CodeGen<'i> {
                         }
                         Type::Void
                         | Type::Array(..)
-                        | Type::Struct(_)
+                        | Type::Struct(..)
                         | Type::Box(_)
                         | Type::Enum(..)
                         | Type::Param(_)
@@ -1298,7 +1472,21 @@ impl<'i> CodeGen<'i> {
                     let val = self.gen_expr(&args[0])?;
                     return Ok(self.builder.build_call_str_new(val));
                 }
-
+                if name_str == "clone" {
+                    let arg = &args[0];
+                    let ty = self.ty_of(arg);
+                    let val = self.gen_expr(arg)?;
+                    if !self.is_owning_type(&ty) {
+                        return Ok(val);
+                    }
+                    let lty = self.ast_type_to_llvm(&ty);
+                    let tmp = self.builder.build_entry_alloca(&lty);
+                    self.builder.build_store(&lty, val.clone(), tmp.clone());
+                    self.clone_in_place(tmp.clone(), &ty);
+                    let res = self.builder.build_load(&lty, tmp);
+                    self.str_temp_free(arg, val);
+                    return Ok(res);
+                }
                 let targs = self.call_targs.get(&expr.id()).cloned().unwrap_or_default();
                 let key = (*name, targs);
                 let (params_tys, ret_ty) = match self.functions.get(&key).cloned() {
@@ -1354,6 +1542,25 @@ impl<'i> CodeGen<'i> {
                 Ok(val)
             }
             Expr::EnumVariant { variant, args, .. } => {
+                if let Some(tsym) = self.static_calls.get(&expr.id()).copied() {
+                    let (params_tys, ret_ty) =
+                        match self.methods.get(&(tsym, Vec::new(), *variant)).cloned() {
+                            Some(sig) => sig,
+                            None => {
+                                return Err(LexoraError::Codegen {
+                                    message: "statik metot tanimli degil (typechecker kacirmali)"
+                                        .to_string(),
+                                });
+                            }
+                        };
+                    let mut call_args: Vec<(LlvmType, Value)> = Vec::new();
+                    for (arg, pty) in args.iter().zip(params_tys.iter()) {
+                        let val = self.gen_expr(arg)?;
+                        call_args.push((pty.clone(), val));
+                    }
+                    let name = self.method_name(tsym, &[], *variant);
+                    return Ok(self.builder.build_call(&ret_ty, &name, &call_args));
+                }
                 let (sym, targs) = match self.ty_of(expr) {
                     Type::Enum(s, a) => (s, a.clone()),
                     _ => {
@@ -1678,32 +1885,33 @@ impl<'i> CodeGen<'i> {
                 span,
                 ..
             } => {
-                let tsym = match self.ty_of(receiver) {
-                    Type::Struct(s) => s,
-                    Type::Enum(s, _) => s,
+                let (tsym, targs) = match self.ty_of(receiver) {
+                    Type::Struct(s, a) => (s, a),
+                    Type::Enum(s, a) => (s, a),
                     _ => {
                         return Err(LexoraError::Codegen {
                             message: "metot alicisi struct/enum degil".to_string(),
                         });
                     }
                 };
-                let (params_tys, ret_ty) = match self.methods.get(&(tsym, *method)).cloned() {
-                    Some(sig) => sig,
-                    None => {
-                        return Err(LexoraError::UndefinedFunction {
-                            name: self.method_name(tsym, *method),
-                            suggestion: None,
-                            span: *span,
-                        });
-                    }
-                };
+                let (params_tys, ret_ty) =
+                    match self.methods.get(&(tsym, targs.clone(), *method)).cloned() {
+                        Some(sig) => sig,
+                        None => {
+                            return Err(LexoraError::UndefinedFunction {
+                                name: self.method_name(tsym, &targs, *method),
+                                suggestion: None,
+                                span: *span,
+                            });
+                        }
+                    };
                 let recv_ptr = self.gen_place(receiver)?;
                 let mut call_args: Vec<(LlvmType, Value)> = vec![(LlvmType::Ptr, recv_ptr)];
                 for (arg, pty) in args.iter().zip(params_tys.iter().skip(1)) {
                     let val = self.gen_expr(arg)?;
                     call_args.push((pty.clone(), val));
                 }
-                let name = self.method_name(tsym, *method);
+                let name = self.method_name(tsym, &targs, *method);
                 Ok(self.builder.build_call(&ret_ty, &name, &call_args))
             }
             Expr::Error(_, _) => Err(LexoraError::Codegen {

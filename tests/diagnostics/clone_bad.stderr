@@ -1,0 +1,43 @@
+error: 'T' bir tip parametresi; clone bound gerektirir ve trait destegi henuz yok
+ --> tests/diagnostics/clone_bad.lx:5:18
+  |
+5 |     return clone(x);
+  |                  ^
+error: clone bu tipi kopyalayamaz: K - struct/enum icin derin kopya trait destegi gerektiriyor (henuz yok); owning alani olmayan deger zaten atamayla kopyalanir
+  --> tests/diagnostics/clone_bad.lx:10:23
+   |
+10 |     let k2: K = clone(k);
+   |                       ^
+error: clone bu tipi kopyalayamaz: M - struct/enum icin derin kopya trait destegi gerektiriyor (henuz yok); owning alani olmayan deger zaten atamayla kopyalanir
+  --> tests/diagnostics/clone_bad.lx:12:23
+   |
+12 |     let m2: M = clone(m);
+   |                       ^
+error: clone bu tipi kopyalayamaz: [K; 2] - struct/enum icin derin kopya trait destegi gerektiriyor (henuz yok); owning alani olmayan deger zaten atamayla kopyalanir
+  --> tests/diagnostics/clone_bad.lx:14:29
+   |
+14 |     let ka2: [K; 2] = clone(ka);
+   |                             ^^
+error: clone bir arguman alir
+  --> tests/diagnostics/clone_bad.lx:15:18
+   |
+15 |     let v: i32 = clone(1, 2);
+   |                  ^^^^^^^^^^^
+error: clone bir arguman alir
+  --> tests/diagnostics/clone_bad.lx:16:18
+   |
+16 |     let w: i32 = clone();
+   |                  ^^^^^^^
+error: clone void bir degeri kopyalayamaz
+  --> tests/diagnostics/clone_bad.lx:17:24
+   |
+17 |     let z: i32 = clone(print(5));
+   |                        ^^^^^^^^
+error: tanimsiz fonksiyon: clonee
+  --> tests/diagnostics/clone_bad.lx:18:18
+   |
+18 |     let y: i32 = clonee(1);
+   |                  ^^^^^^^^^ bu isimde bir fonksiyon yok
+   |
+   = help: bunu mu demek istediniz: `clone`?
+error: 8 hata yuzunden durduruldu

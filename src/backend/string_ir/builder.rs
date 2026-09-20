@@ -77,12 +77,11 @@ impl<'i> IrBuilder<'i> {
         self.fn_entry_pos = self.output.len();
         self.entry_allocas.clear();
     }
-    pub fn emit_struct_type(&mut self, name: Symbol, fields: &[LlvmType]) {
-        //let name_str = self.interner.resolve(name);
+    pub fn emit_struct_type(&mut self, name: &str, fields: &[LlvmType]) {
         let fields_str: Vec<String> = fields.iter().map(|t| t.to_ir_str()).collect();
         self.globals.push_str(&format!(
             "%struct.{} = type {{ {} }}\n",
-            name.0,
+            name,
             fields_str.join(", "),
         ));
     }
@@ -498,13 +497,12 @@ impl<'i> IrBuilder<'i> {
         self.emit_label(&ok_label);
         self.build_gep_array(elem_ty, array_size, ptr, index)
     }
-    pub fn build_gep_struct(&mut self, struct_name: Symbol, ptr: Value, field_index: u32) -> Value {
+    pub fn build_gep_struct(&mut self, struct_name: &str, ptr: Value, field_index: u32) -> Value {
         let result = self.fresh_temp();
-        //let name_str =  self.interner.resolve(struct_name).to_string();
         self.output.push_str(&format!(
             "  {} = getelementptr %struct.{}, ptr {}, i32 0, i32 {}\n",
             result.to_ir_str(),
-            struct_name.0,
+            struct_name,
             ptr.to_ir_str(),
             field_index,
         ));

@@ -1,0 +1,29 @@
+struct K { n: i32 }
+
+fn main() -> i32 {
+    let n: i32 = 5;
+    let k: K = K { n: 1 };
+    let b: bool = true;
+
+    while n {
+        n = n - 1;
+    }
+
+    while k {
+        n = n + 1;
+    }
+
+    if n {
+        print(1);
+    }
+
+    for i in b..n {
+        print(i);
+    }
+
+    for i in 0..b {
+        print(i);
+    }
+
+    return 0;
+}

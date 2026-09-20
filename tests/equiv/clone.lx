@@ -1,0 +1,74 @@
+struct K { ad: String, n: i32 }
+
+impl K {
+    fn suslu(self) -> String { return clone(self.ad) + "!"; }
+    fn yeni(t: str) -> K { return K { ad: string(t), n: 1 }; }
+}
+
+fn yut(s: String) -> i32 { len(s) }
+fn kimlik<T>(x: T) -> T { return x; }
+
+fn main() -> i32 {
+    let a: String = string("abc");
+    let b: String = clone(a);
+    print(a);
+    print(b);
+    print(yut(clone(a)));
+    print(yut(a));
+
+    let k: K = K::yeni("xy");
+    print(k.suslu());
+    print(k.suslu());
+    print(len(k.ad));
+
+    let c: String = string("bagimsiz");
+    let d: String = clone(c);
+    c = c + "-DEGISTI";
+    print(c);
+    print(d);
+
+    let bx: Box<String> = box string("q");
+    let bc: Box<String> = clone(bx);
+    *bx = clone(*bx) + "-yeni";
+    print(*bx);
+    print(*bc);
+
+    let bb: Box<Box<String>> = box box string("derin");
+    let bb2: Box<Box<String>> = clone(bb);
+    print(**bb);
+    print(**bb2);
+
+    let arr: [String; 2] = [string("p"), string("rs")];
+    let ac: [String; 2] = clone(arr);
+    arr[0] = clone(arr[0]) + "-ek";
+    print(arr[0]);
+    print(ac[0]);
+    print(ac[1]);
+
+    let ab: [Box<String>; 2] = [box string("u"), box string("vw")];
+    let ab2: [Box<String>; 2] = clone(ab);
+    print(*ab[1]);
+    print(*ab2[1]);
+
+    let t: String = string("gec");
+    print(yut(clone(clone(t) + "ici")));
+    print(t);
+
+    let g: String = string("gen");
+    let g2: String = kimlik(clone(g));
+    print(g);
+    print(g2);
+
+    print(clone(5));
+    print(clone("lit"));
+    print(clone(true));
+
+    let toplam: i32 = 0;
+    for i in 0..3 {
+        let e: String = clone(d);
+        toplam = toplam + len(e);
+    }
+    print(toplam);
+    print(d);
+    return 0;
+}

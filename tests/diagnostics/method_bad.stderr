@@ -3,7 +3,7 @@ error: tanimsiz tip 'Yok'; impl yalnizca tanimli struct ve enum'lara yazilabilir
    |
 10 | impl Yok {
    |      ^^^
-error: 'Opt' generic; generic tipe impl henuz yazilamaz
+error: 'Opt' generic; impl basligi 'impl<T> Opt<T>' seklinde yazilmali
   --> tests/diagnostics/method_bad.lx:16:6
    |
 16 | impl Opt {
@@ -15,14 +15,6 @@ error: 'N.g' kendi tip parametresini alamaz; metot generic'leri henuz yok
    | ______^
 24 | |         return 1;
 25 | |     }
-   | |_____^
-error: 'N.yeni' ilk parametresi 'self' olmali; statik metotlar henuz yok
-  --> tests/diagnostics/method_bad.lx:26:5
-   |
-26 |       fn yeni() -> i32 {
-   | ______^
-27 | |         return 1;
-28 | |     }
    | |_____^
 error: zaten tanimli: N.h
   --> tests/diagnostics/method_bad.lx:32:5
@@ -37,4 +29,4 @@ error: tanimsiz tip 'Bilinmez'
    |
 35 |     fn k(self, a: Bilinmez) -> i32 {
    |                   ^^^^^^^^
-error: 6 hata yuzunden durduruldu
+error: 5 hata yuzunden durduruldu

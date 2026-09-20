@@ -1,0 +1,31 @@
+struct P { x: i32 }
+enum E { A(i32), B }
+
+impl E {
+    fn A(v: i32) -> E {
+        return E::B;
+    }
+}
+
+impl P {
+    fn yeni(a: i32) -> P {
+        return P { x: a };
+    }
+    fn yeni(self) -> i32 {
+        return self.x;
+    }
+    fn oku(self) -> i32 {
+        return self.x;
+    }
+}
+
+fn main() -> i32 {
+    let p: P = P::yeni(1);
+    print(p.yeni());
+    print(P::yenii(1).x);
+    print(P::yeni(1, 2).x);
+    print(P::yeni(true).x);
+    print(P::<i32>::yeni(1).x);
+    print(P::oku(p));
+    return 0;
+}

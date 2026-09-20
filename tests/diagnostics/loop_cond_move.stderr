@@ -1,0 +1,41 @@
+error: dongu her turda ayni owning degeri tasiyor; deger ikinci turda gecersiz olur
+  --> tests/diagnostics/loop_cond_move.lx:11:5
+   |
+11 |       while yut(s) {
+   | ______^
+12 | |         print(1);
+13 | |     }
+   | |_____^
+error: dongu her turda ayni owning degeri tasiyor; deger ikinci turda gecersiz olur
+  --> tests/diagnostics/loop_cond_move.lx:18:5
+   |
+18 |       while yut(p.a) {
+   | ______^
+19 | |         print(2);
+20 | |     }
+   | |_____^
+error: dongu her turda ayni owning degeri tasiyor; deger ikinci turda gecersiz olur
+  --> tests/diagnostics/loop_cond_move.lx:25:5
+   |
+25 |       while yut(*b) {
+   | ______^
+26 | |         print(3);
+27 | |     }
+   | |_____^
+error: dongu her turda ayni owning degeri tasiyor; deger ikinci turda gecersiz olur
+  --> tests/diagnostics/loop_cond_move.lx:33:5
+   |
+33 |       while n < 5 and yut(s) {
+   | ______^
+34 | |         n = n + 1;
+35 | |     }
+   | |_____^
+error: dongu her turda ayni owning degeri tasiyor; deger ikinci turda gecersiz olur
+  --> tests/diagnostics/loop_cond_move.lx:40:5
+   |
+40 |       while (s + "x") == "ax" {
+   | ______^
+41 | |         print(5);
+42 | |     }
+   | |_____^
+error: 5 hata yuzunden durduruldu
