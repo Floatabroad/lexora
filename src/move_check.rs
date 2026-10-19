@@ -59,7 +59,8 @@ impl<'a> MoveChecker<'a> {
                 .insert(e.name, (e.params.clone(), e.variants.clone()));
         }
         for s in &program.structs {
-            self.structs.insert(s.name, (s.params.clone(), s.fields.clone()));
+            self.structs
+                .insert(s.name, (s.params.clone(), s.fields.clone()));
         }
         for func in &program.functions {
             self.check_function(func);
@@ -162,7 +163,7 @@ impl<'a> MoveChecker<'a> {
             Expr::FieldAccess { object, field, .. } => {
                 let (sym, mut path) = self.place_path(object)?;
                 let sty = match self.types.get(&object.id())? {
-                    Type::Struct(s,_) => *s,
+                    Type::Struct(s, _) => *s,
                     _ => return None,
                 };
                 let idx = self
@@ -194,7 +195,30 @@ impl<'a> MoveChecker<'a> {
             Some(BindState::Owning { ref states, .. }) if states.iter().all(|s| *s == MoveState::Owned)
         )
     }
+    fn dead_ancestor(&self, sym: Symbol, path: &[u32]) -> Option<MoveState> {
+        match self.lookup(sym) {
+            Some(BindState::Owning { paths, states }) => paths
+                .iter()
+                .zip(states.iter())
+                .filter(|(p, _)| p.len() < path.len() && path.starts_with(p))
+                .map(|(_, s)| *s)
+                .find(|s| *s != MoveState::Owned),
+            _ => None,
+        }
+    }
     fn check_path_live(&mut self, sym: Symbol, path: &[u32], span: Span, consuming: bool) {
+        if let Some(st) = self.dead_ancestor(sym, path) {
+            let message = match st {
+                MoveState::MaybeMoved => "kosullu tasinmis olabilecek deger kullanildi",
+                _ if consuming => "tasinmis deger tekrar kullanildi",
+                _ => "tasinmis deger kullanildi",
+            };
+            self.errors.push(LexoraError::Custom {
+                message: message.to_string(),
+                span,
+            });
+            return;
+        }
         let idx = self.nodes_under(sym, path);
         if idx.is_empty() {
             return;
@@ -244,15 +268,7 @@ impl<'a> MoveChecker<'a> {
     }
 
     fn check_assign_target(&mut self, sym: Symbol, path: &[u32], span: Span) {
-        let bad = match self.lookup(sym) {
-            Some(BindState::Owning { paths, states }) => {
-                paths.iter().zip(states.iter()).any(|(p, s)| {
-                    p.len() < path.len() && path.starts_with(p) && *s != MoveState::Owned
-                })
-            }
-            _ => false,
-        };
-        if bad {
+        if self.dead_ancestor(sym, path).is_some() {
             self.errors.push(LexoraError::Custom {
                 message: "tasinmis degerin bir parcasina atama yapilamaz; once butun olarak yeniden atayin".to_string(),
                 span,
@@ -282,6 +298,19 @@ impl<'a> MoveChecker<'a> {
             None => self.read_place(object),
         }
     }
+    fn walk_block(&mut self, block: &Block) {
+        for s in block.stmts.iter() {
+            if self.terminated {
+                return;
+            }
+            self.check_stmt(s);
+        }
+        if let Some(t) = block.tail {
+            if !self.terminated {
+                self.consume_expr(t);
+            }
+        }
+    }
     fn check_function(&mut self, func: &Function) {
         self.terminated = false;
         self.enter();
@@ -297,12 +326,7 @@ impl<'a> MoveChecker<'a> {
                 self.bind(*sym, Some(ty));
             }
         }
-        for stmt in func.body.stmts.iter() {
-            self.check_stmt(stmt);
-        }
-        if let Some(tail) = func.body.tail {
-            self.consume_expr(tail);
-        }
+        self.walk_block(&func.body);
         self.exit();
         self.cur_self = None;
     }
@@ -402,12 +426,7 @@ impl<'a> MoveChecker<'a> {
         if let Some(v) = loop_var {
             self.bind(v, None);
         }
-        for s in body.stmts.iter() {
-            self.check_stmt(s);
-        }
-        if let Some(t) = body.tail {
-            self.consume_expr(t);
-        }
+        self.walk_block(body);
         self.exit();
         let ctx = self.loops.pop().unwrap();
 
@@ -640,12 +659,7 @@ impl<'a> MoveChecker<'a> {
                             self.bind(*b, ftys.get(i));
                         }
                     }
-                    for s in body.stmts.iter() {
-                        self.check_stmt(s);
-                    }
-                    if let Some(t) = body.tail {
-                        self.consume_expr(t);
-                    }
+                    self.walk_block(body);
                     self.exit();
                     paths.push((self.scopes.clone(), self.terminated));
                 }
@@ -663,12 +677,7 @@ impl<'a> MoveChecker<'a> {
                 let entry = self.scopes.clone();
                 self.terminated = false;
                 self.enter();
-                for s in then_body.stmts.iter() {
-                    self.check_stmt(s);
-                }
-                if let Some(t) = then_body.tail {
-                    self.consume_expr(t);
-                }
+                self.walk_block(then_body);
                 self.exit();
                 let after_then = self.scopes.clone();
                 let then_term = self.terminated;
@@ -676,12 +685,7 @@ impl<'a> MoveChecker<'a> {
                 self.terminated = false;
                 if let Some(eb) = else_body {
                     self.enter();
-                    for s in eb.stmts.iter() {
-                        self.check_stmt(s);
-                    }
-                    if let Some(t) = eb.tail {
-                        self.consume_expr(t);
-                    }
+                    self.walk_block(eb);
                     self.exit();
                 }
                 let after_else = self.scopes.clone();

@@ -1,0 +1,2406 @@
+trait T0 {
+    fn m0(self) -> i32;
+}
+trait T1 {
+    fn m1(self) -> i32;
+}
+trait T2 {
+    fn m2(self) -> i32;
+}
+trait T3 {
+    fn m3(self) -> i32;
+}
+trait T4 {
+    fn m4(self) -> i32;
+}
+trait T5 {
+    fn m5(self) -> i32;
+}
+trait T6 {
+    fn m6(self) -> i32;
+}
+trait T7 {
+    fn m7(self) -> i32;
+}
+trait T8 {
+    fn m8(self) -> i32;
+}
+trait T9 {
+    fn m9(self) -> i32;
+}
+trait T10 {
+    fn m10(self) -> i32;
+}
+trait T11 {
+    fn m11(self) -> i32;
+}
+trait T12 {
+    fn m12(self) -> i32;
+}
+trait T13 {
+    fn m13(self) -> i32;
+}
+trait T14 {
+    fn m14(self) -> i32;
+}
+trait T15 {
+    fn m15(self) -> i32;
+}
+trait T16 {
+    fn m16(self) -> i32;
+}
+trait T17 {
+    fn m17(self) -> i32;
+}
+trait T18 {
+    fn m18(self) -> i32;
+}
+trait T19 {
+    fn m19(self) -> i32;
+}
+trait T20 {
+    fn m20(self) -> i32;
+}
+trait T21 {
+    fn m21(self) -> i32;
+}
+trait T22 {
+    fn m22(self) -> i32;
+}
+trait T23 {
+    fn m23(self) -> i32;
+}
+trait T24 {
+    fn m24(self) -> i32;
+}
+trait T25 {
+    fn m25(self) -> i32;
+}
+trait T26 {
+    fn m26(self) -> i32;
+}
+trait T27 {
+    fn m27(self) -> i32;
+}
+trait T28 {
+    fn m28(self) -> i32;
+}
+trait T29 {
+    fn m29(self) -> i32;
+}
+trait T30 {
+    fn m30(self) -> i32;
+}
+trait T31 {
+    fn m31(self) -> i32;
+}
+trait T32 {
+    fn m32(self) -> i32;
+}
+trait T33 {
+    fn m33(self) -> i32;
+}
+trait T34 {
+    fn m34(self) -> i32;
+}
+trait T35 {
+    fn m35(self) -> i32;
+}
+trait T36 {
+    fn m36(self) -> i32;
+}
+trait T37 {
+    fn m37(self) -> i32;
+}
+trait T38 {
+    fn m38(self) -> i32;
+}
+trait T39 {
+    fn m39(self) -> i32;
+}
+trait T40 {
+    fn m40(self) -> i32;
+}
+trait T41 {
+    fn m41(self) -> i32;
+}
+trait T42 {
+    fn m42(self) -> i32;
+}
+trait T43 {
+    fn m43(self) -> i32;
+}
+trait T44 {
+    fn m44(self) -> i32;
+}
+trait T45 {
+    fn m45(self) -> i32;
+}
+trait T46 {
+    fn m46(self) -> i32;
+}
+trait T47 {
+    fn m47(self) -> i32;
+}
+trait T48 {
+    fn m48(self) -> i32;
+}
+trait T49 {
+    fn m49(self) -> i32;
+}
+trait T50 {
+    fn m50(self) -> i32;
+}
+trait T51 {
+    fn m51(self) -> i32;
+}
+trait T52 {
+    fn m52(self) -> i32;
+}
+trait T53 {
+    fn m53(self) -> i32;
+}
+trait T54 {
+    fn m54(self) -> i32;
+}
+trait T55 {
+    fn m55(self) -> i32;
+}
+trait T56 {
+    fn m56(self) -> i32;
+}
+trait T57 {
+    fn m57(self) -> i32;
+}
+trait T58 {
+    fn m58(self) -> i32;
+}
+trait T59 {
+    fn m59(self) -> i32;
+}
+trait T60 {
+    fn m60(self) -> i32;
+}
+trait T61 {
+    fn m61(self) -> i32;
+}
+trait T62 {
+    fn m62(self) -> i32;
+}
+trait T63 {
+    fn m63(self) -> i32;
+}
+trait T64 {
+    fn m64(self) -> i32;
+}
+trait T65 {
+    fn m65(self) -> i32;
+}
+trait T66 {
+    fn m66(self) -> i32;
+}
+trait T67 {
+    fn m67(self) -> i32;
+}
+trait T68 {
+    fn m68(self) -> i32;
+}
+trait T69 {
+    fn m69(self) -> i32;
+}
+trait T70 {
+    fn m70(self) -> i32;
+}
+trait T71 {
+    fn m71(self) -> i32;
+}
+trait T72 {
+    fn m72(self) -> i32;
+}
+trait T73 {
+    fn m73(self) -> i32;
+}
+trait T74 {
+    fn m74(self) -> i32;
+}
+trait T75 {
+    fn m75(self) -> i32;
+}
+trait T76 {
+    fn m76(self) -> i32;
+}
+trait T77 {
+    fn m77(self) -> i32;
+}
+trait T78 {
+    fn m78(self) -> i32;
+}
+trait T79 {
+    fn m79(self) -> i32;
+}
+trait T80 {
+    fn m80(self) -> i32;
+}
+trait T81 {
+    fn m81(self) -> i32;
+}
+trait T82 {
+    fn m82(self) -> i32;
+}
+trait T83 {
+    fn m83(self) -> i32;
+}
+trait T84 {
+    fn m84(self) -> i32;
+}
+trait T85 {
+    fn m85(self) -> i32;
+}
+trait T86 {
+    fn m86(self) -> i32;
+}
+trait T87 {
+    fn m87(self) -> i32;
+}
+trait T88 {
+    fn m88(self) -> i32;
+}
+trait T89 {
+    fn m89(self) -> i32;
+}
+trait T90 {
+    fn m90(self) -> i32;
+}
+trait T91 {
+    fn m91(self) -> i32;
+}
+trait T92 {
+    fn m92(self) -> i32;
+}
+trait T93 {
+    fn m93(self) -> i32;
+}
+trait T94 {
+    fn m94(self) -> i32;
+}
+trait T95 {
+    fn m95(self) -> i32;
+}
+trait T96 {
+    fn m96(self) -> i32;
+}
+trait T97 {
+    fn m97(self) -> i32;
+}
+trait T98 {
+    fn m98(self) -> i32;
+}
+trait T99 {
+    fn m99(self) -> i32;
+}
+trait T100 {
+    fn m100(self) -> i32;
+}
+trait T101 {
+    fn m101(self) -> i32;
+}
+trait T102 {
+    fn m102(self) -> i32;
+}
+trait T103 {
+    fn m103(self) -> i32;
+}
+trait T104 {
+    fn m104(self) -> i32;
+}
+trait T105 {
+    fn m105(self) -> i32;
+}
+trait T106 {
+    fn m106(self) -> i32;
+}
+trait T107 {
+    fn m107(self) -> i32;
+}
+trait T108 {
+    fn m108(self) -> i32;
+}
+trait T109 {
+    fn m109(self) -> i32;
+}
+trait T110 {
+    fn m110(self) -> i32;
+}
+trait T111 {
+    fn m111(self) -> i32;
+}
+trait T112 {
+    fn m112(self) -> i32;
+}
+trait T113 {
+    fn m113(self) -> i32;
+}
+trait T114 {
+    fn m114(self) -> i32;
+}
+trait T115 {
+    fn m115(self) -> i32;
+}
+trait T116 {
+    fn m116(self) -> i32;
+}
+trait T117 {
+    fn m117(self) -> i32;
+}
+trait T118 {
+    fn m118(self) -> i32;
+}
+trait T119 {
+    fn m119(self) -> i32;
+}
+trait T120 {
+    fn m120(self) -> i32;
+}
+trait T121 {
+    fn m121(self) -> i32;
+}
+trait T122 {
+    fn m122(self) -> i32;
+}
+trait T123 {
+    fn m123(self) -> i32;
+}
+trait T124 {
+    fn m124(self) -> i32;
+}
+trait T125 {
+    fn m125(self) -> i32;
+}
+trait T126 {
+    fn m126(self) -> i32;
+}
+trait T127 {
+    fn m127(self) -> i32;
+}
+trait T128 {
+    fn m128(self) -> i32;
+}
+trait T129 {
+    fn m129(self) -> i32;
+}
+trait T130 {
+    fn m130(self) -> i32;
+}
+trait T131 {
+    fn m131(self) -> i32;
+}
+trait T132 {
+    fn m132(self) -> i32;
+}
+trait T133 {
+    fn m133(self) -> i32;
+}
+trait T134 {
+    fn m134(self) -> i32;
+}
+trait T135 {
+    fn m135(self) -> i32;
+}
+trait T136 {
+    fn m136(self) -> i32;
+}
+trait T137 {
+    fn m137(self) -> i32;
+}
+trait T138 {
+    fn m138(self) -> i32;
+}
+trait T139 {
+    fn m139(self) -> i32;
+}
+trait T140 {
+    fn m140(self) -> i32;
+}
+trait T141 {
+    fn m141(self) -> i32;
+}
+trait T142 {
+    fn m142(self) -> i32;
+}
+trait T143 {
+    fn m143(self) -> i32;
+}
+trait T144 {
+    fn m144(self) -> i32;
+}
+trait T145 {
+    fn m145(self) -> i32;
+}
+trait T146 {
+    fn m146(self) -> i32;
+}
+trait T147 {
+    fn m147(self) -> i32;
+}
+trait T148 {
+    fn m148(self) -> i32;
+}
+trait T149 {
+    fn m149(self) -> i32;
+}
+trait T150 {
+    fn m150(self) -> i32;
+}
+trait T151 {
+    fn m151(self) -> i32;
+}
+trait T152 {
+    fn m152(self) -> i32;
+}
+trait T153 {
+    fn m153(self) -> i32;
+}
+trait T154 {
+    fn m154(self) -> i32;
+}
+trait T155 {
+    fn m155(self) -> i32;
+}
+trait T156 {
+    fn m156(self) -> i32;
+}
+trait T157 {
+    fn m157(self) -> i32;
+}
+trait T158 {
+    fn m158(self) -> i32;
+}
+trait T159 {
+    fn m159(self) -> i32;
+}
+trait T160 {
+    fn m160(self) -> i32;
+}
+trait T161 {
+    fn m161(self) -> i32;
+}
+trait T162 {
+    fn m162(self) -> i32;
+}
+trait T163 {
+    fn m163(self) -> i32;
+}
+trait T164 {
+    fn m164(self) -> i32;
+}
+trait T165 {
+    fn m165(self) -> i32;
+}
+trait T166 {
+    fn m166(self) -> i32;
+}
+trait T167 {
+    fn m167(self) -> i32;
+}
+trait T168 {
+    fn m168(self) -> i32;
+}
+trait T169 {
+    fn m169(self) -> i32;
+}
+trait T170 {
+    fn m170(self) -> i32;
+}
+trait T171 {
+    fn m171(self) -> i32;
+}
+trait T172 {
+    fn m172(self) -> i32;
+}
+trait T173 {
+    fn m173(self) -> i32;
+}
+trait T174 {
+    fn m174(self) -> i32;
+}
+trait T175 {
+    fn m175(self) -> i32;
+}
+trait T176 {
+    fn m176(self) -> i32;
+}
+trait T177 {
+    fn m177(self) -> i32;
+}
+trait T178 {
+    fn m178(self) -> i32;
+}
+trait T179 {
+    fn m179(self) -> i32;
+}
+trait T180 {
+    fn m180(self) -> i32;
+}
+trait T181 {
+    fn m181(self) -> i32;
+}
+trait T182 {
+    fn m182(self) -> i32;
+}
+trait T183 {
+    fn m183(self) -> i32;
+}
+trait T184 {
+    fn m184(self) -> i32;
+}
+trait T185 {
+    fn m185(self) -> i32;
+}
+trait T186 {
+    fn m186(self) -> i32;
+}
+trait T187 {
+    fn m187(self) -> i32;
+}
+trait T188 {
+    fn m188(self) -> i32;
+}
+trait T189 {
+    fn m189(self) -> i32;
+}
+trait T190 {
+    fn m190(self) -> i32;
+}
+trait T191 {
+    fn m191(self) -> i32;
+}
+trait T192 {
+    fn m192(self) -> i32;
+}
+trait T193 {
+    fn m193(self) -> i32;
+}
+trait T194 {
+    fn m194(self) -> i32;
+}
+trait T195 {
+    fn m195(self) -> i32;
+}
+trait T196 {
+    fn m196(self) -> i32;
+}
+trait T197 {
+    fn m197(self) -> i32;
+}
+trait T198 {
+    fn m198(self) -> i32;
+}
+trait T199 {
+    fn m199(self) -> i32;
+}
+trait T200 {
+    fn m200(self) -> i32;
+}
+trait T201 {
+    fn m201(self) -> i32;
+}
+trait T202 {
+    fn m202(self) -> i32;
+}
+trait T203 {
+    fn m203(self) -> i32;
+}
+trait T204 {
+    fn m204(self) -> i32;
+}
+trait T205 {
+    fn m205(self) -> i32;
+}
+trait T206 {
+    fn m206(self) -> i32;
+}
+trait T207 {
+    fn m207(self) -> i32;
+}
+trait T208 {
+    fn m208(self) -> i32;
+}
+trait T209 {
+    fn m209(self) -> i32;
+}
+trait T210 {
+    fn m210(self) -> i32;
+}
+trait T211 {
+    fn m211(self) -> i32;
+}
+trait T212 {
+    fn m212(self) -> i32;
+}
+trait T213 {
+    fn m213(self) -> i32;
+}
+trait T214 {
+    fn m214(self) -> i32;
+}
+trait T215 {
+    fn m215(self) -> i32;
+}
+trait T216 {
+    fn m216(self) -> i32;
+}
+trait T217 {
+    fn m217(self) -> i32;
+}
+trait T218 {
+    fn m218(self) -> i32;
+}
+trait T219 {
+    fn m219(self) -> i32;
+}
+trait T220 {
+    fn m220(self) -> i32;
+}
+trait T221 {
+    fn m221(self) -> i32;
+}
+trait T222 {
+    fn m222(self) -> i32;
+}
+trait T223 {
+    fn m223(self) -> i32;
+}
+trait T224 {
+    fn m224(self) -> i32;
+}
+trait T225 {
+    fn m225(self) -> i32;
+}
+trait T226 {
+    fn m226(self) -> i32;
+}
+trait T227 {
+    fn m227(self) -> i32;
+}
+trait T228 {
+    fn m228(self) -> i32;
+}
+trait T229 {
+    fn m229(self) -> i32;
+}
+trait T230 {
+    fn m230(self) -> i32;
+}
+trait T231 {
+    fn m231(self) -> i32;
+}
+trait T232 {
+    fn m232(self) -> i32;
+}
+trait T233 {
+    fn m233(self) -> i32;
+}
+trait T234 {
+    fn m234(self) -> i32;
+}
+trait T235 {
+    fn m235(self) -> i32;
+}
+trait T236 {
+    fn m236(self) -> i32;
+}
+trait T237 {
+    fn m237(self) -> i32;
+}
+trait T238 {
+    fn m238(self) -> i32;
+}
+trait T239 {
+    fn m239(self) -> i32;
+}
+trait T240 {
+    fn m240(self) -> i32;
+}
+trait T241 {
+    fn m241(self) -> i32;
+}
+trait T242 {
+    fn m242(self) -> i32;
+}
+trait T243 {
+    fn m243(self) -> i32;
+}
+trait T244 {
+    fn m244(self) -> i32;
+}
+trait T245 {
+    fn m245(self) -> i32;
+}
+trait T246 {
+    fn m246(self) -> i32;
+}
+trait T247 {
+    fn m247(self) -> i32;
+}
+trait T248 {
+    fn m248(self) -> i32;
+}
+trait T249 {
+    fn m249(self) -> i32;
+}
+trait T250 {
+    fn m250(self) -> i32;
+}
+trait T251 {
+    fn m251(self) -> i32;
+}
+trait T252 {
+    fn m252(self) -> i32;
+}
+trait T253 {
+    fn m253(self) -> i32;
+}
+trait T254 {
+    fn m254(self) -> i32;
+}
+trait T255 {
+    fn m255(self) -> i32;
+}
+trait T256 {
+    fn m256(self) -> i32;
+}
+trait T257 {
+    fn m257(self) -> i32;
+}
+trait T258 {
+    fn m258(self) -> i32;
+}
+trait T259 {
+    fn m259(self) -> i32;
+}
+trait T260 {
+    fn m260(self) -> i32;
+}
+trait T261 {
+    fn m261(self) -> i32;
+}
+trait T262 {
+    fn m262(self) -> i32;
+}
+trait T263 {
+    fn m263(self) -> i32;
+}
+trait T264 {
+    fn m264(self) -> i32;
+}
+trait T265 {
+    fn m265(self) -> i32;
+}
+trait T266 {
+    fn m266(self) -> i32;
+}
+trait T267 {
+    fn m267(self) -> i32;
+}
+trait T268 {
+    fn m268(self) -> i32;
+}
+trait T269 {
+    fn m269(self) -> i32;
+}
+trait T270 {
+    fn m270(self) -> i32;
+}
+trait T271 {
+    fn m271(self) -> i32;
+}
+trait T272 {
+    fn m272(self) -> i32;
+}
+trait T273 {
+    fn m273(self) -> i32;
+}
+trait T274 {
+    fn m274(self) -> i32;
+}
+trait T275 {
+    fn m275(self) -> i32;
+}
+trait T276 {
+    fn m276(self) -> i32;
+}
+trait T277 {
+    fn m277(self) -> i32;
+}
+trait T278 {
+    fn m278(self) -> i32;
+}
+trait T279 {
+    fn m279(self) -> i32;
+}
+trait T280 {
+    fn m280(self) -> i32;
+}
+trait T281 {
+    fn m281(self) -> i32;
+}
+trait T282 {
+    fn m282(self) -> i32;
+}
+trait T283 {
+    fn m283(self) -> i32;
+}
+trait T284 {
+    fn m284(self) -> i32;
+}
+trait T285 {
+    fn m285(self) -> i32;
+}
+trait T286 {
+    fn m286(self) -> i32;
+}
+trait T287 {
+    fn m287(self) -> i32;
+}
+trait T288 {
+    fn m288(self) -> i32;
+}
+trait T289 {
+    fn m289(self) -> i32;
+}
+trait T290 {
+    fn m290(self) -> i32;
+}
+trait T291 {
+    fn m291(self) -> i32;
+}
+trait T292 {
+    fn m292(self) -> i32;
+}
+trait T293 {
+    fn m293(self) -> i32;
+}
+trait T294 {
+    fn m294(self) -> i32;
+}
+trait T295 {
+    fn m295(self) -> i32;
+}
+trait T296 {
+    fn m296(self) -> i32;
+}
+trait T297 {
+    fn m297(self) -> i32;
+}
+trait T298 {
+    fn m298(self) -> i32;
+}
+trait T299 {
+    fn m299(self) -> i32;
+}
+trait T300 {
+    fn m300(self) -> i32;
+}
+trait T301 {
+    fn m301(self) -> i32;
+}
+trait T302 {
+    fn m302(self) -> i32;
+}
+trait T303 {
+    fn m303(self) -> i32;
+}
+trait T304 {
+    fn m304(self) -> i32;
+}
+trait T305 {
+    fn m305(self) -> i32;
+}
+trait T306 {
+    fn m306(self) -> i32;
+}
+trait T307 {
+    fn m307(self) -> i32;
+}
+trait T308 {
+    fn m308(self) -> i32;
+}
+trait T309 {
+    fn m309(self) -> i32;
+}
+trait T310 {
+    fn m310(self) -> i32;
+}
+trait T311 {
+    fn m311(self) -> i32;
+}
+trait T312 {
+    fn m312(self) -> i32;
+}
+trait T313 {
+    fn m313(self) -> i32;
+}
+trait T314 {
+    fn m314(self) -> i32;
+}
+trait T315 {
+    fn m315(self) -> i32;
+}
+trait T316 {
+    fn m316(self) -> i32;
+}
+trait T317 {
+    fn m317(self) -> i32;
+}
+trait T318 {
+    fn m318(self) -> i32;
+}
+trait T319 {
+    fn m319(self) -> i32;
+}
+trait T320 {
+    fn m320(self) -> i32;
+}
+trait T321 {
+    fn m321(self) -> i32;
+}
+trait T322 {
+    fn m322(self) -> i32;
+}
+trait T323 {
+    fn m323(self) -> i32;
+}
+trait T324 {
+    fn m324(self) -> i32;
+}
+trait T325 {
+    fn m325(self) -> i32;
+}
+trait T326 {
+    fn m326(self) -> i32;
+}
+trait T327 {
+    fn m327(self) -> i32;
+}
+trait T328 {
+    fn m328(self) -> i32;
+}
+trait T329 {
+    fn m329(self) -> i32;
+}
+trait T330 {
+    fn m330(self) -> i32;
+}
+trait T331 {
+    fn m331(self) -> i32;
+}
+trait T332 {
+    fn m332(self) -> i32;
+}
+trait T333 {
+    fn m333(self) -> i32;
+}
+trait T334 {
+    fn m334(self) -> i32;
+}
+trait T335 {
+    fn m335(self) -> i32;
+}
+trait T336 {
+    fn m336(self) -> i32;
+}
+trait T337 {
+    fn m337(self) -> i32;
+}
+trait T338 {
+    fn m338(self) -> i32;
+}
+trait T339 {
+    fn m339(self) -> i32;
+}
+trait T340 {
+    fn m340(self) -> i32;
+}
+trait T341 {
+    fn m341(self) -> i32;
+}
+trait T342 {
+    fn m342(self) -> i32;
+}
+trait T343 {
+    fn m343(self) -> i32;
+}
+trait T344 {
+    fn m344(self) -> i32;
+}
+trait T345 {
+    fn m345(self) -> i32;
+}
+trait T346 {
+    fn m346(self) -> i32;
+}
+trait T347 {
+    fn m347(self) -> i32;
+}
+trait T348 {
+    fn m348(self) -> i32;
+}
+trait T349 {
+    fn m349(self) -> i32;
+}
+trait T350 {
+    fn m350(self) -> i32;
+}
+trait T351 {
+    fn m351(self) -> i32;
+}
+trait T352 {
+    fn m352(self) -> i32;
+}
+trait T353 {
+    fn m353(self) -> i32;
+}
+trait T354 {
+    fn m354(self) -> i32;
+}
+trait T355 {
+    fn m355(self) -> i32;
+}
+trait T356 {
+    fn m356(self) -> i32;
+}
+trait T357 {
+    fn m357(self) -> i32;
+}
+trait T358 {
+    fn m358(self) -> i32;
+}
+trait T359 {
+    fn m359(self) -> i32;
+}
+trait T360 {
+    fn m360(self) -> i32;
+}
+trait T361 {
+    fn m361(self) -> i32;
+}
+trait T362 {
+    fn m362(self) -> i32;
+}
+trait T363 {
+    fn m363(self) -> i32;
+}
+trait T364 {
+    fn m364(self) -> i32;
+}
+trait T365 {
+    fn m365(self) -> i32;
+}
+trait T366 {
+    fn m366(self) -> i32;
+}
+trait T367 {
+    fn m367(self) -> i32;
+}
+trait T368 {
+    fn m368(self) -> i32;
+}
+trait T369 {
+    fn m369(self) -> i32;
+}
+trait T370 {
+    fn m370(self) -> i32;
+}
+trait T371 {
+    fn m371(self) -> i32;
+}
+trait T372 {
+    fn m372(self) -> i32;
+}
+trait T373 {
+    fn m373(self) -> i32;
+}
+trait T374 {
+    fn m374(self) -> i32;
+}
+trait T375 {
+    fn m375(self) -> i32;
+}
+trait T376 {
+    fn m376(self) -> i32;
+}
+trait T377 {
+    fn m377(self) -> i32;
+}
+trait T378 {
+    fn m378(self) -> i32;
+}
+trait T379 {
+    fn m379(self) -> i32;
+}
+trait T380 {
+    fn m380(self) -> i32;
+}
+trait T381 {
+    fn m381(self) -> i32;
+}
+trait T382 {
+    fn m382(self) -> i32;
+}
+trait T383 {
+    fn m383(self) -> i32;
+}
+trait T384 {
+    fn m384(self) -> i32;
+}
+trait T385 {
+    fn m385(self) -> i32;
+}
+trait T386 {
+    fn m386(self) -> i32;
+}
+trait T387 {
+    fn m387(self) -> i32;
+}
+trait T388 {
+    fn m388(self) -> i32;
+}
+trait T389 {
+    fn m389(self) -> i32;
+}
+trait T390 {
+    fn m390(self) -> i32;
+}
+trait T391 {
+    fn m391(self) -> i32;
+}
+trait T392 {
+    fn m392(self) -> i32;
+}
+trait T393 {
+    fn m393(self) -> i32;
+}
+trait T394 {
+    fn m394(self) -> i32;
+}
+trait T395 {
+    fn m395(self) -> i32;
+}
+trait T396 {
+    fn m396(self) -> i32;
+}
+trait T397 {
+    fn m397(self) -> i32;
+}
+trait T398 {
+    fn m398(self) -> i32;
+}
+trait T399 {
+    fn m399(self) -> i32;
+}
+struct S { x: i32 }
+impl T0 for S {
+    fn m0(self) -> i32 { 0 }
+}
+impl T1 for S {
+    fn m1(self) -> i32 { 1 }
+}
+impl T2 for S {
+    fn m2(self) -> i32 { 2 }
+}
+impl T3 for S {
+    fn m3(self) -> i32 { 3 }
+}
+impl T4 for S {
+    fn m4(self) -> i32 { 4 }
+}
+impl T5 for S {
+    fn m5(self) -> i32 { 5 }
+}
+impl T6 for S {
+    fn m6(self) -> i32 { 6 }
+}
+impl T7 for S {
+    fn m7(self) -> i32 { 7 }
+}
+impl T8 for S {
+    fn m8(self) -> i32 { 8 }
+}
+impl T9 for S {
+    fn m9(self) -> i32 { 9 }
+}
+impl T10 for S {
+    fn m10(self) -> i32 { 10 }
+}
+impl T11 for S {
+    fn m11(self) -> i32 { 11 }
+}
+impl T12 for S {
+    fn m12(self) -> i32 { 12 }
+}
+impl T13 for S {
+    fn m13(self) -> i32 { 13 }
+}
+impl T14 for S {
+    fn m14(self) -> i32 { 14 }
+}
+impl T15 for S {
+    fn m15(self) -> i32 { 15 }
+}
+impl T16 for S {
+    fn m16(self) -> i32 { 16 }
+}
+impl T17 for S {
+    fn m17(self) -> i32 { 17 }
+}
+impl T18 for S {
+    fn m18(self) -> i32 { 18 }
+}
+impl T19 for S {
+    fn m19(self) -> i32 { 19 }
+}
+impl T20 for S {
+    fn m20(self) -> i32 { 20 }
+}
+impl T21 for S {
+    fn m21(self) -> i32 { 21 }
+}
+impl T22 for S {
+    fn m22(self) -> i32 { 22 }
+}
+impl T23 for S {
+    fn m23(self) -> i32 { 23 }
+}
+impl T24 for S {
+    fn m24(self) -> i32 { 24 }
+}
+impl T25 for S {
+    fn m25(self) -> i32 { 25 }
+}
+impl T26 for S {
+    fn m26(self) -> i32 { 26 }
+}
+impl T27 for S {
+    fn m27(self) -> i32 { 27 }
+}
+impl T28 for S {
+    fn m28(self) -> i32 { 28 }
+}
+impl T29 for S {
+    fn m29(self) -> i32 { 29 }
+}
+impl T30 for S {
+    fn m30(self) -> i32 { 30 }
+}
+impl T31 for S {
+    fn m31(self) -> i32 { 31 }
+}
+impl T32 for S {
+    fn m32(self) -> i32 { 32 }
+}
+impl T33 for S {
+    fn m33(self) -> i32 { 33 }
+}
+impl T34 for S {
+    fn m34(self) -> i32 { 34 }
+}
+impl T35 for S {
+    fn m35(self) -> i32 { 35 }
+}
+impl T36 for S {
+    fn m36(self) -> i32 { 36 }
+}
+impl T37 for S {
+    fn m37(self) -> i32 { 37 }
+}
+impl T38 for S {
+    fn m38(self) -> i32 { 38 }
+}
+impl T39 for S {
+    fn m39(self) -> i32 { 39 }
+}
+impl T40 for S {
+    fn m40(self) -> i32 { 40 }
+}
+impl T41 for S {
+    fn m41(self) -> i32 { 41 }
+}
+impl T42 for S {
+    fn m42(self) -> i32 { 42 }
+}
+impl T43 for S {
+    fn m43(self) -> i32 { 43 }
+}
+impl T44 for S {
+    fn m44(self) -> i32 { 44 }
+}
+impl T45 for S {
+    fn m45(self) -> i32 { 45 }
+}
+impl T46 for S {
+    fn m46(self) -> i32 { 46 }
+}
+impl T47 for S {
+    fn m47(self) -> i32 { 47 }
+}
+impl T48 for S {
+    fn m48(self) -> i32 { 48 }
+}
+impl T49 for S {
+    fn m49(self) -> i32 { 49 }
+}
+impl T50 for S {
+    fn m50(self) -> i32 { 50 }
+}
+impl T51 for S {
+    fn m51(self) -> i32 { 51 }
+}
+impl T52 for S {
+    fn m52(self) -> i32 { 52 }
+}
+impl T53 for S {
+    fn m53(self) -> i32 { 53 }
+}
+impl T54 for S {
+    fn m54(self) -> i32 { 54 }
+}
+impl T55 for S {
+    fn m55(self) -> i32 { 55 }
+}
+impl T56 for S {
+    fn m56(self) -> i32 { 56 }
+}
+impl T57 for S {
+    fn m57(self) -> i32 { 57 }
+}
+impl T58 for S {
+    fn m58(self) -> i32 { 58 }
+}
+impl T59 for S {
+    fn m59(self) -> i32 { 59 }
+}
+impl T60 for S {
+    fn m60(self) -> i32 { 60 }
+}
+impl T61 for S {
+    fn m61(self) -> i32 { 61 }
+}
+impl T62 for S {
+    fn m62(self) -> i32 { 62 }
+}
+impl T63 for S {
+    fn m63(self) -> i32 { 63 }
+}
+impl T64 for S {
+    fn m64(self) -> i32 { 64 }
+}
+impl T65 for S {
+    fn m65(self) -> i32 { 65 }
+}
+impl T66 for S {
+    fn m66(self) -> i32 { 66 }
+}
+impl T67 for S {
+    fn m67(self) -> i32 { 67 }
+}
+impl T68 for S {
+    fn m68(self) -> i32 { 68 }
+}
+impl T69 for S {
+    fn m69(self) -> i32 { 69 }
+}
+impl T70 for S {
+    fn m70(self) -> i32 { 70 }
+}
+impl T71 for S {
+    fn m71(self) -> i32 { 71 }
+}
+impl T72 for S {
+    fn m72(self) -> i32 { 72 }
+}
+impl T73 for S {
+    fn m73(self) -> i32 { 73 }
+}
+impl T74 for S {
+    fn m74(self) -> i32 { 74 }
+}
+impl T75 for S {
+    fn m75(self) -> i32 { 75 }
+}
+impl T76 for S {
+    fn m76(self) -> i32 { 76 }
+}
+impl T77 for S {
+    fn m77(self) -> i32 { 77 }
+}
+impl T78 for S {
+    fn m78(self) -> i32 { 78 }
+}
+impl T79 for S {
+    fn m79(self) -> i32 { 79 }
+}
+impl T80 for S {
+    fn m80(self) -> i32 { 80 }
+}
+impl T81 for S {
+    fn m81(self) -> i32 { 81 }
+}
+impl T82 for S {
+    fn m82(self) -> i32 { 82 }
+}
+impl T83 for S {
+    fn m83(self) -> i32 { 83 }
+}
+impl T84 for S {
+    fn m84(self) -> i32 { 84 }
+}
+impl T85 for S {
+    fn m85(self) -> i32 { 85 }
+}
+impl T86 for S {
+    fn m86(self) -> i32 { 86 }
+}
+impl T87 for S {
+    fn m87(self) -> i32 { 87 }
+}
+impl T88 for S {
+    fn m88(self) -> i32 { 88 }
+}
+impl T89 for S {
+    fn m89(self) -> i32 { 89 }
+}
+impl T90 for S {
+    fn m90(self) -> i32 { 90 }
+}
+impl T91 for S {
+    fn m91(self) -> i32 { 91 }
+}
+impl T92 for S {
+    fn m92(self) -> i32 { 92 }
+}
+impl T93 for S {
+    fn m93(self) -> i32 { 93 }
+}
+impl T94 for S {
+    fn m94(self) -> i32 { 94 }
+}
+impl T95 for S {
+    fn m95(self) -> i32 { 95 }
+}
+impl T96 for S {
+    fn m96(self) -> i32 { 96 }
+}
+impl T97 for S {
+    fn m97(self) -> i32 { 97 }
+}
+impl T98 for S {
+    fn m98(self) -> i32 { 98 }
+}
+impl T99 for S {
+    fn m99(self) -> i32 { 99 }
+}
+impl T100 for S {
+    fn m100(self) -> i32 { 100 }
+}
+impl T101 for S {
+    fn m101(self) -> i32 { 101 }
+}
+impl T102 for S {
+    fn m102(self) -> i32 { 102 }
+}
+impl T103 for S {
+    fn m103(self) -> i32 { 103 }
+}
+impl T104 for S {
+    fn m104(self) -> i32 { 104 }
+}
+impl T105 for S {
+    fn m105(self) -> i32 { 105 }
+}
+impl T106 for S {
+    fn m106(self) -> i32 { 106 }
+}
+impl T107 for S {
+    fn m107(self) -> i32 { 107 }
+}
+impl T108 for S {
+    fn m108(self) -> i32 { 108 }
+}
+impl T109 for S {
+    fn m109(self) -> i32 { 109 }
+}
+impl T110 for S {
+    fn m110(self) -> i32 { 110 }
+}
+impl T111 for S {
+    fn m111(self) -> i32 { 111 }
+}
+impl T112 for S {
+    fn m112(self) -> i32 { 112 }
+}
+impl T113 for S {
+    fn m113(self) -> i32 { 113 }
+}
+impl T114 for S {
+    fn m114(self) -> i32 { 114 }
+}
+impl T115 for S {
+    fn m115(self) -> i32 { 115 }
+}
+impl T116 for S {
+    fn m116(self) -> i32 { 116 }
+}
+impl T117 for S {
+    fn m117(self) -> i32 { 117 }
+}
+impl T118 for S {
+    fn m118(self) -> i32 { 118 }
+}
+impl T119 for S {
+    fn m119(self) -> i32 { 119 }
+}
+impl T120 for S {
+    fn m120(self) -> i32 { 120 }
+}
+impl T121 for S {
+    fn m121(self) -> i32 { 121 }
+}
+impl T122 for S {
+    fn m122(self) -> i32 { 122 }
+}
+impl T123 for S {
+    fn m123(self) -> i32 { 123 }
+}
+impl T124 for S {
+    fn m124(self) -> i32 { 124 }
+}
+impl T125 for S {
+    fn m125(self) -> i32 { 125 }
+}
+impl T126 for S {
+    fn m126(self) -> i32 { 126 }
+}
+impl T127 for S {
+    fn m127(self) -> i32 { 127 }
+}
+impl T128 for S {
+    fn m128(self) -> i32 { 128 }
+}
+impl T129 for S {
+    fn m129(self) -> i32 { 129 }
+}
+impl T130 for S {
+    fn m130(self) -> i32 { 130 }
+}
+impl T131 for S {
+    fn m131(self) -> i32 { 131 }
+}
+impl T132 for S {
+    fn m132(self) -> i32 { 132 }
+}
+impl T133 for S {
+    fn m133(self) -> i32 { 133 }
+}
+impl T134 for S {
+    fn m134(self) -> i32 { 134 }
+}
+impl T135 for S {
+    fn m135(self) -> i32 { 135 }
+}
+impl T136 for S {
+    fn m136(self) -> i32 { 136 }
+}
+impl T137 for S {
+    fn m137(self) -> i32 { 137 }
+}
+impl T138 for S {
+    fn m138(self) -> i32 { 138 }
+}
+impl T139 for S {
+    fn m139(self) -> i32 { 139 }
+}
+impl T140 for S {
+    fn m140(self) -> i32 { 140 }
+}
+impl T141 for S {
+    fn m141(self) -> i32 { 141 }
+}
+impl T142 for S {
+    fn m142(self) -> i32 { 142 }
+}
+impl T143 for S {
+    fn m143(self) -> i32 { 143 }
+}
+impl T144 for S {
+    fn m144(self) -> i32 { 144 }
+}
+impl T145 for S {
+    fn m145(self) -> i32 { 145 }
+}
+impl T146 for S {
+    fn m146(self) -> i32 { 146 }
+}
+impl T147 for S {
+    fn m147(self) -> i32 { 147 }
+}
+impl T148 for S {
+    fn m148(self) -> i32 { 148 }
+}
+impl T149 for S {
+    fn m149(self) -> i32 { 149 }
+}
+impl T150 for S {
+    fn m150(self) -> i32 { 150 }
+}
+impl T151 for S {
+    fn m151(self) -> i32 { 151 }
+}
+impl T152 for S {
+    fn m152(self) -> i32 { 152 }
+}
+impl T153 for S {
+    fn m153(self) -> i32 { 153 }
+}
+impl T154 for S {
+    fn m154(self) -> i32 { 154 }
+}
+impl T155 for S {
+    fn m155(self) -> i32 { 155 }
+}
+impl T156 for S {
+    fn m156(self) -> i32 { 156 }
+}
+impl T157 for S {
+    fn m157(self) -> i32 { 157 }
+}
+impl T158 for S {
+    fn m158(self) -> i32 { 158 }
+}
+impl T159 for S {
+    fn m159(self) -> i32 { 159 }
+}
+impl T160 for S {
+    fn m160(self) -> i32 { 160 }
+}
+impl T161 for S {
+    fn m161(self) -> i32 { 161 }
+}
+impl T162 for S {
+    fn m162(self) -> i32 { 162 }
+}
+impl T163 for S {
+    fn m163(self) -> i32 { 163 }
+}
+impl T164 for S {
+    fn m164(self) -> i32 { 164 }
+}
+impl T165 for S {
+    fn m165(self) -> i32 { 165 }
+}
+impl T166 for S {
+    fn m166(self) -> i32 { 166 }
+}
+impl T167 for S {
+    fn m167(self) -> i32 { 167 }
+}
+impl T168 for S {
+    fn m168(self) -> i32 { 168 }
+}
+impl T169 for S {
+    fn m169(self) -> i32 { 169 }
+}
+impl T170 for S {
+    fn m170(self) -> i32 { 170 }
+}
+impl T171 for S {
+    fn m171(self) -> i32 { 171 }
+}
+impl T172 for S {
+    fn m172(self) -> i32 { 172 }
+}
+impl T173 for S {
+    fn m173(self) -> i32 { 173 }
+}
+impl T174 for S {
+    fn m174(self) -> i32 { 174 }
+}
+impl T175 for S {
+    fn m175(self) -> i32 { 175 }
+}
+impl T176 for S {
+    fn m176(self) -> i32 { 176 }
+}
+impl T177 for S {
+    fn m177(self) -> i32 { 177 }
+}
+impl T178 for S {
+    fn m178(self) -> i32 { 178 }
+}
+impl T179 for S {
+    fn m179(self) -> i32 { 179 }
+}
+impl T180 for S {
+    fn m180(self) -> i32 { 180 }
+}
+impl T181 for S {
+    fn m181(self) -> i32 { 181 }
+}
+impl T182 for S {
+    fn m182(self) -> i32 { 182 }
+}
+impl T183 for S {
+    fn m183(self) -> i32 { 183 }
+}
+impl T184 for S {
+    fn m184(self) -> i32 { 184 }
+}
+impl T185 for S {
+    fn m185(self) -> i32 { 185 }
+}
+impl T186 for S {
+    fn m186(self) -> i32 { 186 }
+}
+impl T187 for S {
+    fn m187(self) -> i32 { 187 }
+}
+impl T188 for S {
+    fn m188(self) -> i32 { 188 }
+}
+impl T189 for S {
+    fn m189(self) -> i32 { 189 }
+}
+impl T190 for S {
+    fn m190(self) -> i32 { 190 }
+}
+impl T191 for S {
+    fn m191(self) -> i32 { 191 }
+}
+impl T192 for S {
+    fn m192(self) -> i32 { 192 }
+}
+impl T193 for S {
+    fn m193(self) -> i32 { 193 }
+}
+impl T194 for S {
+    fn m194(self) -> i32 { 194 }
+}
+impl T195 for S {
+    fn m195(self) -> i32 { 195 }
+}
+impl T196 for S {
+    fn m196(self) -> i32 { 196 }
+}
+impl T197 for S {
+    fn m197(self) -> i32 { 197 }
+}
+impl T198 for S {
+    fn m198(self) -> i32 { 198 }
+}
+impl T199 for S {
+    fn m199(self) -> i32 { 199 }
+}
+impl T200 for S {
+    fn m200(self) -> i32 { 200 }
+}
+impl T201 for S {
+    fn m201(self) -> i32 { 201 }
+}
+impl T202 for S {
+    fn m202(self) -> i32 { 202 }
+}
+impl T203 for S {
+    fn m203(self) -> i32 { 203 }
+}
+impl T204 for S {
+    fn m204(self) -> i32 { 204 }
+}
+impl T205 for S {
+    fn m205(self) -> i32 { 205 }
+}
+impl T206 for S {
+    fn m206(self) -> i32 { 206 }
+}
+impl T207 for S {
+    fn m207(self) -> i32 { 207 }
+}
+impl T208 for S {
+    fn m208(self) -> i32 { 208 }
+}
+impl T209 for S {
+    fn m209(self) -> i32 { 209 }
+}
+impl T210 for S {
+    fn m210(self) -> i32 { 210 }
+}
+impl T211 for S {
+    fn m211(self) -> i32 { 211 }
+}
+impl T212 for S {
+    fn m212(self) -> i32 { 212 }
+}
+impl T213 for S {
+    fn m213(self) -> i32 { 213 }
+}
+impl T214 for S {
+    fn m214(self) -> i32 { 214 }
+}
+impl T215 for S {
+    fn m215(self) -> i32 { 215 }
+}
+impl T216 for S {
+    fn m216(self) -> i32 { 216 }
+}
+impl T217 for S {
+    fn m217(self) -> i32 { 217 }
+}
+impl T218 for S {
+    fn m218(self) -> i32 { 218 }
+}
+impl T219 for S {
+    fn m219(self) -> i32 { 219 }
+}
+impl T220 for S {
+    fn m220(self) -> i32 { 220 }
+}
+impl T221 for S {
+    fn m221(self) -> i32 { 221 }
+}
+impl T222 for S {
+    fn m222(self) -> i32 { 222 }
+}
+impl T223 for S {
+    fn m223(self) -> i32 { 223 }
+}
+impl T224 for S {
+    fn m224(self) -> i32 { 224 }
+}
+impl T225 for S {
+    fn m225(self) -> i32 { 225 }
+}
+impl T226 for S {
+    fn m226(self) -> i32 { 226 }
+}
+impl T227 for S {
+    fn m227(self) -> i32 { 227 }
+}
+impl T228 for S {
+    fn m228(self) -> i32 { 228 }
+}
+impl T229 for S {
+    fn m229(self) -> i32 { 229 }
+}
+impl T230 for S {
+    fn m230(self) -> i32 { 230 }
+}
+impl T231 for S {
+    fn m231(self) -> i32 { 231 }
+}
+impl T232 for S {
+    fn m232(self) -> i32 { 232 }
+}
+impl T233 for S {
+    fn m233(self) -> i32 { 233 }
+}
+impl T234 for S {
+    fn m234(self) -> i32 { 234 }
+}
+impl T235 for S {
+    fn m235(self) -> i32 { 235 }
+}
+impl T236 for S {
+    fn m236(self) -> i32 { 236 }
+}
+impl T237 for S {
+    fn m237(self) -> i32 { 237 }
+}
+impl T238 for S {
+    fn m238(self) -> i32 { 238 }
+}
+impl T239 for S {
+    fn m239(self) -> i32 { 239 }
+}
+impl T240 for S {
+    fn m240(self) -> i32 { 240 }
+}
+impl T241 for S {
+    fn m241(self) -> i32 { 241 }
+}
+impl T242 for S {
+    fn m242(self) -> i32 { 242 }
+}
+impl T243 for S {
+    fn m243(self) -> i32 { 243 }
+}
+impl T244 for S {
+    fn m244(self) -> i32 { 244 }
+}
+impl T245 for S {
+    fn m245(self) -> i32 { 245 }
+}
+impl T246 for S {
+    fn m246(self) -> i32 { 246 }
+}
+impl T247 for S {
+    fn m247(self) -> i32 { 247 }
+}
+impl T248 for S {
+    fn m248(self) -> i32 { 248 }
+}
+impl T249 for S {
+    fn m249(self) -> i32 { 249 }
+}
+impl T250 for S {
+    fn m250(self) -> i32 { 250 }
+}
+impl T251 for S {
+    fn m251(self) -> i32 { 251 }
+}
+impl T252 for S {
+    fn m252(self) -> i32 { 252 }
+}
+impl T253 for S {
+    fn m253(self) -> i32 { 253 }
+}
+impl T254 for S {
+    fn m254(self) -> i32 { 254 }
+}
+impl T255 for S {
+    fn m255(self) -> i32 { 255 }
+}
+impl T256 for S {
+    fn m256(self) -> i32 { 256 }
+}
+impl T257 for S {
+    fn m257(self) -> i32 { 257 }
+}
+impl T258 for S {
+    fn m258(self) -> i32 { 258 }
+}
+impl T259 for S {
+    fn m259(self) -> i32 { 259 }
+}
+impl T260 for S {
+    fn m260(self) -> i32 { 260 }
+}
+impl T261 for S {
+    fn m261(self) -> i32 { 261 }
+}
+impl T262 for S {
+    fn m262(self) -> i32 { 262 }
+}
+impl T263 for S {
+    fn m263(self) -> i32 { 263 }
+}
+impl T264 for S {
+    fn m264(self) -> i32 { 264 }
+}
+impl T265 for S {
+    fn m265(self) -> i32 { 265 }
+}
+impl T266 for S {
+    fn m266(self) -> i32 { 266 }
+}
+impl T267 for S {
+    fn m267(self) -> i32 { 267 }
+}
+impl T268 for S {
+    fn m268(self) -> i32 { 268 }
+}
+impl T269 for S {
+    fn m269(self) -> i32 { 269 }
+}
+impl T270 for S {
+    fn m270(self) -> i32 { 270 }
+}
+impl T271 for S {
+    fn m271(self) -> i32 { 271 }
+}
+impl T272 for S {
+    fn m272(self) -> i32 { 272 }
+}
+impl T273 for S {
+    fn m273(self) -> i32 { 273 }
+}
+impl T274 for S {
+    fn m274(self) -> i32 { 274 }
+}
+impl T275 for S {
+    fn m275(self) -> i32 { 275 }
+}
+impl T276 for S {
+    fn m276(self) -> i32 { 276 }
+}
+impl T277 for S {
+    fn m277(self) -> i32 { 277 }
+}
+impl T278 for S {
+    fn m278(self) -> i32 { 278 }
+}
+impl T279 for S {
+    fn m279(self) -> i32 { 279 }
+}
+impl T280 for S {
+    fn m280(self) -> i32 { 280 }
+}
+impl T281 for S {
+    fn m281(self) -> i32 { 281 }
+}
+impl T282 for S {
+    fn m282(self) -> i32 { 282 }
+}
+impl T283 for S {
+    fn m283(self) -> i32 { 283 }
+}
+impl T284 for S {
+    fn m284(self) -> i32 { 284 }
+}
+impl T285 for S {
+    fn m285(self) -> i32 { 285 }
+}
+impl T286 for S {
+    fn m286(self) -> i32 { 286 }
+}
+impl T287 for S {
+    fn m287(self) -> i32 { 287 }
+}
+impl T288 for S {
+    fn m288(self) -> i32 { 288 }
+}
+impl T289 for S {
+    fn m289(self) -> i32 { 289 }
+}
+impl T290 for S {
+    fn m290(self) -> i32 { 290 }
+}
+impl T291 for S {
+    fn m291(self) -> i32 { 291 }
+}
+impl T292 for S {
+    fn m292(self) -> i32 { 292 }
+}
+impl T293 for S {
+    fn m293(self) -> i32 { 293 }
+}
+impl T294 for S {
+    fn m294(self) -> i32 { 294 }
+}
+impl T295 for S {
+    fn m295(self) -> i32 { 295 }
+}
+impl T296 for S {
+    fn m296(self) -> i32 { 296 }
+}
+impl T297 for S {
+    fn m297(self) -> i32 { 297 }
+}
+impl T298 for S {
+    fn m298(self) -> i32 { 298 }
+}
+impl T299 for S {
+    fn m299(self) -> i32 { 299 }
+}
+impl T300 for S {
+    fn m300(self) -> i32 { 300 }
+}
+impl T301 for S {
+    fn m301(self) -> i32 { 301 }
+}
+impl T302 for S {
+    fn m302(self) -> i32 { 302 }
+}
+impl T303 for S {
+    fn m303(self) -> i32 { 303 }
+}
+impl T304 for S {
+    fn m304(self) -> i32 { 304 }
+}
+impl T305 for S {
+    fn m305(self) -> i32 { 305 }
+}
+impl T306 for S {
+    fn m306(self) -> i32 { 306 }
+}
+impl T307 for S {
+    fn m307(self) -> i32 { 307 }
+}
+impl T308 for S {
+    fn m308(self) -> i32 { 308 }
+}
+impl T309 for S {
+    fn m309(self) -> i32 { 309 }
+}
+impl T310 for S {
+    fn m310(self) -> i32 { 310 }
+}
+impl T311 for S {
+    fn m311(self) -> i32 { 311 }
+}
+impl T312 for S {
+    fn m312(self) -> i32 { 312 }
+}
+impl T313 for S {
+    fn m313(self) -> i32 { 313 }
+}
+impl T314 for S {
+    fn m314(self) -> i32 { 314 }
+}
+impl T315 for S {
+    fn m315(self) -> i32 { 315 }
+}
+impl T316 for S {
+    fn m316(self) -> i32 { 316 }
+}
+impl T317 for S {
+    fn m317(self) -> i32 { 317 }
+}
+impl T318 for S {
+    fn m318(self) -> i32 { 318 }
+}
+impl T319 for S {
+    fn m319(self) -> i32 { 319 }
+}
+impl T320 for S {
+    fn m320(self) -> i32 { 320 }
+}
+impl T321 for S {
+    fn m321(self) -> i32 { 321 }
+}
+impl T322 for S {
+    fn m322(self) -> i32 { 322 }
+}
+impl T323 for S {
+    fn m323(self) -> i32 { 323 }
+}
+impl T324 for S {
+    fn m324(self) -> i32 { 324 }
+}
+impl T325 for S {
+    fn m325(self) -> i32 { 325 }
+}
+impl T326 for S {
+    fn m326(self) -> i32 { 326 }
+}
+impl T327 for S {
+    fn m327(self) -> i32 { 327 }
+}
+impl T328 for S {
+    fn m328(self) -> i32 { 328 }
+}
+impl T329 for S {
+    fn m329(self) -> i32 { 329 }
+}
+impl T330 for S {
+    fn m330(self) -> i32 { 330 }
+}
+impl T331 for S {
+    fn m331(self) -> i32 { 331 }
+}
+impl T332 for S {
+    fn m332(self) -> i32 { 332 }
+}
+impl T333 for S {
+    fn m333(self) -> i32 { 333 }
+}
+impl T334 for S {
+    fn m334(self) -> i32 { 334 }
+}
+impl T335 for S {
+    fn m335(self) -> i32 { 335 }
+}
+impl T336 for S {
+    fn m336(self) -> i32 { 336 }
+}
+impl T337 for S {
+    fn m337(self) -> i32 { 337 }
+}
+impl T338 for S {
+    fn m338(self) -> i32 { 338 }
+}
+impl T339 for S {
+    fn m339(self) -> i32 { 339 }
+}
+impl T340 for S {
+    fn m340(self) -> i32 { 340 }
+}
+impl T341 for S {
+    fn m341(self) -> i32 { 341 }
+}
+impl T342 for S {
+    fn m342(self) -> i32 { 342 }
+}
+impl T343 for S {
+    fn m343(self) -> i32 { 343 }
+}
+impl T344 for S {
+    fn m344(self) -> i32 { 344 }
+}
+impl T345 for S {
+    fn m345(self) -> i32 { 345 }
+}
+impl T346 for S {
+    fn m346(self) -> i32 { 346 }
+}
+impl T347 for S {
+    fn m347(self) -> i32 { 347 }
+}
+impl T348 for S {
+    fn m348(self) -> i32 { 348 }
+}
+impl T349 for S {
+    fn m349(self) -> i32 { 349 }
+}
+impl T350 for S {
+    fn m350(self) -> i32 { 350 }
+}
+impl T351 for S {
+    fn m351(self) -> i32 { 351 }
+}
+impl T352 for S {
+    fn m352(self) -> i32 { 352 }
+}
+impl T353 for S {
+    fn m353(self) -> i32 { 353 }
+}
+impl T354 for S {
+    fn m354(self) -> i32 { 354 }
+}
+impl T355 for S {
+    fn m355(self) -> i32 { 355 }
+}
+impl T356 for S {
+    fn m356(self) -> i32 { 356 }
+}
+impl T357 for S {
+    fn m357(self) -> i32 { 357 }
+}
+impl T358 for S {
+    fn m358(self) -> i32 { 358 }
+}
+impl T359 for S {
+    fn m359(self) -> i32 { 359 }
+}
+impl T360 for S {
+    fn m360(self) -> i32 { 360 }
+}
+impl T361 for S {
+    fn m361(self) -> i32 { 361 }
+}
+impl T362 for S {
+    fn m362(self) -> i32 { 362 }
+}
+impl T363 for S {
+    fn m363(self) -> i32 { 363 }
+}
+impl T364 for S {
+    fn m364(self) -> i32 { 364 }
+}
+impl T365 for S {
+    fn m365(self) -> i32 { 365 }
+}
+impl T366 for S {
+    fn m366(self) -> i32 { 366 }
+}
+impl T367 for S {
+    fn m367(self) -> i32 { 367 }
+}
+impl T368 for S {
+    fn m368(self) -> i32 { 368 }
+}
+impl T369 for S {
+    fn m369(self) -> i32 { 369 }
+}
+impl T370 for S {
+    fn m370(self) -> i32 { 370 }
+}
+impl T371 for S {
+    fn m371(self) -> i32 { 371 }
+}
+impl T372 for S {
+    fn m372(self) -> i32 { 372 }
+}
+impl T373 for S {
+    fn m373(self) -> i32 { 373 }
+}
+impl T374 for S {
+    fn m374(self) -> i32 { 374 }
+}
+impl T375 for S {
+    fn m375(self) -> i32 { 375 }
+}
+impl T376 for S {
+    fn m376(self) -> i32 { 376 }
+}
+impl T377 for S {
+    fn m377(self) -> i32 { 377 }
+}
+impl T378 for S {
+    fn m378(self) -> i32 { 378 }
+}
+impl T379 for S {
+    fn m379(self) -> i32 { 379 }
+}
+impl T380 for S {
+    fn m380(self) -> i32 { 380 }
+}
+impl T381 for S {
+    fn m381(self) -> i32 { 381 }
+}
+impl T382 for S {
+    fn m382(self) -> i32 { 382 }
+}
+impl T383 for S {
+    fn m383(self) -> i32 { 383 }
+}
+impl T384 for S {
+    fn m384(self) -> i32 { 384 }
+}
+impl T385 for S {
+    fn m385(self) -> i32 { 385 }
+}
+impl T386 for S {
+    fn m386(self) -> i32 { 386 }
+}
+impl T387 for S {
+    fn m387(self) -> i32 { 387 }
+}
+impl T388 for S {
+    fn m388(self) -> i32 { 388 }
+}
+impl T389 for S {
+    fn m389(self) -> i32 { 389 }
+}
+impl T390 for S {
+    fn m390(self) -> i32 { 390 }
+}
+impl T391 for S {
+    fn m391(self) -> i32 { 391 }
+}
+impl T392 for S {
+    fn m392(self) -> i32 { 392 }
+}
+impl T393 for S {
+    fn m393(self) -> i32 { 393 }
+}
+impl T394 for S {
+    fn m394(self) -> i32 { 394 }
+}
+impl T395 for S {
+    fn m395(self) -> i32 { 395 }
+}
+impl T396 for S {
+    fn m396(self) -> i32 { 396 }
+}
+impl T397 for S {
+    fn m397(self) -> i32 { 397 }
+}
+impl T398 for S {
+    fn m398(self) -> i32 { 398 }
+}
+impl T399 for S {
+    fn m399(self) -> i32 { 399 }
+}
+fn f<X: T0 + T1 + T2 + T3 + T4 + T5 + T6 + T7 + T8 + T9 + T10 + T11 + T12 + T13 + T14 + T15 + T16 + T17 + T18 + T19 + T20 + T21 + T22 + T23 + T24 + T25 + T26 + T27 + T28 + T29 + T30 + T31 + T32 + T33 + T34 + T35 + T36 + T37 + T38 + T39 + T40 + T41 + T42 + T43 + T44 + T45 + T46 + T47 + T48 + T49 + T50 + T51 + T52 + T53 + T54 + T55 + T56 + T57 + T58 + T59 + T60 + T61 + T62 + T63 + T64 + T65 + T66 + T67 + T68 + T69 + T70 + T71 + T72 + T73 + T74 + T75 + T76 + T77 + T78 + T79 + T80 + T81 + T82 + T83 + T84 + T85 + T86 + T87 + T88 + T89 + T90 + T91 + T92 + T93 + T94 + T95 + T96 + T97 + T98 + T99 + T100 + T101 + T102 + T103 + T104 + T105 + T106 + T107 + T108 + T109 + T110 + T111 + T112 + T113 + T114 + T115 + T116 + T117 + T118 + T119 + T120 + T121 + T122 + T123 + T124 + T125 + T126 + T127 + T128 + T129 + T130 + T131 + T132 + T133 + T134 + T135 + T136 + T137 + T138 + T139 + T140 + T141 + T142 + T143 + T144 + T145 + T146 + T147 + T148 + T149 + T150 + T151 + T152 + T153 + T154 + T155 + T156 + T157 + T158 + T159 + T160 + T161 + T162 + T163 + T164 + T165 + T166 + T167 + T168 + T169 + T170 + T171 + T172 + T173 + T174 + T175 + T176 + T177 + T178 + T179 + T180 + T181 + T182 + T183 + T184 + T185 + T186 + T187 + T188 + T189 + T190 + T191 + T192 + T193 + T194 + T195 + T196 + T197 + T198 + T199 + T200 + T201 + T202 + T203 + T204 + T205 + T206 + T207 + T208 + T209 + T210 + T211 + T212 + T213 + T214 + T215 + T216 + T217 + T218 + T219 + T220 + T221 + T222 + T223 + T224 + T225 + T226 + T227 + T228 + T229 + T230 + T231 + T232 + T233 + T234 + T235 + T236 + T237 + T238 + T239 + T240 + T241 + T242 + T243 + T244 + T245 + T246 + T247 + T248 + T249 + T250 + T251 + T252 + T253 + T254 + T255 + T256 + T257 + T258 + T259 + T260 + T261 + T262 + T263 + T264 + T265 + T266 + T267 + T268 + T269 + T270 + T271 + T272 + T273 + T274 + T275 + T276 + T277 + T278 + T279 + T280 + T281 + T282 + T283 + T284 + T285 + T286 + T287 + T288 + T289 + T290 + T291 + T292 + T293 + T294 + T295 + T296 + T297 + T298 + T299 + T300 + T301 + T302 + T303 + T304 + T305 + T306 + T307 + T308 + T309 + T310 + T311 + T312 + T313 + T314 + T315 + T316 + T317 + T318 + T319 + T320 + T321 + T322 + T323 + T324 + T325 + T326 + T327 + T328 + T329 + T330 + T331 + T332 + T333 + T334 + T335 + T336 + T337 + T338 + T339 + T340 + T341 + T342 + T343 + T344 + T345 + T346 + T347 + T348 + T349 + T350 + T351 + T352 + T353 + T354 + T355 + T356 + T357 + T358 + T359 + T360 + T361 + T362 + T363 + T364 + T365 + T366 + T367 + T368 + T369 + T370 + T371 + T372 + T373 + T374 + T375 + T376 + T377 + T378 + T379 + T380 + T381 + T382 + T383 + T384 + T385 + T386 + T387 + T388 + T389 + T390 + T391 + T392 + T393 + T394 + T395 + T396 + T397 + T398 + T399>(x: X) -> i32 { x.m0() + x.m399() }
+fn main() -> i32 {
+    print(f(S { x: 1 }));
+    0
+}

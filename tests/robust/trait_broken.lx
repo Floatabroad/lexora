@@ -1,0 +1,13 @@
+trait A {
+    fn a(self) -> i32
+    fn b(self, x: ) -> i32;
+}
+trait {
+}
+impl for S { }
+impl A for { fn a(self) -> i32 { 1 } }
+fn f<T: >(x: T) -> i32 { 1 }
+fn g<T: A + + B>(x: T) -> i32 { x.a( }
+struct S<T: A + B> { v: T }
+trait C { fn c(self) -> i32 { if true { 1 } else { } }
+fn main() -> i32 { 0 }

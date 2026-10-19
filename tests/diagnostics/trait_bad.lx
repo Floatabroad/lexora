@@ -1,0 +1,49 @@
+trait Alan {
+    fn alan(self) -> i32;
+    fn cevre(self) -> i32;
+    fn alan(self) -> i32;
+    fn yap() -> i32;
+}
+
+trait Ikinci {
+    fn alan(self) -> i32;
+}
+
+trait Bos { }
+
+struct Bos { z: i32 }
+struct Kare { k: i32 }
+struct Yuvarlak { r: i32 }
+struct Ucgen { a: i32 }
+
+impl Alan for Kare {
+    fn alan(self) -> i64 { 1 as i64 }
+    fn cevre(self) -> i32 { 4 }
+    fn kose(self) -> i32 { 4 }
+}
+
+impl Alan for Yuvarlak {
+    fn alan(self) -> i32 { 3 }
+}
+
+impl Alan for Kare {
+    fn cevre(self) -> i32 { 4 }
+}
+
+impl Yok for Ucgen {
+    fn q(self) -> i32 { 1 }
+}
+
+fn f(a: Alan) -> i32 { 1 }
+fn g<T: Alann>(a: T) -> i32 { 1 }
+fn h<T>(a: T) -> i32 { a.alan() }
+fn k<T: Alan>(a: T) -> i32 { a.yok() }
+fn m<T: Alan>(a: T) -> i32 { a.cevre(1) }
+fn amb<T: Alan + Ikinci>(a: T) -> i32 { a.alan() }
+fn n<T: Alan>(a: T) -> i32 { 1 }
+
+fn main() -> i32 {
+    print(n(5));
+    print(n(Ucgen { a: 1 }));
+    0
+}

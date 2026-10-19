@@ -1,0 +1,21 @@
+error: 'N.w' alani struct'i kendine dahil ediyor (sonsuz boyut); dolayim icin Box<N> kullanin
+ --> tests/diagnostics/generic_struct_cycle.lx:5:15
+  |
+5 | struct N { w: W<N>, x: i32 }
+  |               ^^^^
+error: 'A.y' alani struct'i kendine dahil ediyor (sonsuz boyut); dolayim icin Box<A> kullanin
+ --> tests/diagnostics/generic_struct_cycle.lx:6:26
+  |
+6 | struct A { x: W<i32>, y: W<A> }
+  |                          ^^^^
+error: 'M.b' alani struct'i Box/dizi dolayimiyla kendine dahil ediyor; boyle bir degerin tabani olamaz ve drop kodu sonsuz aciliyor — zinciri sonlandirmak icin araya bir enum koyun, ornegin Opt<Box<M>>
+ --> tests/diagnostics/generic_struct_cycle.lx:7:15
+  |
+7 | struct M { b: Box<W<M>> }
+  |               ^^^^^^^^^
+error: 'Q.d' alani struct'i Box/dizi dolayimiyla kendine dahil ediyor; boyle bir degerin tabani olamaz ve drop kodu sonsuz aciliyor — zinciri sonlandirmak icin araya bir enum koyun, ornegin Opt<Box<Q>>
+ --> tests/diagnostics/generic_struct_cycle.lx:8:15
+  |
+8 | struct Q { d: D<Box<Q>> }
+  |               ^^^^^^^^^
+error: 4 hata yuzunden durduruldu

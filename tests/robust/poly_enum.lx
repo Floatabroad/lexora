@@ -1,0 +1,10 @@
+enum L<T> { C(T, Box<L<Box<T>>>), N }
+
+fn uzun(l: L<i32>) -> i32 {
+    0
+}
+
+fn main() -> i32 {
+    let l: L<i32> = L::<i32>::N;
+    0
+}

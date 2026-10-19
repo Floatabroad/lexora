@@ -1,0 +1,12 @@
+fn main() -> i32 {
+    for i in 0..5 {
+        while (if i == 2 { break; true } else { false }) { }
+        while (if i == 3 { continue; true } else { false }) { }
+        while (if i == 4 { for j in 0..2 { break; } false } else { false }) { }
+        while i > 9 { break; }
+    }
+    for i in 0..(if true { 3 } else { 4 }) {
+        print(i);
+    }
+    0
+}

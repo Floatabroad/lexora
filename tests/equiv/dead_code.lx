@@ -1,0 +1,85 @@
+enum E { A, B }
+fn yut(s: String) -> void { }
+fn ret_dead() -> i32 {
+    return 1;
+    print(2);
+}
+fn arm_dead(c: bool) -> i32 {
+    if c {
+        return 1;
+        print(5);
+    }
+    2
+}
+fn let_dead() -> i32 {
+    return 3;
+    let x = 5;
+    x
+}
+fn owning_dead() -> i32 {
+    let s = string("a");
+    print(s);
+    return 4;
+    let t = string("b");
+    print(t);
+}
+fn moved_dead() -> i32 {
+    let s = string("c");
+    yut(s);
+    return 5;
+    print(len(s));
+}
+fn match_dead(e: E) -> i32 {
+    match e {
+        E::A => {
+            return 10;
+            print(1);
+            0
+        }
+        E::B => 20,
+    }
+}
+fn void_dead() -> void {
+    print(6);
+    return print(8);
+    print(7);
+}
+fn loop_dead() -> i32 {
+    let i = 0;
+    while i < 3 {
+        break;
+        print(9);
+    }
+    let s = 0;
+    for j in 0..3 {
+        s = s + 1;
+        continue;
+        print(99);
+    }
+    s
+}
+fn inner_return() -> i32 {
+    let n = 0;
+    while n < 10 {
+        n = n + 1;
+        if n == 4 {
+            return n * 10;
+            print(0);
+        }
+    }
+    0
+}
+fn main() -> i32 {
+    print(ret_dead());
+    print(arm_dead(true));
+    print(arm_dead(false));
+    print(let_dead());
+    print(owning_dead());
+    print(moved_dead());
+    print(match_dead(E::A));
+    print(match_dead(E::B));
+    void_dead();
+    print(loop_dead());
+    print(inner_return());
+    0
+}

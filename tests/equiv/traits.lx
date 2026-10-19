@@ -1,0 +1,93 @@
+trait Alan {
+    fn alan(self) -> i32;
+    fn olcek(self, k: i32) -> i32;
+}
+
+trait Ad {
+    fn ad(self) -> String;
+}
+
+trait Sayac {
+    fn artir(self) -> void;
+    fn deger(self) -> i32;
+}
+
+struct Kare { k: i32 }
+struct Dikd { en: i32, boy: i32 }
+enum Sekil { Nokta, Daire(i32) }
+struct Kisi { ad: String, yas: i32 }
+struct Tur { n: i32 }
+
+impl Alan for Kare {
+    fn alan(self) -> i32 { self.k * self.k }
+    fn olcek(self, k: i32) -> i32 { self.alan() * k }
+}
+
+impl Alan for Dikd {
+    fn alan(self) -> i32 { self.en * self.boy }
+    fn olcek(self, k: i32) -> i32 { self.en * self.boy * k }
+}
+
+impl Alan for Sekil {
+    fn alan(self) -> i32 {
+        match self {
+            Sekil::Nokta => 0,
+            Sekil::Daire(r) => r * r * 3,
+        }
+    }
+    fn olcek(self, k: i32) -> i32 { self.alan() * k }
+}
+
+impl Ad for Kisi {
+    fn ad(self) -> String { clone(self.ad) + "!" }
+}
+
+impl Kisi {
+    fn yas(self) -> i32 { self.yas }
+}
+
+impl Sayac for Tur {
+    fn artir(self) -> void { self.n = self.n + 1; }
+    fn deger(self) -> i32 { self.n }
+}
+
+fn toplam_alan<T: Alan>(a: T, b: T) -> i32 { a.alan() + b.alan() }
+fn rapor<T: Alan>(x: T) -> i32 { x.olcek(10) }
+fn selamla<T: Ad>(x: T) -> String { x.ad() }
+fn uc_kez<T: Sayac>(t: T) -> i32 {
+    t.artir();
+    t.artir();
+    t.artir();
+    t.deger()
+}
+fn fark<A: Alan, B: Alan>(a: A, b: B) -> i32 { a.alan() - b.alan() }
+fn hepsi<T: Alan + Sayac>(t: T) -> i32 {
+    t.artir();
+    t.alan() + t.deger()
+}
+
+impl Sayac for Kare {
+    fn artir(self) -> void { self.k = self.k + 1; }
+    fn deger(self) -> i32 { self.k }
+}
+
+fn main() -> i32 {
+    print(toplam_alan(Kare { k: 3 }, Kare { k: 4 }));
+    print(rapor(Dikd { en: 2, boy: 5 }));
+    print(rapor(Sekil::Daire(3)));
+    print(rapor(Sekil::Nokta));
+    print(fark(Dikd { en: 6, boy: 6 }, Kare { k: 5 }));
+    let k = Kisi { ad: string("ayse"), yas: 30 };
+    print(selamla(k));
+    let k2 = Kisi { ad: string("ali"), yas: 41 };
+    print(k2.ad());
+    print(k2.yas());
+    print(len(k2.ad()));
+    print(uc_kez(Tur { n: 7 }));
+    let t = Tur { n: 0 };
+    t.artir();
+    print(t.deger());
+    print(rapor::<Kare>(Kare { k: 2 }));
+    print(hepsi(Kare { k: 2 }));
+    0
+}

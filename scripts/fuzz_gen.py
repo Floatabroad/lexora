@@ -7,7 +7,7 @@ KEYWORDS = {
     "let", "fn", "return", "if", "else", "true", "false", "while", "for", "in",
     "and", "or", "not", "as", "import", "struct", "box", "enum", "match", "impl",
     "self", "i32", "i64", "f32", "f64", "bool", "void", "str", "String", "print",
-    "string", "len",
+    "string", "len", "trait", "break", "continue", "clone",
 }
 OWN_PREAMBLE = """struct OwnBox { ad: String }
 
@@ -51,6 +51,51 @@ impl OwnBox {
     fn koy(self, s: str) -> void { self.ad = string(s); }
     fn goster(self) -> void { print(self.ad); }
 }
+
+trait TAlan {
+    fn talan(self) -> i32;
+    fn tolcek(self, k: i32) -> i32;
+}
+
+trait TAd {
+    fn tad(self) -> String;
+}
+
+struct TKare { k: i32 }
+
+struct TKisi { ad: String, n: i32 }
+
+enum TSekil { TNokta, TDaire(i32) }
+
+impl TAlan for TKare {
+    fn talan(self) -> i32 { self.k / 2 }
+    fn tolcek(self, k: i32) -> i32 { self.k / 3 - k / 3 }
+}
+
+impl TAlan for TSekil {
+    fn talan(self) -> i32 {
+        match self {
+            TSekil::TNokta => 1,
+            TSekil::TDaire(r) => r / 2,
+        }
+    }
+    fn tolcek(self, k: i32) -> i32 { self.talan() / 2 - k / 2 }
+}
+
+impl TAlan for TKisi {
+    fn talan(self) -> i32 { len(self.ad) + self.n / 2 }
+    fn tolcek(self, k: i32) -> i32 { self.n / 2 - k / 2 }
+}
+
+impl TAd for TKisi {
+    fn tad(self) -> String { clone(self.ad) + "?" }
+}
+
+fn t_topla<T: TAlan>(a: T, k: i32) -> i32 { a.talan() / 2 + a.tolcek(k) / 2 }
+
+fn t_fark<A: TAlan, B: TAlan>(a: A, b: B) -> i32 { a.talan() / 2 - b.talan() / 2 }
+
+fn t_ad<T: TAlan + TAd>(x: T) -> String { x.tad() + "x" }
 """
 
 
@@ -214,7 +259,7 @@ class Gen:
         out = []
         env = dict(env)
         for _ in range(budget):
-            k = r.randint(0, 16)
+            k = r.randint(0, 17)
             if k <= 2:
                 ty = r.choice(SCALARS)
                 name = self.fresh()
@@ -332,6 +377,21 @@ class Gen:
                     out.append(f"{pad}print(len({gs}.v));")
                     out.append(f"{pad}print({gs}.iki_sabit());")
                     out.append(f"{pad}print({gs}.sar(string({self.lit(STR)})));")
+            elif k == 17:
+                def tval():
+                    c = r.randint(0, 2)
+                    if c == 0:
+                        return f"TKare {{ k: {self.expr(I32, env, 1)} }}"
+                    if c == 1:
+                        return r.choice(["TSekil::TNokta", f"TSekil::TDaire({self.expr(I32, env, 1)})"])
+                    return f"TKisi {{ ad: string({self.lit(STR)}), n: {self.expr(I32, env, 1)} }}"
+                out.append(f"{pad}print(t_topla({tval()}, {self.expr(I32, env, 1)}));")
+                out.append(f"{pad}print(t_fark({tval()}, {tval()}));")
+                tk = self.fresh("tk")
+                out.append(f"{pad}let {tk}: TKisi = TKisi {{ ad: string({self.lit(STR)}), n: {self.expr(I32, env, 1)} }};")
+                out.append(f"{pad}print({tk}.talan());")
+                out.append(f"{pad}print({tk}.tad());")
+                out.append(f"{pad}print(t_ad({tk}));")
             elif k == 9 and self.structs:
                 sname, fields = r.choice(self.structs)
                 sv = self.fresh("sv")
@@ -398,12 +458,13 @@ class Gen:
                 lim = r.randint(2, 5)
                 cut = r.randint(0, lim)
                 out.append(f"{pad}let {bt}: i32 = 0;")
+                dead = f" {bt} = {bt} + 100; print({bt});" if r.random() < 0.5 else ""
                 if r.random() < 0.5:
                     out.append(f"{pad}for {bi} in 0..{lim} {{")
                     if r.random() < 0.5:
-                        out.append(f"{pad}    if {bi} == {cut} {{ break; }}")
+                        out.append(f"{pad}    if {bi} == {cut} {{ break;{dead} }}")
                     else:
-                        out.append(f"{pad}    if {bi} == {cut} {{ continue; }}")
+                        out.append(f"{pad}    if {bi} == {cut} {{ continue;{dead} }}")
                     out.append(f"{pad}    {bt} = {bt} + 1;")
                     out.append(f"{pad}}}")
                 else:
@@ -411,7 +472,7 @@ class Gen:
                     out.append(f"{pad}let {bw}: i32 = 0;")
                     out.append(f"{pad}while {bw} < {lim} {{")
                     out.append(f"{pad}    {bw} = {bw} + 1;")
-                    out.append(f"{pad}    if {bw} == {cut} {{ continue; }}")
+                    out.append(f"{pad}    if {bw} == {cut} {{ continue;{dead} }}")
                     out.append(f"{pad}    if {bw} > {lim} {{ break; }}")
                     out.append(f"{pad}    {bt} = {bt} + 1;")
                     out.append(f"{pad}}}")

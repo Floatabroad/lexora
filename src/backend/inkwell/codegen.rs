@@ -30,7 +30,6 @@ use std::collections::HashMap;
 use std::path::Path;
 #[derive(Clone)]
 struct DropLocal<'ctx> {
-    sym: Symbol,
     slot: PointerValue<'ctx>,
     flag: PointerValue<'ctx>,
     path: Vec<u32>,
@@ -409,7 +408,7 @@ impl<'ctx> CodeGen<'ctx> {
             let imp = &program.impls[*ii];
             self.method_name(imp.type_name, a, imp.methods[*mi].name)
         });
-   
+
         minst.dedup();
         for (ii, mi, targs) in &minst {
             let imp = &program.impls[*ii];
@@ -553,12 +552,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    fn register_drop(
-        &mut self,
-        sym: Symbol,
-        slot: PointerValue<'ctx>,
-        ty: &Type,
-    ) -> Result<(), BuilderError> {
+    fn register_drop(&mut self, slot: PointerValue<'ctx>, ty: &Type) -> Result<(), BuilderError> {
         let mut paths: Vec<(Vec<u32>, Type)> = Vec::new();
         self.owning_paths(ty, &mut Vec::new(), &mut paths);
         for (path, leaf) in paths {
@@ -566,7 +560,6 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder
                 .build_store(flag, self.context.bool_type().const_int(1, false))?;
             self.drop_scopes.last_mut().unwrap().push(DropLocal {
-                sym,
                 slot,
                 flag,
                 path,
@@ -824,7 +817,7 @@ impl<'ctx> CodeGen<'ctx> {
             let arg = function.get_nth_param(i as u32).unwrap();
             self.builder.build_store(slot, arg)?;
             self.vars.insert(*sym, (slot, llvm_ty));
-            self.register_drop(*sym, slot, &ty)?;
+            self.register_drop(slot, &ty)?;
             if self.debug {
                 let dib = self.dib.as_ref().unwrap();
                 let file = self.di_file.unwrap();
@@ -895,6 +888,13 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
     fn gen_statement(&mut self, stmt: &Stmt) -> Result<(), BuilderError> {
+        if self
+            .builder
+            .get_insert_block()
+            .map_or(true, |b| b.get_terminator().is_some())
+        {
+            return Ok(());
+        }
         self.set_loc(stmt.span());
         match stmt {
             Stmt::Let {
@@ -907,7 +907,7 @@ impl<'ctx> CodeGen<'ctx> {
                 self.gen_into(value, slot)?;
                 self.vars.insert(*name, (slot, llvm_ty));
                 let vty = self.ty_of(value);
-                self.register_drop(*name, slot, &vty)?;
+                self.register_drop(slot, &vty)?;
 
                 if self.debug {
                     let dib = self.dib.as_ref().unwrap();
@@ -960,9 +960,13 @@ impl<'ctx> CodeGen<'ctx> {
             Stmt::Return(expr, _) => {
                 let val = self.gen_expr(expr)?;
                 self.free_all_live()?;
-                self.builder.build_return(Some(&val))?;
+                match &self.cur_ret {
+                    Some(Type::Void) => self.builder.build_return(None)?,
+                    _ => self.builder.build_return(Some(&val))?,
+                };
                 Ok(())
             }
+
             Stmt::Expr(expr, _) => {
                 self.gen_expr(expr)?;
                 Ok(())
@@ -1223,7 +1227,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .into(),
                         BinaryOperator::NotEq => self
                             .builder
-                            .build_float_compare(FloatPredicate::ONE, l, r, "fcmp")?
+                            .build_float_compare(FloatPredicate::UNE, l, r, "fcmp")?
                             .into(),
                         BinaryOperator::Less => self
                             .builder
@@ -1475,9 +1479,20 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     (Type::F32 | Type::F64, Type::I32 | Type::I64) => {
                         let to = self.llvm_type(target_type).into_int_type();
-                        self.builder
-                            .build_float_to_signed_int(val.into_float_value(), to, "fptosi")?
-                            .into()
+                        let fv = val.into_float_value();
+                        let decl = Intrinsic::find("llvm.fptosi.sat")
+                            .and_then(|i| {
+                                i.get_declaration(&self.module, &[to.into(), fv.get_type().into()])
+                            })
+                            .expect("fptosi.sat bildirimi alinamadi");
+                        match self
+                            .builder
+                            .build_call(decl, &[fv.into()], "fptosi_sat")?
+                            .try_as_basic_value()
+                        {
+                            ValueKind::Basic(v) => v,
+                            ValueKind::Instruction(_) => unreachable!("fptosi.sat deger dondurur"),
+                        }
                     }
                     _ => val,
                 };
@@ -1784,7 +1799,7 @@ impl<'ctx> CodeGen<'ctx> {
                             let bslot = self.entry_alloca(fty, "bindslot")?;
                             self.builder.build_store(bslot, loaded)?;
                             self.vars.insert(*b, (bslot, fty));
-                            self.register_drop(*b, bslot, &field_tys[i])?;
+                            self.register_drop(bslot, &field_tys[i])?;
                         }
                     }
                     if let Pattern::Wildcard(_) = pat {
@@ -2535,20 +2550,21 @@ impl<'ctx> CodeGen<'ctx> {
     fn free_all_live(&mut self) -> Result<(), BuilderError> {
         self.free_scopes_above(0)
     }
-    fn find_flags(&self, sym: Symbol, path: &[u32]) -> Vec<PointerValue<'ctx>> {
-        for scope in self.drop_scopes.iter().rev() {
-            if !scope.iter().any(|d| d.sym == sym) {
-                continue;
-            }
-            return scope
-                .iter()
-                .filter(|d| d.sym == sym && d.path.starts_with(path))
-                .map(|d| d.flag)
-                .collect();
-        }
-        Vec::new()
+    fn matching_drops(&self, sym: Symbol, path: &[u32]) -> Vec<DropLocal<'ctx>> {
+        let (slot, _) = self.vars.get(sym);
+        self.drop_scopes
+            .iter()
+            .flatten()
+            .filter(|d| d.slot == slot && d.path.starts_with(path))
+            .cloned()
+            .collect()
     }
-
+    fn find_flags(&self, sym: Symbol, path: &[u32]) -> Vec<PointerValue<'ctx>> {
+        self.matching_drops(sym, path)
+            .into_iter()
+            .map(|d| d.flag)
+            .collect()
+    }
     fn place_path_of(&self, expr: &Expr) -> Option<(Symbol, Vec<u32>)> {
         match expr {
             Expr::Identifier(sym, _, _) => Some((*sym, Vec::new())),
@@ -2569,19 +2585,7 @@ impl<'ctx> CodeGen<'ctx> {
             _ => None,
         }
     }
-    fn matching_drops(&self, sym: Symbol, path: &[u32]) -> Vec<DropLocal<'ctx>> {
-        for scope in self.drop_scopes.iter().rev() {
-            if !scope.iter().any(|d| d.sym == sym) {
-                continue;
-            }
-            return scope
-                .iter()
-                .filter(|d| d.sym == sym && d.path.starts_with(path))
-                .cloned()
-                .collect();
-        }
-        Vec::new()
-    }
+
     fn drop_before_assign(&mut self, sym: Symbol, path: &[u32]) -> Result<(), BuilderError> {
         for d in self.matching_drops(sym, path) {
             self.build_drop(&d)?;

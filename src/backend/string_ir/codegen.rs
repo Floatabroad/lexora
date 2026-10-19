@@ -12,7 +12,6 @@ struct VarTable {
 
 #[derive(Clone)]
 struct DropLocal {
-    sym: Symbol,
     slot: Value,
     flag: Value,
     path: Vec<u32>,
@@ -305,19 +304,24 @@ impl<'i> CodeGen<'i> {
             format!("{}.{}", sym.0, m.join("."))
         }
     }
-    
+    fn matching_drops(&self, sym: Symbol, path: &[u32]) -> Vec<DropLocal> {
+        let slot = match self.locals.get(&sym) {
+            Some((_, s)) => s.clone(),
+            None => return Vec::new(),
+        };
+        self.drop_scopes
+            .iter()
+            .flatten()
+            .filter(|d| d.slot == slot && d.path.starts_with(path))
+            .cloned()
+            .collect()
+    }
+
     fn find_flags(&self, sym: Symbol, path: &[u32]) -> Vec<Value> {
-        for scope in self.drop_scopes.iter().rev() {
-            if !scope.iter().any(|d| d.sym == sym) {
-                continue;
-            }
-            return scope
-                .iter()
-                .filter(|d| d.sym == sym && d.path.starts_with(path))
-                .map(|d| d.flag.clone())
-                .collect();
-        }
-        Vec::new()
+        self.matching_drops(sym, path)
+            .into_iter()
+            .map(|d| d.flag)
+            .collect()
     }
     fn place_path_of(&self, expr: &Expr) -> Option<(Symbol, Vec<u32>)> {
         match expr {
@@ -338,19 +342,6 @@ impl<'i> CodeGen<'i> {
             }
             _ => None,
         }
-    }
-    fn matching_drops(&self, sym: Symbol, path: &[u32]) -> Vec<DropLocal> {
-        for scope in self.drop_scopes.iter().rev() {
-            if !scope.iter().any(|d| d.sym == sym) {
-                continue;
-            }
-            return scope
-                .iter()
-                .filter(|d| d.sym == sym && d.path.starts_with(path))
-                .cloned()
-                .collect();
-        }
-        Vec::new()
     }
 
     fn drop_before_assign(&mut self, sym: Symbol, path: &[u32]) {
@@ -432,7 +423,11 @@ impl<'i> CodeGen<'i> {
                declare {i32, i1} @llvm.smul.with.overflow.i32(i32, i32)\n\
                declare {i64, i1} @llvm.sadd.with.overflow.i64(i64, i64)\n\
                declare {i64, i1} @llvm.ssub.with.overflow.i64(i64, i64)\n\
-               declare {i64, i1} @llvm.smul.with.overflow.i64(i64, i64)\n\n"
+               declare {i64, i1} @llvm.smul.with.overflow.i64(i64, i64)\n\
+               declare i32 @llvm.fptosi.sat.i32.f32(float)\n\
+               declare i32 @llvm.fptosi.sat.i32.f64(double)\n\
+               declare i64 @llvm.fptosi.sat.i64.f32(float)\n\
+               declare i64 @llvm.fptosi.sat.i64.f64(double)\n\n"
         );
         self.builder.globals.push_str(
             "declare void @exit(i32)\n\
@@ -728,7 +723,7 @@ impl<'i> CodeGen<'i> {
         }
     }
 
-    fn register_drop(&mut self, sym: Symbol, slot: Value, ty: &Type) {
+    fn register_drop(&mut self, slot: Value, ty: &Type) {
         let mut paths: Vec<(Vec<u32>, Type)> = Vec::new();
         self.owning_paths(ty, &mut Vec::new(), &mut paths);
         for (path, leaf) in paths {
@@ -736,7 +731,6 @@ impl<'i> CodeGen<'i> {
             self.builder
                 .build_store(&LlvmType::I1, Value::Const(1), flag.clone());
             self.drop_scopes.last_mut().unwrap().push(DropLocal {
-                sym,
                 slot: slot.clone(),
                 flag,
                 path,
@@ -916,7 +910,7 @@ impl<'i> CodeGen<'i> {
             let ptr = self.builder.build_entry_alloca(&llvm_ty);
             self.builder.build_store(&llvm_ty, param_val, ptr.clone());
             self.locals.insert(*sym, (llvm_ty, ptr.clone()));
-            self.register_drop(*sym, ptr, &ast_ty);
+            self.register_drop(ptr, &ast_ty);
         }
         for stmt in func.body.stmts.iter() {
             self.gen_statement(stmt)?;
@@ -944,6 +938,9 @@ impl<'i> CodeGen<'i> {
     }
 
     fn gen_statement<'arena>(&mut self, stmt: &Stmt<'arena>) -> Result<(), LexoraError> {
+        if self.builder.is_terminated() {
+            return Ok(());
+        }
         match stmt {
             Stmt::Return(expr, _) => {
                 let val = self.gen_expr(expr)?;
@@ -962,7 +959,7 @@ impl<'i> CodeGen<'i> {
                 self.gen_into(value, ptr.clone())?;
                 self.locals.insert(*name, (llvm_ty, ptr.clone()));
                 let vty = self.ty_of(value);
-                self.register_drop(*name, ptr, &vty);
+                self.register_drop(ptr, &vty);
             }
 
             Stmt::Assign { name, value, span } => {
@@ -1327,7 +1324,7 @@ impl<'i> CodeGen<'i> {
                         BinaryOperator::Mul => self.builder.build_fbin("fmul", &lt, lv, rv),
                         BinaryOperator::Div => self.builder.build_fbin("fdiv", &lt, lv, rv),
                         BinaryOperator::Eq => self.builder.build_fcmp("oeq", &lt, lv, rv),
-                        BinaryOperator::NotEq => self.builder.build_fcmp("one", &lt, lv, rv),
+                        BinaryOperator::NotEq => self.builder.build_fcmp("une", &lt, lv, rv),
                         BinaryOperator::Less => self.builder.build_fcmp("olt", &lt, lv, rv),
                         BinaryOperator::Greater => self.builder.build_fcmp("ogt", &lt, lv, rv),
                         BinaryOperator::LessEq => self.builder.build_fcmp("ole", &lt, lv, rv),
@@ -1399,7 +1396,17 @@ impl<'i> CodeGen<'i> {
                         self.builder.build_conv("sitofp", val, &from_ty, &to_ty)
                     }
                     (LlvmType::F32 | LlvmType::F64, LlvmType::I32 | LlvmType::I64) => {
-                        self.builder.build_conv("fptosi", val, &from_ty, &to_ty)
+                        let name = format!(
+                            "llvm.fptosi.sat.{}.{}",
+                            to_ty.to_ir_str(),
+                            if from_ty == LlvmType::F32 {
+                                "f32"
+                            } else {
+                                "f64"
+                            }
+                        );
+                        self.builder
+                            .build_call(&to_ty, &name, &[(from_ty.clone(), val)])
                     }
 
                     _ => val,
@@ -1672,7 +1679,7 @@ impl<'i> CodeGen<'i> {
                                     let loaded = self.builder.build_load(&fty, fptr);
                                     self.builder.build_store(&fty, loaded, slot.clone());
                                     self.locals.insert(*b, (fty, slot.clone()));
-                                    self.register_drop(*b, slot, &field_tys[i]);
+                                    self.register_drop(slot, &field_tys[i]);
                                 }
                             }
                             for s in body.stmts.iter() {

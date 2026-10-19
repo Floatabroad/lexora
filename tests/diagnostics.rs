@@ -113,4 +113,11 @@ diag_tests!(
     generic_struct_bad,
     generic_impl_bad,
     generic_inst_depth,
+    generic_struct_cycle,
+    void_value,
+    trait_bad,
+    trait_parse,
+    trait_move,
+    loop_cond_jump,
+    moved_field_read,
 );

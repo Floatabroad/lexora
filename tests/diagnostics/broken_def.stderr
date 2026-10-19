@@ -12,7 +12,7 @@ error: beklenmeyen ifade: RightBrace
  --> tests/diagnostics/broken_def.lx:3:37
   |
 3 | fn topla(x: i32, -> i32 { return x; }
-  |                                     ^ beklenen: struct, fn, enum, impl, import
+  |                                     ^ beklenen: struct, fn, enum, impl, trait, import
 error: beklenmeyen ifade: Comma
  --> tests/diagnostics/broken_def.lx:5:12
   |
@@ -22,5 +22,5 @@ error: beklenmeyen ifade: RightBrace
  --> tests/diagnostics/broken_def.lx:5:16
   |
 5 | enum E { A(, B }
-  |                ^ beklenen: struct, fn, enum, impl, import
+  |                ^ beklenen: struct, fn, enum, impl, trait, import
 error: 5 hata yuzunden durduruldu

@@ -28,6 +28,7 @@ pub enum Token<'src> {
     Enum,
     Match,
     Impl,
+    Trait,
     SelfKw,
     Break,
     Continue,
@@ -408,6 +409,7 @@ impl<'src> Lexer<'src> {
             "break" => Token::Break,
             "continue" => Token::Continue,
             "impl" => Token::Impl,
+            "trait" => Token::Trait,
             "self" => Token::SelfKw,
             _ => Token::Identifier(ident),
         }

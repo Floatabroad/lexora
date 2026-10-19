@@ -51,14 +51,20 @@ pub struct TypeChecker<'i> {
     pub call_targs: HashMap<ExprId, Vec<Type>>,
     pub static_calls: HashMap<ExprId, Symbol>,
     pub method_instances: HashMap<(Symbol, Vec<Type>, Symbol), (Vec<Type>, Type)>,
+    inst_depth: u32,
     errors: Vec<LexoraError>,
     loop_vars: Vec<Symbol>,
     loop_depth: u32,
+    loop_cond: bool,
     cur_ret: Type,
     generic_body_types: HashMap<(Symbol, Option<Symbol>), Vec<(Type, Span)>>,
     generic_body_calls: HashMap<(Symbol, Option<Symbol>), Vec<(Symbol, Vec<Type>, Symbol, Span)>>,
     cur_generic: Option<Symbol>,
     cur_generic_method: Option<Symbol>,
+    traits: HashMap<Symbol, Vec<(Symbol, Vec<Type>, Type)>>,
+    trait_impls: HashSet<(Symbol, Symbol)>,
+    fn_bounds: HashMap<Symbol, Vec<(Symbol, Vec<Symbol>)>>,
+    cur_bounds: HashMap<Symbol, Vec<Symbol>>,
 }
 
 impl<'i> TypeChecker<'i> {
@@ -80,13 +86,19 @@ impl<'i> TypeChecker<'i> {
             static_calls: HashMap::new(),
             errors: Vec::new(),
             loop_vars: Vec::new(),
+            loop_cond: false,
             loop_depth: 0,
+            inst_depth: 0,
             cur_ret: Type::Void,
             method_instances: HashMap::new(),
             generic_body_types: HashMap::new(),
             generic_body_calls: HashMap::new(),
             cur_generic: None,
             cur_generic_method: None,
+            traits: HashMap::new(),
+            trait_impls: HashSet::new(),
+            fn_bounds: HashMap::new(),
+            cur_bounds: HashMap::new(),
         }
     }
     fn resolve(&self, sym: Symbol) -> String {
@@ -102,6 +114,7 @@ impl<'i> TypeChecker<'i> {
             .iter()
             .map(|s| (s.name, s.span))
             .chain(program.enums.iter().map(|e| (e.name, e.span)))
+            .chain(program.traits.iter().map(|t| (t.name, t.span)))
         {
             if type_names.insert(name, ()).is_some() {
                 self.errors.push(LexoraError::AlreadyDefined {
@@ -148,6 +161,58 @@ impl<'i> TypeChecker<'i> {
             self.structs
                 .entry(s.name)
                 .or_insert_with(|| (s.params.clone(), s.fields.clone()));
+        }
+        for t in &program.traits {
+            self.traits.entry(t.name).or_default();
+        }
+        let mut filled: HashSet<Symbol> = HashSet::new();
+        for t in &program.traits {
+            if !filled.insert(t.name) {
+                continue;
+            }
+            let tname = self.resolve(t.name);
+            let mut seen: HashSet<Symbol> = HashSet::new();
+            let mut sigs: Vec<(Symbol, Vec<Type>, Type)> = Vec::new();
+            for m in &t.methods {
+                if !seen.insert(m.name) {
+                    self.errors.push(LexoraError::AlreadyDefined {
+                        name: format!("{}::{}", tname, self.resolve(m.name)),
+                        span: m.span,
+                    });
+                    continue;
+                }
+                if !m.self_param {
+                    self.errors.push(LexoraError::Custom {
+                        message: format!(
+                            "'{}::{}' self almali; statik trait metotlari henuz yok",
+                            tname,
+                            self.resolve(m.name)
+                        ),
+                        span: m.span,
+                    });
+                    continue;
+                }
+                let ptys: Vec<Type> = m
+                    .params
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (_, ty))| {
+                        let sp = m.param_spans.get(i).copied().unwrap_or(m.span);
+                        if self.validate_value_type(ty, sp) {
+                            ty.clone()
+                        } else {
+                            Type::Error
+                        }
+                    })
+                    .collect();
+                let rty = if self.validate_type(&m.return_type, m.ret_span) {
+                    m.return_type.clone()
+                } else {
+                    Type::Error
+                };
+                sigs.push((m.name, ptys, rty));
+            }
+            self.traits.insert(t.name, sigs);
         }
         for e in &program.enums {
             let generic = !e.params.is_empty();
@@ -205,15 +270,15 @@ impl<'i> TypeChecker<'i> {
             }
             for (i, (_, t)) in s.fields.iter().enumerate() {
                 let sp = s.field_spans.get(i).copied().unwrap_or(s.span);
-                self.validate_type(t, sp);
+                self.validate_value_type(t, sp);
             }
         }
 
         for s in &program.structs {
             for (i, (f, t)) in s.fields.iter().enumerate() {
                 let sp = s.field_spans.get(i).copied().unwrap_or(s.span);
-                let mut seen: HashSet<Symbol> = HashSet::from([s.name]);
-                if self.struct_cycle(s.name, t, &mut seen) {
+                let mut seen: HashSet<Type> = HashSet::new();
+                if self.struct_cycle(s.name, t, &mut seen, 0) {
                     self.errors.push(LexoraError::Custom {
                         message: format!(
                             "'{}.{}' alani struct'i kendine dahil ediyor (sonsuz boyut); dolayim icin Box<{}> kullanin",
@@ -223,8 +288,8 @@ impl<'i> TypeChecker<'i> {
                     });
                     continue;
                 }
-                let mut seen: HashSet<Symbol> = HashSet::from([s.name]);
-                if self.drop_cycle(s.name, t, &mut seen) {
+                let mut seen: HashSet<Type> = HashSet::new();
+                if self.drop_cycle(s.name, t, &mut seen, 0) {
                     self.errors.push(LexoraError::Custom {
                         message: format!(
                             "'{}.{}' alani struct'i Box/dizi dolayimiyla kendine dahil ediyor; boyle bir degerin tabani olamaz ve drop kodu sonsuz aciliyor — zinciri sonlandirmak icin araya bir enum koyun, ornegin Opt<Box<{}>>",
@@ -291,7 +356,7 @@ impl<'i> TypeChecker<'i> {
                 .enumerate()
                 .map(|(i, (_, t))| {
                     let sp = func.param_spans.get(i).copied().unwrap_or(func.span);
-                    if self.validate_type(t, sp) {
+                    if self.validate_value_type(t, sp) {
                         t.clone()
                     } else {
                         Type::Error
@@ -312,6 +377,21 @@ impl<'i> TypeChecker<'i> {
                 self.fn_defs
                     .entry(func.name)
                     .or_insert_with(|| (func.type_params.clone(), param_types, ret_ty));
+                let mut bounds: Vec<(Symbol, Vec<Symbol>)> = Vec::new();
+                for (p, trs) in &func.bounds {
+                    let mut ok_trs: Vec<Symbol> = Vec::new();
+                    for (tr, sp) in trs {
+                        if self.traits.contains_key(tr) {
+                            if !ok_trs.contains(tr) {
+                                ok_trs.push(*tr);
+                            }
+                        } else {
+                            self.undefined_trait(*tr, *sp);
+                        }
+                    }
+                    bounds.push((*p, ok_trs));
+                }
+                self.fn_bounds.entry(func.name).or_insert(bounds);
             }
         }
         for imp in &program.impls {
@@ -370,6 +450,34 @@ impl<'i> TypeChecker<'i> {
                 });
                 continue;
             }
+            if let Some((tr, tsp)) = imp.trait_name {
+                if !self.traits.contains_key(&tr) {
+                    self.undefined_trait(tr, tsp);
+                    continue;
+                }
+                if !imp.params.is_empty() {
+                    self.errors.push(LexoraError::Custom {
+                        message: format!(
+                            "generic tipe trait impl'i henuz yazilamaz: '{}' icin '{}'",
+                            tname,
+                            self.resolve(tr)
+                        ),
+                        span: imp.type_span,
+                    });
+                    continue;
+                }
+                if !self.trait_impls.insert((tr, imp.type_name)) {
+                    self.errors.push(LexoraError::Custom {
+                        message: format!(
+                            "'{}' trait'i '{}' icin zaten uygulanmis",
+                            self.resolve(tr),
+                            tname
+                        ),
+                        span: imp.type_span,
+                    });
+                    continue;
+                }
+            }
             for m in &imp.methods {
                 if !m.type_params.is_empty() {
                     self.errors.push(LexoraError::Custom {
@@ -383,7 +491,6 @@ impl<'i> TypeChecker<'i> {
                     continue;
                 }
 
-
                 let param_types: Vec<Type> = m
                     .params
                     .iter()
@@ -393,7 +500,7 @@ impl<'i> TypeChecker<'i> {
                             return t.clone();
                         }
                         let sp = m.param_spans.get(i).copied().unwrap_or(m.span);
-                        if self.validate_type(t, sp) {
+                        if self.validate_value_type(t, sp) {
                             t.clone()
                         } else {
                             Type::Error
@@ -405,7 +512,11 @@ impl<'i> TypeChecker<'i> {
                 } else {
                     Type::Error
                 };
-
+                if let Some((tr, _)) = imp.trait_name {
+                    if !self.check_trait_method(tr, &tname, m, &param_types, &ret_ty) {
+                        continue;
+                    }
+                }
                 if !m.self_param && !imp.params.is_empty() {
                     self.errors.push(LexoraError::Custom {
                         message: format!(
@@ -446,6 +557,30 @@ impl<'i> TypeChecker<'i> {
                     self.static_methods
                         .insert(key, (imp.params.clone(), param_types, ret_ty));
                 }
+
+            }
+            if let Some((tr, _)) = imp.trait_name {
+                let required: Vec<Symbol> = self
+                    .traits
+                    .get(&tr)
+                    .map(|sigs| sigs.iter().map(|(n, _, _)| *n).collect())
+                    .unwrap_or_default();
+                let missing: Vec<String> = required
+                    .iter()
+                    .filter(|n| !imp.methods.iter().any(|m| m.name == **n))
+                    .map(|n| format!("'{}'", self.resolve(*n)))
+                    .collect();
+                if !missing.is_empty() {
+                    self.errors.push(LexoraError::Custom {
+                        message: format!(
+                            "'{}' icin '{}' uygulamasinda eksik metot: {}",
+                            tname,
+                            self.resolve(tr),
+                            missing.join(", ")
+                        ),
+                        span: imp.type_span,
+                    });
+                }
             }
         }
         for func in &program.functions {
@@ -463,12 +598,176 @@ impl<'i> TypeChecker<'i> {
             Err(std::mem::take(&mut self.errors))
         }
     }
+    fn undefined_trait(&mut self, tr: Symbol, span: Span) {
+        let name = self.resolve(tr);
+        let near = crate::suggest::nearest(
+            &name,
+            self.traits.keys().map(|k| self.interner.resolve(*k)),
+        );
+        let message = match near {
+            Some(n) => format!("tanimsiz trait '{}'; bunu mu demek istediniz: '{}'?", name, n),
+            None => format!("tanimsiz trait '{}'", name),
+        };
+        self.errors.push(LexoraError::Custom { message, span });
+    }
+    fn check_trait_method<'arena>(
+        &mut self,
+        tr: Symbol,
+        tname: &str,
+        m: &Function<'arena>,
+        param_types: &[Type],
+        ret_ty: &Type,
+    ) -> bool {
+        let trait_name = self.resolve(tr);
+        let sig = self
+            .traits
+            .get(&tr)
+            .and_then(|sigs| sigs.iter().find(|(n, _, _)| *n == m.name))
+            .map(|(_, p, r)| (p.clone(), r.clone()));
+        let (tptys, trty) = match sig {
+            Some(s) => s,
+            None => {
+                self.errors.push(LexoraError::Custom {
+                    message: format!(
+                        "'{}' metodu '{}' trait'inin uyesi degil",
+                        self.resolve(m.name),
+                        trait_name
+                    ),
+                    span: m.span,
+                });
+                return false;
+            }
+        };
+        let own: &[Type] = if m.self_param { &param_types[1..] } else { param_types };
+        let same = m.self_param
+            && own.len() == tptys.len()
+            && own.iter().zip(tptys.iter()).all(|(a, b)| types_match(a, b))
+            && types_match(ret_ty, &trty);
+        if !same {
+            let ps: Vec<String> = tptys.iter().map(|t| self.format_type(t)).collect();
+            let mut shown = vec!["self".to_string()];
+            shown.extend(ps);
+            self.errors.push(LexoraError::Custom {
+                message: format!(
+                    "'{}.{}' imzasi '{}' bildirimiyle uyusmuyor; beklenen: fn {}({}) -> {}",
+                    tname,
+                    self.resolve(m.name),
+                    trait_name,
+                    self.resolve(m.name),
+                    shown.join(", "),
+                    self.format_type(&trty)
+                ),
+                span: m.span,
+            });
+        }
+        true
+    }
+    fn check_bound_call<'arena>(
+        &mut self,
+        p: Symbol,
+        method: Symbol,
+        args: &[Expr<'arena>],
+        span: Span,
+    ) -> Type {
+        let bounds = self.cur_bounds.get(&p).cloned().unwrap_or_default();
+        let hits: Vec<(Symbol, Vec<Type>, Type)> = bounds
+            .iter()
+            .filter_map(|tr| {
+                self.traits
+                    .get(tr)?
+                    .iter()
+                    .find(|(n, _, _)| *n == method)
+                    .map(|(_, ps, r)| (*tr, ps.clone(), r.clone()))
+            })
+            .collect();
+        if hits.len() != 1 {
+            let pname = self.resolve(p);
+            let mname = self.resolve(method);
+            let message = if bounds.is_empty() {
+                format!(
+                    "'{}' bir tip parametresi ve bound'u yok; '{}' metodu icin trait bound'u gerekir: <{}: Trait>",
+                    pname, mname, pname
+                )
+            } else if hits.is_empty() {
+                let bs: Vec<String> = bounds.iter().map(|b| self.resolve(*b)).collect();
+                format!(
+                    "'{}' bound'larinda ({}) '{}' metodu yok",
+                    pname,
+                    bs.join(" + "),
+                    mname
+                )
+            } else {
+                let bs: Vec<String> = hits.iter().map(|(b, _, _)| self.resolve(*b)).collect();
+                format!(
+                    "'{}' metodu birden fazla bound'da tanimli ({}); cagri belirsiz",
+                    mname,
+                    bs.join(", ")
+                )
+            };
+            self.errors.push(LexoraError::Custom { message, span });
+            for a in args.iter() {
+                self.check_expr(a);
+            }
+            return Type::Error;
+        }
+        let (_, ptys, rty) = hits.into_iter().next().unwrap();
+        if args.len() != ptys.len() {
+            self.errors.push(LexoraError::Custom {
+                message: format!(
+                    "'{}' {} arguman bekliyor, {} verildi",
+                    self.resolve(method),
+                    ptys.len(),
+                    args.len()
+                ),
+                span,
+            });
+            for a in args.iter() {
+                self.check_expr(a);
+            }
+            return rty;
+        }
+        for (arg, pty) in args.iter().zip(ptys.iter()) {
+            let aty = self.check_expr_ex(arg, Some(pty));
+            if !types_match(&aty, pty) {
+                self.errors.push(LexoraError::TypeMismatch {
+                    expected: self.format_type(pty),
+                    found: self.format_type(&aty),
+                    span: arg.span(),
+                });
+            }
+        }
+        rty
+    }
+
+    fn implements(&self, ty: &Type, tr: Symbol) -> bool {
+        match ty {
+            Type::Struct(s, a) | Type::Enum(s, a) if a.is_empty() => {
+                self.trait_impls.contains(&(tr, *s))
+            }
+            _ => false,
+        }
+    }
     fn nearest_var(&self, target: Symbol) -> Option<String> {
         let name = self.interner.resolve(target);
         crate::suggest::nearest(
             name,
             self.variables.names().map(|sym| self.interner.resolve(sym)),
         )
+    }
+    fn enter_instantiation(&mut self, ty: Type, span: Span) -> bool {
+        if self.inst_depth >= MAX_INSTANTIATION_DEPTH {
+            self.errors.push(LexoraError::Custom {
+                message: format!(
+                             "somutlama sinirina ulasildi (sinir {}): '{}' kendi tip argumanini buyuterek sonsuz somutluyor",
+                             MAX_INSTANTIATION_DEPTH,
+                             self.format_type(&ty)
+                             ),
+                             span,
+            });
+            return false;
+        }
+        self.inst_depth += 1;
+        true
     }
     fn nearest_fn(&self, target: Symbol) -> Option<String> {
         let name = self.interner.resolve(target);
@@ -555,42 +854,50 @@ impl<'i> TypeChecker<'i> {
         Some((ok[0].clone(), err[0].clone()))
     }
 
-    fn drop_cycle(&self, root: Symbol, ty: &Type, seen: &mut HashSet<Symbol>) -> bool {
+    fn drop_cycle(&self, root: Symbol, ty: &Type, seen: &mut HashSet<Type>, depth: u32) -> bool {
+        if depth > MAX_INSTANTIATION_DEPTH {
+            return false;
+        }
         match ty {
-            Type::Struct(s, _) => {
+            Type::Struct(s, args) => {
                 if *s == root {
                     return true;
                 }
-                if !seen.insert(*s) {
+                if !seen.insert(ty.clone()) {
                     return false;
                 }
-                match self.structs.get(s) {
-                    Some((_, fields)) => fields.iter().any(|(_, t)| self.drop_cycle(root, t, seen)),
+                match self.struct_fields_for(*s, args) {
+                    Some(fields) => fields
+                        .iter()
+                        .any(|(_, t)| self.drop_cycle(root, t, seen, depth + 1)),
                     None => false,
                 }
             }
-            Type::Box(inner) => self.drop_cycle(root, inner, seen),
-            Type::Array(elem, _) => self.drop_cycle(root, elem, seen),
+            Type::Box(inner) => self.drop_cycle(root, inner, seen, depth + 1),
+            Type::Array(elem, _) => self.drop_cycle(root, elem, seen, depth + 1),
             _ => false,
         }
     }
-    fn struct_cycle(&self, root: Symbol, ty: &Type, seen: &mut HashSet<Symbol>) -> bool {
+    fn struct_cycle(&self, root: Symbol, ty: &Type, seen: &mut HashSet<Type>, depth: u32) -> bool {
+        if depth > MAX_INSTANTIATION_DEPTH {
+            return false;
+        }
         match ty {
-            Type::Struct(s, _) => {
+            Type::Struct(s, args) => {
                 if *s == root {
                     return true;
                 }
-                if !seen.insert(*s) {
+                if !seen.insert(ty.clone()) {
                     return false;
                 }
-                match self.structs.get(s) {
-                    Some((_, fields)) => {
-                        fields.iter().any(|(_, t)| self.struct_cycle(root, t, seen))
-                    }
+                match self.struct_fields_for(*s, args) {
+                    Some(fields) => fields
+                        .iter()
+                        .any(|(_, t)| self.struct_cycle(root, t, seen, depth + 1)),
                     None => false,
                 }
             }
-            Type::Array(elem, _) => self.struct_cycle(root, elem, seen),
+            Type::Array(elem, _) => self.struct_cycle(root, elem, seen, depth + 1),
             _ => false,
         }
     }
@@ -608,7 +915,15 @@ impl<'i> TypeChecker<'i> {
         self.errors.push(LexoraError::Custom { message, span });
     }
     fn check_loop_jump(&mut self, kw: &str, span: Span) {
-        if self.loop_depth == 0 {
+        if self.loop_cond {
+            self.errors.push(LexoraError::Custom {
+                message: format!(
+                    "'{}' while kosulunun icinde kullanilamaz; dongu govdesine tasiyin",
+                    kw
+                ),
+                span,
+            });
+        } else if self.loop_depth == 0 {
             self.errors.push(LexoraError::Custom {
                 message: format!("'{}' yalnizca dongu govdesinde kullanilabilir", kw),
                 span,
@@ -676,7 +991,8 @@ impl<'i> TypeChecker<'i> {
         if !ok {
             return None;
         }
-        self.method_instances.insert(key, (ptys.clone(), rty.clone()));
+        self.method_instances
+            .insert(key, (ptys.clone(), rty.clone()));
         Some((ptys, rty))
     }
 
@@ -763,8 +1079,7 @@ impl<'i> TypeChecker<'i> {
                         }
                     }
                     for (rs, rargs, rm, sp) in &calls {
-                        let cargs: Vec<Type> =
-                            rargs.iter().map(|t| t.substitute(&map)).collect();
+                        let cargs: Vec<Type> = rargs.iter().map(|t| t.substitute(&map)).collect();
                         if cargs.iter().all(type_is_concrete) {
                             self.record_method_instance(*rs, cargs, *rm, *sp);
                         }
@@ -803,6 +1118,19 @@ impl<'i> TypeChecker<'i> {
             }
         }
     }
+    fn validate_value_type(&mut self, ty: &Type, span: Span) -> bool {
+        if matches!(ty, Type::Void) {
+            self.void_value_error(span);
+            return false;
+        }
+        self.validate_type(ty, span)
+    }
+    fn void_value_error(&mut self, span: Span) {
+        self.errors.push(LexoraError::Custom {
+            message: "void bir deger tipi degil; yalnizca donus tipinde kullanilabilir".to_string(),
+            span,
+        });
+    }
 
     fn validate_type(&mut self, ty: &Type, span: Span) -> bool {
         match ty {
@@ -822,13 +1150,13 @@ impl<'i> TypeChecker<'i> {
                     });
                     return false;
                 }
-                self.validate_type(elem, span)
+                self.validate_value_type(elem, span)
             }
-            Type::Box(inner) => self.validate_type(inner, span),
+            Type::Box(inner) => self.validate_value_type(inner, span),
             Type::Struct(s, args) => {
                 let mut ok = true;
                 for a in args {
-                    if !self.validate_type(a, span) {
+                    if !self.validate_value_type(a, span) {
                         ok = false;
                     }
                 }
@@ -851,6 +1179,17 @@ impl<'i> TypeChecker<'i> {
                     self.errors.push(LexoraError::Custom {
                         message: format!(
                             "'{}' bir enum ama tip pozisyonunda struct sanildi; enum, tip olarak kullanilmadan once ve ayni dosyada tanimli olmali",
+                            self.resolve(*s)
+                        ),
+                        span,
+                    });
+                    return false;
+                }
+                if self.traits.contains_key(s) {
+                    self.errors.push(LexoraError::Custom {
+                        message: format!(
+                            "'{}' bir trait, tip degil; generic bound kullanin: fn f<T: {}>(x: T)",
+                            self.resolve(*s),
                             self.resolve(*s)
                         ),
                         span,
@@ -883,7 +1222,7 @@ impl<'i> TypeChecker<'i> {
             Type::Enum(sym, args) => {
                 let mut ok = true;
                 for a in args {
-                    if !self.validate_type(a, span) {
+                    if !self.validate_value_type(a, span) {
                         ok = false;
                     }
                 }
@@ -925,10 +1264,14 @@ impl<'i> TypeChecker<'i> {
             Some(f) => f,
             None => return,
         };
+        if !self.enter_instantiation(Type::Struct(sym, args.to_vec()), span) {
+            return;
+        }
         self.struct_instances.insert(key, fields.clone());
         for (_, t) in &fields {
             self.validate_type(t, span);
         }
+        self.inst_depth -= 1;
     }
     fn check_instantiation(&mut self, sym: Symbol, args: &[Type], span: Span) {
         let key = (sym, args.to_vec());
@@ -939,6 +1282,9 @@ impl<'i> TypeChecker<'i> {
             Some(v) => v,
             None => return,
         };
+        if !self.enter_instantiation(Type::Enum(sym, args.to_vec()), span) {
+            return;
+        }
         self.instances.insert(key, variants.clone());
         let inst_name = self.format_type(&Type::Enum(sym, args.to_vec()));
         for (v, ftys) in &variants {
@@ -957,6 +1303,7 @@ impl<'i> TypeChecker<'i> {
                 self.validate_type(t, span);
             }
         }
+        self.inst_depth -= 1;
     }
     fn check_fn_instantiation(
         &mut self,
@@ -987,6 +1334,7 @@ impl<'i> TypeChecker<'i> {
     }
     fn check_function<'arena>(&mut self, func: &Function<'arena>, owner: Option<Symbol>) {
         self.loop_depth = 0;
+        self.loop_cond = false;
         self.cur_generic = match owner {
             Some(t) => {
                 let generic = self
@@ -1008,6 +1356,16 @@ impl<'i> TypeChecker<'i> {
         self.cur_generic_method = match owner {
             Some(_) => Some(func.name),
             None => None,
+        };
+        self.cur_bounds = match owner {
+            None => self
+                .fn_bounds
+                .get(&func.name)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .collect(),
+            Some(_) => HashMap::new(),
         };
         let (param_tys, ret_ty) = match owner {
             Some(t) => match if func.self_param {
@@ -1070,6 +1428,7 @@ impl<'i> TypeChecker<'i> {
         self.variables.exit_scope();
         self.cur_generic = None;
         self.cur_generic_method = None;
+        self.cur_bounds.clear();
     }
 
     fn format_type(&self, ty: &Type) -> String {
@@ -1114,7 +1473,7 @@ impl<'i> TypeChecker<'i> {
                 span,
             } => {
                 let declared_ok = match ty {
-                    Some(declared) => self.validate_type(declared, ty_span.unwrap_or(*span)),
+                    Some(declared) => self.validate_value_type(declared, ty_span.unwrap_or(*span)),
                     None => true,
                 };
                 let val_ty = match ty {
@@ -1205,7 +1564,9 @@ impl<'i> TypeChecker<'i> {
             Stmt::While {
                 condition, body, ..
             } => {
+                let outer_cond = std::mem::replace(&mut self.loop_cond, true);
                 let cond_ty = self.check_expr(condition);
+                self.loop_cond = false;
                 if !types_match(&cond_ty, &Type::Bool) {
                     self.errors.push(LexoraError::TypeMismatch {
                         expected: "bool".to_string(),
@@ -1232,6 +1593,7 @@ impl<'i> TypeChecker<'i> {
                     }
                 }
                 self.loop_depth -= 1;
+                self.loop_cond = outer_cond;
                 self.variables.exit_scope();
             }
             Stmt::For {
@@ -1257,6 +1619,7 @@ impl<'i> TypeChecker<'i> {
                         span: to.span(),
                     });
                 }
+                let outer_cond = std::mem::replace(&mut self.loop_cond, false);
                 self.variables.enter_scope();
                 if !self.variables.define(*var, Type::I32) {
                     self.errors.push(LexoraError::AlreadyDefined {
@@ -1283,6 +1646,7 @@ impl<'i> TypeChecker<'i> {
                 }
                 self.loop_vars.pop();
                 self.loop_depth -= 1;
+                self.loop_cond = outer_cond;
                 self.variables.exit_scope();
             }
             Stmt::AssignPlace {
@@ -1583,7 +1947,7 @@ impl<'i> TypeChecker<'i> {
                     };
                     let mut ok = true;
                     for t in &targs {
-                        if !self.validate_type(t, *span) {
+                        if !self.validate_value_type(t, *span) {
                             ok = false;
                         } else if !type_is_concrete(t) {
                             self.errors.push(LexoraError::Custom {
@@ -1595,6 +1959,32 @@ impl<'i> TypeChecker<'i> {
                                 span: *span,
                             });
                             ok = false;
+                        }
+                    }
+                    if !ok {
+                        return Type::Error;
+                    }
+                    let bounds = self.fn_bounds.get(name).cloned().unwrap_or_default();
+                    for (p, trs) in &bounds {
+                        let ty = match tparams.iter().position(|q| q == p) {
+                            Some(i) => targs[i].clone(),
+                            None => continue,
+                        };
+                        for tr in trs {
+                            if !self.implements(&ty, *tr) {
+                                self.errors.push(LexoraError::Custom {
+                                    message: format!(
+                                        "'{}' tipi '{}' trait'ini uygulamiyor ('{}' cagrisinda '{}: {}' bound'u)",
+                                        self.format_type(&ty),
+                                        self.resolve(*tr),
+                                        self.resolve(*name),
+                                        self.resolve(*p),
+                                        self.resolve(*tr)
+                                    ),
+                                    span: *span,
+                                });
+                                ok = false;
+                            }
                         }
                     }
                     if !ok {
@@ -1784,6 +2174,13 @@ impl<'i> TypeChecker<'i> {
                     return Type::Error;
                 }
                 let elem_ty = self.check_expr(&elems[0]);
+                if matches!(elem_ty, Type::Void) {
+                    for e in elems.iter().skip(1) {
+                        self.check_expr(e);
+                    }
+                    self.void_value_error(*span);
+                    return Type::Error;
+                }
                 for e in elems.iter().skip(1) {
                     let t = self.check_expr(e);
                     if !types_match(&elem_ty, &t) {
@@ -1936,7 +2333,9 @@ impl<'i> TypeChecker<'i> {
                     });
                 }
                 let result = Type::Struct(*name, targs);
-                self.validate_type(&result, *span);
+                if !self.validate_type(&result, *span) {
+                    return Type::Error;
+                }
                 result
             }
             Expr::FieldAccess {
@@ -1979,8 +2378,12 @@ impl<'i> TypeChecker<'i> {
                     }
                 }
             }
-            Expr::Box { value, .. } => {
+            Expr::Box { value, span, .. } => {
                 let inner = self.check_expr(value);
+                if matches!(inner, Type::Void) {
+                    self.void_value_error(*span);
+                    return Type::Error;
+                }
                 Type::Box(Box::new(inner))
             }
             Expr::Deref { target, span, .. } => {
@@ -2214,7 +2617,10 @@ impl<'i> TypeChecker<'i> {
                     }
                 }
                 let result = Type::Enum(*enum_name, targs);
-                self.validate_type(&result, *span);
+                if !self.validate_type(&result, *span) {
+                    return Type::Error;
+                }
+
                 result
             }
             Expr::Match {
@@ -2507,10 +2913,14 @@ impl<'i> TypeChecker<'i> {
                     }
                     Type::Struct(s, a) => (*s, a.clone()),
                     Type::Enum(s, a) => (*s, a.clone()),
+                    Type::Param(p) => {
+                        let p = *p;
+                        return self.check_bound_call(p, *method, args, *span);
+                    }
                     _ => {
                         self.errors.push(LexoraError::Custom {
                             message: format!(
-                                "'{}' tipinin metodu yok; metotlar yalnizca struct ve non-generic enum'lara yazilir",
+                                "'{}' tipinin metodu yok; metotlar yalnizca struct ve enum'lara yazilir",
                                 self.format_type(&recv_ty)
                             ),
                             span: receiver.span(),
@@ -2561,12 +2971,7 @@ impl<'i> TypeChecker<'i> {
                 let sig: (Vec<Type>, Type) = if mparams.is_empty() {
                     (raw_ptys, raw_rty)
                 } else if recv_args.iter().all(type_is_concrete) {
-                    match self.record_method_instance(
-                        type_sym,
-                        recv_args.clone(),
-                        *method,
-                        *span,
-                    ) {
+                    match self.record_method_instance(type_sym, recv_args.clone(), *method, *span) {
                         Some(s) => s,
                         None => {
                             for a in args.iter() {

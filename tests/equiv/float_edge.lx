@@ -1,0 +1,46 @@
+fn nan() -> f64 { 0.0 / 0.0 }
+fn inf() -> f64 { 1.0 / 0.0 }
+fn sat() -> void {
+    print(1e10 as i32);
+    print((0.0 - 1e10) as i32);
+    print(nan() as i32);
+    print(inf() as i64);
+    print((0.0 - inf()) as i64);
+    print(nan() as i64);
+    print(1e30 as i64);
+    print(2147483647.9 as i32);
+    print((0.0 - 2.9) as i32);
+    let f: f32 = 3e9 as f32;
+    print(f as i32);
+    print(f as i64);
+    let g: f32 = nan() as f32;
+    print(g as i32);
+}
+fn cmp() -> void {
+    let n = nan();
+    print(n == n);
+    print(n != n);
+    print(n < 1.0);
+    print(n > 1.0);
+    print(n <= 1.0);
+    print(n >= 1.0);
+    print(not (n == 1.0));
+    print(n != 1.0);
+    print(1.0 != 1.0);
+    print(1.0 != 2.0);
+    let m: f32 = n as f32;
+    print(m != m);
+    print(m == m);
+}
+fn main() -> i32 {
+    sat();
+    cmp();
+    let x = nan();
+    let i = 0;
+    while x != x {
+        i = i + 1;
+        if i == 3 { break; }
+    }
+    print(i);
+    0
+}

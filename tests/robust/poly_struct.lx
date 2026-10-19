@@ -1,0 +1,7 @@
+struct G<T> { h: Box<H<Box<T>>> }
+struct H<T> { g: Box<G<T>> }
+struct A { h: H<i32> }
+
+fn main() -> i32 {
+    0
+}

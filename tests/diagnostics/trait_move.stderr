@@ -1,0 +1,11 @@
+error: tasinmis deger kullanildi
+  --> tests/diagnostics/trait_move.lx:13:5
+   |
+13 |     t.ad()
+   |     ^
+error: tasinmis deger kullanildi
+  --> tests/diagnostics/trait_move.lx:21:11
+   |
+21 |     print(k.ad());
+   |           ^
+error: 2 hata yuzunden durduruldu

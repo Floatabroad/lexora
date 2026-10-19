@@ -1,8 +1,36 @@
 import random
+import struct
 import sys
 
 WORDS = ["a", "ab", "abc", "xyz", "", "q w", "uzun-metin", "z", "aa", "b"]
 LIMIT = 1_000_000
+
+
+FLOATS = [
+    ("0.0", 0.0), ("1.5", 1.5), ("(0.0 - 2.75)", -2.75), ("1e10", 1e10),
+    ("(0.0 - 1e10)", -1e10), ("3e9", 3e9), ("1e30", 1e30), ("2147483647.9", 2147483647.9),
+    ("(0.0 - 0.5)", -0.5), ("f_nan()", float("nan")), ("f_inf()", float("inf")),
+    ("(0.0 - f_inf())", float("-inf")),
+]
+FCMP = {
+    "==": lambda a, b: a == b, "!=": lambda a, b: a != b, "<": lambda a, b: a < b,
+    ">": lambda a, b: a > b, "<=": lambda a, b: a <= b, ">=": lambda a, b: a >= b,
+}
+
+
+def fsat(x, bits):
+    lo, hi = -(2 ** (bits - 1)), 2 ** (bits - 1) - 1
+    if x != x:
+        return 0
+    if x == float("inf"):
+        return hi
+    if x == float("-inf"):
+        return lo
+    return max(lo, min(hi, int(x)))
+
+
+def f32(x):
+    return struct.unpack("f", struct.pack("f", x))[0]
 
 
 def tdiv(a, b):
@@ -86,7 +114,7 @@ class Gen:
 
     def stmt(self):
         r = self.r
-        k = r.randint(0, 18)
+        k = r.randint(0, 20)
         if k == 0:
             nm = self.fresh("a")
             s, v = self.num(2)
@@ -198,6 +226,33 @@ class Gen:
                 f"  match {nm} {{ Sekil::Daire(v) => print(v), Sekil::Dik(x, y) => print(x + y), Sekil::Nokta => print(0) }}"
             )
             self.expect.append(str({"Daire": a, "Dik": a + b, "Nokta": 0}[which]))
+        elif k == 19:
+            def tval():
+                c = r.randint(0, 3)
+                if c == 0:
+                    v = r.randint(-20, 20)
+                    return f"TK {{ k: {v} }}", (lambda v: (2 * v, lambda j: v + j))(v)
+                if c == 1:
+                    w = r.choice(WORDS)
+                    n = r.randint(-20, 20)
+                    return f'TS {{ ad: string("{w}"), n: {n} }}', (lambda w, n: (len(w) + n, lambda j: n - j))(w, n)
+                if c == 2:
+                    return "TE::TX", (1, lambda j: 1 - j)
+                v = r.randint(-20, 20)
+                return f"TE::TY({v})", (lambda v: (v + 3, lambda j: v + 3 - j))(v)
+            src, (ta, tb) = tval()
+            j = r.randint(-20, 20)
+            self.say(f"t_topla({src}, {j})", ta + tb(j))
+            s1, (a1, _) = tval()
+            s2, (a2, _) = tval()
+            self.say(f"t_fark({s1}, {s2})", a1 - a2)
+            w = r.choice(WORDS)
+            n = r.randint(-20, 20)
+            ts = self.fresh("ts")
+            self.lines.append(f'  let {ts}: TS = TS {{ ad: string("{w}"), n: {n} }};')
+            self.say(f"{ts}.ta()", len(w) + n)
+            self.say(f"{ts}.tn()", w + "?")
+            self.say(f"t_ad({ts})", w + "?x")
         elif k == 18:
             g = self.fresh("g")
             v = r.randint(-50, 50)
@@ -251,7 +306,8 @@ class Gen:
             iv = self.fresh("bi")
             self.lines.append(f"  let {acc}: i32 = 0;")
             self.lines.append(f"  for {iv} in 0..{lim} {{")
-            self.lines.append(f"    if {iv} == {cut} {{ break; }}")
+            dead = f" {acc} = {acc} + 1000;" if r.random() < 0.5 else ""
+            self.lines.append(f"    if {iv} == {cut} {{ break;{dead} }}")
             self.lines.append(f"    {acc} = {acc} + {iv};")
             self.lines.append("  }")
             v = 0
@@ -270,7 +326,8 @@ class Gen:
             self.lines.append(f"  let {cn}: i32 = 0;")
             self.lines.append(f"  while {cn} < {lim} {{")
             self.lines.append(f"    {cn} = {cn} + 1;")
-            self.lines.append(f"    if {cn} == {cut} {{ continue; }}")
+            dead = f" {acc} = {acc} + 1000;" if r.random() < 0.5 else ""
+            self.lines.append(f"    if {cn} == {cut} {{ continue;{dead} }}")
             self.lines.append(f"    {acc} = {acc} + {cn};")
             self.lines.append("  }")
             v = 0
@@ -333,6 +390,20 @@ class Gen:
                 self.say(f"(Sekil::Dik({a}, {b})).alan()", a + b)
             else:
                 self.say("(Sekil::Nokta).alan()", 0)
+        elif k == 20:
+            src, v = r.choice(FLOATS)
+            nm = self.fresh("fl")
+            self.lines.append(f"  let {nm}: f64 = {src};")
+            self.say(f"{nm} as i32", fsat(v, 32))
+            self.say(f"{nm} as i64", fsat(v, 64))
+            bsrc, bv = r.choice(FLOATS)
+            op = r.choice(list(FCMP))
+            self.say(f"{nm} {op} {bsrc}", 1 if FCMP[op](v, bv) else 0)
+            if r.random() < 0.4:
+                g = self.fresh("fs")
+                self.lines.append(f"  let {g}: f32 = {nm} as f32;")
+                self.say(f"{g} as i32", fsat(f32(v), 32))
+                self.say(f"{g} != {g}", 1 if f32(v) != f32(v) else 0)
         else:
             has = r.random() < 0.6
             nm = self.fresh("o")
@@ -353,6 +424,8 @@ class Gen:
         r = self.r
         head = [
             "struct P { x: i32, y: i32 }",
+            "fn f_nan() -> f64 { 0.0 / 0.0 }",
+            "fn f_inf() -> f64 { 1.0 / 0.0 }",
             "struct PK { ad: String, n: i32, m: i32 }",
             "struct GK<T> { v: T }",
             "struct GC<A, B> { a: A, b: B }",
@@ -366,6 +439,19 @@ class Gen:
             "impl<A, B> GC<A, B> { fn ilk_yaz(self, x: A) -> void { self.a = x; } fn kod(self) -> i32 { return 4; } }",
             "impl<A, B> GC<A, B> { fn kod2(self) -> i32 { return self.kod() + 1; } }",
             "enum Sekil { Daire(i32), Dik(i32, i32), Nokta }",
+            "trait TA { fn ta(self) -> i32; fn tb(self, k: i32) -> i32; }",
+            "trait TN { fn tn(self) -> String; }",
+            "struct TK { k: i32 }",
+            "struct TS { ad: String, n: i32 }",
+            "enum TE { TX, TY(i32) }",
+            "impl TA for TK { fn ta(self) -> i32 { self.k * 2 } fn tb(self, k: i32) -> i32 { self.k + k } }",
+            "impl TA for TS { fn ta(self) -> i32 { len(self.ad) + self.n } fn tb(self, k: i32) -> i32 { self.n - k } }",
+            "impl TA for TE { fn ta(self) -> i32 { match self { TE::TX => 1, TE::TY(v) => v + 3 } }"
+            " fn tb(self, k: i32) -> i32 { self.ta() - k } }",
+            'impl TN for TS { fn tn(self) -> String { clone(self.ad) + "?" } }',
+            "fn t_topla<T: TA>(a: T, k: i32) -> i32 { a.ta() + a.tb(k) }",
+            "fn t_fark<A: TA, B: TA>(a: A, b: B) -> i32 { a.ta() - b.ta() }",
+            'fn t_ad<T: TA + TN>(x: T) -> String { x.tn() + "x" }',
             "enum Opt<T> { Var(T), Yok }",
             "impl P { fn topla(self) -> i32 { self.x + self.y }"
             " fn ekle(self, d: i32) -> void { self.x = self.x + d; }"

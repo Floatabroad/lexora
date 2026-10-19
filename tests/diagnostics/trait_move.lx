@@ -1,0 +1,23 @@
+trait Ad {
+    fn ad(self) -> i32;
+}
+
+struct K { s: String }
+
+impl Ad for K {
+    fn ad(self) -> i32 { len(self.s) }
+}
+
+fn f<T: Ad>(t: T) -> i32 {
+    let u = t;
+    t.ad()
+}
+
+fn yut<T: Ad>(t: T) -> i32 { t.ad() }
+
+fn main() -> i32 {
+    let k = K { s: string("abc") };
+    yut(k);
+    print(k.ad());
+    0
+}

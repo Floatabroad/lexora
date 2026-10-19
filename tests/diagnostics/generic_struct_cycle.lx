@@ -1,0 +1,13 @@
+enum Opt<T> { Var(T), Yok }
+struct W<T> { v: T }
+struct D<T> { a: T, b: T }
+
+struct N { w: W<N>, x: i32 }
+struct A { x: W<i32>, y: W<A> }
+struct M { b: Box<W<M>> }
+struct Q { d: D<Box<Q>> }
+struct Z { n: Opt<Box<W<Z>>> }
+
+fn main() -> i32 {
+    0
+}

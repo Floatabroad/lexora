@@ -1,0 +1,76 @@
+error: void bir deger tipi degil; yalnizca donus tipinde kullanilabilir
+ --> tests/diagnostics/void_value.lx:1:15
+  |
+1 | struct S { v: void, n: i32 }
+  |               ^^^^
+error: void bir deger tipi degil; yalnizca donus tipinde kullanilabilir
+ --> tests/diagnostics/void_value.lx:7:19
+  |
+7 |     fn m(self, v: void) -> i32 { 1 }
+  |                   ^^^^
+error: void bir deger tipi degil; yalnizca donus tipinde kullanilabilir
+  --> tests/diagnostics/void_value.lx:11:13
+   |
+11 | fn param(x: void) -> i32 { 1 }
+   |             ^^^^
+error: void bir deger tipi degil; yalnizca donus tipinde kullanilabilir
+  --> tests/diagnostics/void_value.lx:12:11
+   |
+12 | fn arr(a: [void; 2]) -> i32 { 1 }
+   |           ^^^^^^^^^
+error: void bir deger tipi degil; yalnizca donus tipinde kullanilabilir
+  --> tests/diagnostics/void_value.lx:13:12
+   |
+13 | fn kutu(b: Box<void>) -> i32 { 1 }
+   |            ^^^^^^^^^
+error: void bir deger tipi degil; yalnizca donus tipinde kullanilabilir
+  --> tests/diagnostics/void_value.lx:14:12
+   |
+14 | fn targ(k: K<void>) -> i32 { 1 }
+   |            ^^^^^^^
+error: void bir deger tipi degil; yalnizca donus tipinde kullanilabilir
+  --> tests/diagnostics/void_value.lx:15:15
+   |
+15 | fn donus() -> [void; 2] { [f(), f()] }
+   |               ^^^^^^^^^
+error: void bir deger tipi degil; yalnizca donus tipinde kullanilabilir
+  --> tests/diagnostics/void_value.lx:15:27
+   |
+15 | fn donus() -> [void; 2] { [f(), f()] }
+   |                           ^^^^^^^^^^
+error: void bir deger tipi degil; yalnizca donus tipinde kullanilabilir
+  --> tests/diagnostics/void_value.lx:19:12
+   |
+19 |     let a: void = f();
+   |            ^^^^
+error: void bir deger tipi degil; yalnizca donus tipinde kullanilabilir
+  --> tests/diagnostics/void_value.lx:20:13
+   |
+20 |     let b = box f();
+   |             ^^^^^^^
+error: void bir deger tipi degil; yalnizca donus tipinde kullanilabilir
+  --> tests/diagnostics/void_value.lx:21:13
+   |
+21 |     let c = [f(), f()];
+   |             ^^^^^^^^^^
+error: void bir deger tipi degil; yalnizca donus tipinde kullanilabilir
+  --> tests/diagnostics/void_value.lx:22:13
+   |
+22 |     let d = K { v: f() };
+   |             ^^^^^^^^^^^^
+error: void bir deger tipi degil; yalnizca donus tipinde kullanilabilir
+  --> tests/diagnostics/void_value.lx:23:13
+   |
+23 |     let e = Opt::Var(f());
+   |             ^^^^^^^^^^^^^
+error: void bir deger tipi degil; yalnizca donus tipinde kullanilabilir
+  --> tests/diagnostics/void_value.lx:24:5
+   |
+24 |     kimlik(f());
+   |     ^^^^^^^^^^^
+error: void bir deger tipi degil; yalnizca donus tipinde kullanilabilir
+  --> tests/diagnostics/void_value.lx:25:5
+   |
+25 |     kimlik::<void>(f());
+   |     ^^^^^^^^^^^^^^^^^^^
+error: 15 hata yuzunden durduruldu

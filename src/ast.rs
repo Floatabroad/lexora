@@ -246,6 +246,7 @@ pub struct Function<'arena> {
     pub body: Block<'arena>,
     pub span: Span,
     pub self_param: bool,
+    pub bounds: Vec<(Symbol, Vec<(Symbol, Span)>)>,
 }
 
 #[derive(Debug, Clone)]
@@ -267,12 +268,30 @@ pub struct EnumDef {
 }
 #[derive(Debug, Clone)]
 pub struct ImplBlock<'arena> {
+    pub trait_name: Option<(Symbol, Span)>,
     pub type_name: Symbol,
     pub type_span: Span,
     pub methods: Vec<Function<'arena>>,
     pub span: Span,
     pub params: Vec<Symbol>,
     pub type_args: Vec<Type>,
+}
+#[derive(Debug, Clone)]
+pub struct TraitMethod {
+    pub name: Symbol,
+    pub self_param: bool,
+    pub params: Vec<(Symbol, Type)>,
+    pub param_spans: Vec<Span>,
+    pub return_type: Type,
+    pub ret_span: Span,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct TraitDef {
+    pub name: Symbol,
+    pub methods: Vec<TraitMethod>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -301,6 +320,7 @@ pub struct Program<'arena> {
     pub imports: Vec<&'arena str>,
     pub enums: Vec<EnumDef>,
     pub impls: Vec<ImplBlock<'arena>>,
+    pub traits: Vec<TraitDef>,
 }
 
 impl<'arena> Expr<'arena> {

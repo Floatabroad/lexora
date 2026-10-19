@@ -48,6 +48,7 @@ BASE = [
     "K", "M", "N", "U", "P", "Q", "R",
     "Opt<i32>", "Opt<String>", "Opt<Box<i32>>",
     "Opt<K>", "Opt<M>", "Opt<P>", "Opt<Q>",
+    "void",
 ]
 
 POSITIONS = {
@@ -79,6 +80,12 @@ def shapes():
         out.append("Box<[%s; 2]>" % b)
         out.append("[Box<%s>; 2]" % b)
     return out
+
+
+def void_red(pos, shape):
+    if "void" not in shape:
+        return False
+    return not (pos == "ret" and shape == "void")
 
 
 def run(src, tmp):
@@ -117,6 +124,8 @@ def main():
             for backend, rc, err in run(src, tmp):
                 runs += 1
                 why = bad(rc, err)
+                if why is None and void_red(pos, shape) and rc != 1:
+                    why = "void deger tipi temiz redde olmaliydi (rc=%s)" % rc
                 if why:
                     fails += 1
                     print("FAIL  %-8s %-24s %-10s %s" % (pos, shape, backend, why))

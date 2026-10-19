@@ -15,12 +15,12 @@ error: tip uyusmazligi: beklenen i32, bulunan bool
    |                   ^^^^ bu ifade `bool` tipinde
    |
    = help: beklenen tip: `i32`
-error: 'i32' tipinin metodu yok; metotlar yalnizca struct ve non-generic enum'lara yazilir
+error: 'i32' tipinin metodu yok; metotlar yalnizca struct ve enum'lara yazilir
   --> tests/diagnostics/method_call_bad.lx:20:11
    |
 20 |     print(a.uzunluk());
    |           ^
-error: 'str' tipinin metodu yok; metotlar yalnizca struct ve non-generic enum'lara yazilir
+error: 'str' tipinin metodu yok; metotlar yalnizca struct ve enum'lara yazilir
   --> tests/diagnostics/method_call_bad.lx:22:11
    |
 22 |     print(s.uzunluk());

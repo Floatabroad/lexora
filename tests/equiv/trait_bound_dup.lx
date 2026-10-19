@@ -1,0 +1,31 @@
+trait A {
+    fn m(self) -> i32;
+}
+trait B {
+    fn n(self) -> i32;
+}
+struct S {
+    x: i32,
+}
+impl A for S {
+    fn m(self) -> i32 {
+        self.x
+    }
+}
+impl B for S {
+    fn n(self) -> i32 {
+        self.x * 2
+    }
+}
+fn f<T: A + A>(x: T) -> i32 {
+    x.m()
+}
+fn g<T: A + B + A>(x: T) -> i32 {
+    x.m() + x.n()
+}
+fn main() -> i32 {
+    let s = S { x: 7 };
+    print(f(s));
+    print(g(S { x: 5 }));
+    0
+}

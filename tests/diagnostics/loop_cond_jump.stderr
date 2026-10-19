@@ -1,0 +1,11 @@
+error: 'break' while kosulunun icinde kullanilamaz; dongu govdesine tasiyin
+ --> tests/diagnostics/loop_cond_jump.lx:3:28
+  |
+3 |         while (if i == 2 { break; true } else { false }) { }
+  |                            ^^^^^^
+error: 'continue' while kosulunun icinde kullanilamaz; dongu govdesine tasiyin
+ --> tests/diagnostics/loop_cond_jump.lx:4:28
+  |
+4 |         while (if i == 3 { continue; true } else { false }) { }
+  |                            ^^^^^^^^^
+error: 2 hata yuzunden durduruldu

@@ -1,0 +1,64 @@
+struct K { ad: String }
+struct P { x: i32 }
+enum E { A(i32), B }
+
+fn duz() -> void {
+    let s = string("duz");
+    if true {
+        let s = 5;
+        s = 6;
+        print(s);
+    }
+    print(s);
+}
+
+fn alan() -> void {
+    let k = K { ad: string("alan") };
+    if true {
+        let k = P { x: 1 };
+        k.x = 5;
+        print(k.x);
+    }
+    print(k.ad);
+}
+
+fn desen() -> void {
+    let s = string("desen");
+    match E::A(3) {
+        E::A(s) => {
+            s = 9;
+            print(s);
+        }
+        E::B => {}
+    }
+    print(s);
+}
+
+fn dongu() -> void {
+    let s = string("dongu");
+    for i in 0..3 {
+        let s = i;
+        s = s + 10;
+        print(s);
+    }
+    print(s);
+}
+
+fn ic_owning() -> void {
+    let s = 7;
+    if true {
+        let s = string("ic");
+        s = s + "!";
+        print(s);
+    }
+    print(s);
+}
+
+fn main() -> i32 {
+    duz();
+    alan();
+    desen();
+    dongu();
+    ic_owning();
+    0
+}

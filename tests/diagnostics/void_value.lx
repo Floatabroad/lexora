@@ -1,0 +1,27 @@
+struct S { v: void, n: i32 }
+struct K<T> { v: T }
+enum Opt<T> { Var(T), Yok }
+struct P { x: i32 }
+
+impl P {
+    fn m(self, v: void) -> i32 { 1 }
+}
+
+fn f() -> void { }
+fn param(x: void) -> i32 { 1 }
+fn arr(a: [void; 2]) -> i32 { 1 }
+fn kutu(b: Box<void>) -> i32 { 1 }
+fn targ(k: K<void>) -> i32 { 1 }
+fn donus() -> [void; 2] { [f(), f()] }
+fn kimlik<T>(x: T) -> i32 { 1 }
+
+fn main() -> i32 {
+    let a: void = f();
+    let b = box f();
+    let c = [f(), f()];
+    let d = K { v: f() };
+    let e = Opt::Var(f());
+    kimlik(f());
+    kimlik::<void>(f());
+    0
+}

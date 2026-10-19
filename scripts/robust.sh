@@ -18,7 +18,7 @@ for f in tests/robust/*.lx; do
     name="$(basename "$f" .lx)"
     for prof in debug release; do
         for be in string-ir inkwell; do
-            err="$(timeout 30 "./target/$prof/lexora" --backend "$be" "$f" 2>&1 >/dev/null)"
+            err="$(ulimit -v "${ROBUST_VMEM:-4000000}"; timeout 30 "./target/$prof/lexora" --backend "$be" "$f" 2>&1 >/dev/null)"
             rc=$?
             bad=""
             if [ $rc -ne 0 ] && [ $rc -ne 1 ]; then

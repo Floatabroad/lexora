@@ -1,0 +1,40 @@
+struct K { a: String, n: i32 }
+struct I { ad: String, n: i32 }
+struct O { ic: I, z: i32 }
+fn yut(k: K) -> void { }
+fn yut_i(i: I) -> void { }
+fn tam() -> i32 {
+    let k = K { a: string("x"), n: 5 };
+    yut(k);
+    k.n
+}
+fn kosullu(c: bool) -> i32 {
+    let k = K { a: string("x"), n: 5 };
+    if c { yut(k); }
+    k.n + 1
+}
+fn ara() -> i32 {
+    let o = O { ic: I { ad: string("x"), n: 5 }, z: 1 };
+    yut_i(o.ic);
+    print(o.z);
+    o.ic.n
+}
+fn let_ile() -> i32 {
+    let k = K { a: string("x"), n: 5 };
+    let j = k;
+    print(j.n);
+    k.n
+}
+fn yerinde() -> i32 {
+    let k = K { a: string("x"), n: 5 };
+    let a = k.a;
+    print(a);
+    k.n
+}
+fn yeniden() -> i32 {
+    let k = K { a: string("x"), n: 5 };
+    yut(k);
+    k = K { a: string("y"), n: 6 };
+    k.n
+}
+fn main() -> i32 { 0 }

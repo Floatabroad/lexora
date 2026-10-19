@@ -165,6 +165,7 @@ fn load_program<'arena>(
         program.structs.extend(sub_program.structs);
         program.enums.extend(sub_program.enums);
         program.impls.extend(sub_program.impls);
+        program.traits.extend(sub_program.traits);
         interner = sub.interner;
         next_id = sub.next_expr_id;
     }
@@ -246,7 +247,7 @@ fn run_string_ir(
     interner: &Interner,
     program: &Program,
     types: &HashMap<ExprId, Type>,
-    moves:  &HashMap<ExprId, Vec<u32>>,
+    moves: &HashMap<ExprId, Vec<u32>>,
     instances: &HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>,
     fn_instances: &HashMap<(Symbol, Vec<Type>), (Vec<Type>, Type)>,
     call_targs: &HashMap<ExprId, Vec<Type>>,
@@ -290,7 +291,7 @@ fn run_inkwell(
     sources: &SourceMap,
     opt: u8,
     debug: bool,
-    moves:  &HashMap<ExprId, Vec<u32>>,
+    moves: &HashMap<ExprId, Vec<u32>>,
     instances: &HashMap<(Symbol, Vec<Type>), Vec<(Symbol, Vec<Type>)>>,
     fn_instances: &HashMap<(Symbol, Vec<Type>), (Vec<Type>, Type)>,
     call_targs: &HashMap<ExprId, Vec<Type>>,
@@ -315,8 +316,8 @@ fn run_inkwell(
         fn_instances,
         call_targs,
         static_calls,
-       struct_instances,
-       method_instances
+        struct_instances,
+        method_instances,
     );
     if let Err(e) = codegen.compile(program) {
         eprintln!(
@@ -400,4 +401,3 @@ fn run_inkwell(
     eprintln!("inkwell backend bu binary'de derlenmemis; `cargo run --features inkwell` ile derle");
     std::process::exit(1);
 }
-

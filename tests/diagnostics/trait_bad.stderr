@@ -1,0 +1,81 @@
+error: zaten tanimli: Alan::alan
+ --> tests/diagnostics/trait_bad.lx:4:5
+  |
+4 |     fn alan(self) -> i32;
+  |     ^^^^^^^^^^^^^^^^^^^^^ yeniden tanimlandi
+error: 'Alan::yap' self almali; statik trait metotlari henuz yok
+ --> tests/diagnostics/trait_bad.lx:5:5
+  |
+5 |     fn yap() -> i32;
+  |     ^^^^^^^^^^^^^^^^
+error: zaten tanimli: Bos
+  --> tests/diagnostics/trait_bad.lx:12:1
+   |
+12 | trait Bos { }
+   | ^^^^^^^^^^^^^ yeniden tanimlandi
+error: 'Kare.alan' imzasi 'Alan' bildirimiyle uyusmuyor; beklenen: fn alan(self) -> i32
+  --> tests/diagnostics/trait_bad.lx:20:5
+   |
+20 |     fn alan(self) -> i64 { 1 as i64 }
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: 'kose' metodu 'Alan' trait'inin uyesi degil
+  --> tests/diagnostics/trait_bad.lx:22:5
+   |
+22 |     fn kose(self) -> i32 { 4 }
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: 'Yuvarlak' icin 'Alan' uygulamasinda eksik metot: 'cevre'
+  --> tests/diagnostics/trait_bad.lx:25:15
+   |
+25 | impl Alan for Yuvarlak {
+   |               ^^^^^^^^
+error: 'Alan' trait'i 'Kare' icin zaten uygulanmis
+  --> tests/diagnostics/trait_bad.lx:29:15
+   |
+29 | impl Alan for Kare {
+   |               ^^^^
+error: tanimsiz trait 'Yok'
+  --> tests/diagnostics/trait_bad.lx:33:6
+   |
+33 | impl Yok for Ucgen {
+   |      ^^^
+error: 'Alan' bir trait, tip degil; generic bound kullanin: fn f<T: Alan>(x: T)
+  --> tests/diagnostics/trait_bad.lx:37:9
+   |
+37 | fn f(a: Alan) -> i32 { 1 }
+   |         ^^^^
+error: tanimsiz trait 'Alann'; bunu mu demek istediniz: 'Alan'?
+  --> tests/diagnostics/trait_bad.lx:38:9
+   |
+38 | fn g<T: Alann>(a: T) -> i32 { 1 }
+   |         ^^^^^
+error: 'T' bir tip parametresi ve bound'u yok; 'alan' metodu icin trait bound'u gerekir: <T: Trait>
+  --> tests/diagnostics/trait_bad.lx:39:24
+   |
+39 | fn h<T>(a: T) -> i32 { a.alan() }
+   |                        ^^^^^^^^
+error: 'T' bound'larinda (Alan) 'yok' metodu yok
+  --> tests/diagnostics/trait_bad.lx:40:30
+   |
+40 | fn k<T: Alan>(a: T) -> i32 { a.yok() }
+   |                              ^^^^^^^
+error: 'cevre' 0 arguman bekliyor, 1 verildi
+  --> tests/diagnostics/trait_bad.lx:41:30
+   |
+41 | fn m<T: Alan>(a: T) -> i32 { a.cevre(1) }
+   |                              ^^^^^^^^^^
+error: 'alan' metodu birden fazla bound'da tanimli (Alan, Ikinci); cagri belirsiz
+  --> tests/diagnostics/trait_bad.lx:42:41
+   |
+42 | fn amb<T: Alan + Ikinci>(a: T) -> i32 { a.alan() }
+   |                                         ^^^^^^^^
+error: 'i32' tipi 'Alan' trait'ini uygulamiyor ('n' cagrisinda 'T: Alan' bound'u)
+  --> tests/diagnostics/trait_bad.lx:46:11
+   |
+46 |     print(n(5));
+   |           ^^^^
+error: 'Ucgen' tipi 'Alan' trait'ini uygulamiyor ('n' cagrisinda 'T: Alan' bound'u)
+  --> tests/diagnostics/trait_bad.lx:47:11
+   |
+47 |     print(n(Ucgen { a: 1 }));
+   |           ^^^^^^^^^^^^^^^^^
+error: 16 hata yuzunden durduruldu

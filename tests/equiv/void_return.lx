@@ -1,0 +1,31 @@
+fn yaz(x: i32) -> void {
+    print(x);
+}
+
+fn erken(x: i32) -> void {
+    if x > 5 {
+        return yaz(x * 10);
+    }
+    yaz(x);
+}
+
+fn zincir(n: i32) -> void {
+    if n == 0 {
+        return print(0);
+    }
+    print(n);
+    return zincir(n - 1);
+}
+
+fn sahipli() -> void {
+    let s = string("sahipli");
+    return print(s);
+}
+
+fn main() -> i32 {
+    erken(3);
+    erken(7);
+    zincir(2);
+    sahipli();
+    0
+}

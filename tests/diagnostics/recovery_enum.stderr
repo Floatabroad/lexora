@@ -7,5 +7,5 @@ error: beklenmeyen ifade: RightBrace
  --> tests/diagnostics/recovery_enum.lx:3:1
   |
 3 | }
-  | ^ beklenen: struct, fn, enum, impl, import
+  | ^ beklenen: struct, fn, enum, impl, trait, import
 error: 2 hata yuzunden durduruldu

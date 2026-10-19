@@ -148,6 +148,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 | Token::Import
                 | Token::Enum
                 | Token::Impl
+                | Token::Trait
                 | Token::RightBrace => {
                     return;
                 }
@@ -267,6 +268,45 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             }),
         }
     }
+    fn parse_type_params(
+        &mut self,
+        allow_bounds: bool,
+    ) -> Result<Vec<(Symbol, Vec<(Symbol, Span)>)>, LexoraError> {
+        let mut out = Vec::new();
+        if self.current.token != Token::Less {
+            return Ok(out);
+        }
+        self.advance();
+        while self.current.token != Token::Greater {
+            let p= self.parse_symbol()?;
+            self.type_params.push(p);
+            let mut bounds: Vec<(Symbol, Span)> = Vec::new();
+            if self.current.token == Token::Colon {
+                if !allow_bounds {
+                    self.errors.push(LexoraError::Custom{
+                        message: "trait bound yalnizca fonksiyon tip parametrelerinde yazilabilir".to_string(),
+                        span: self.current.span,
+                    });
+                }
+                self.advance();
+                loop{
+                    let sp = self.current.span;
+                    bounds.push((self.parse_symbol()?, sp));
+                    if self.current.token == Token::Plus {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+            }
+            out.push((p, bounds));
+            if self.current.token == Token::Comma {
+                self.advance();
+            }
+        }
+        self.expect(Token::Greater)?;
+        Ok(out)
+    }
     fn parse_type_args(&mut self) -> Result<Vec<Type>, LexoraError> {
         let mut args = Vec::new();
         if self.current.token != Token::Less {
@@ -288,6 +328,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let mut imports: Vec<&'arena str> = Vec::new();
         let mut enums = Vec::new();
         let mut impls = Vec::new();
+        let mut traits = Vec::new();
         while self.current.token != Token::Eof {
             self.type_params.clear();
             let result = match self.current.token.clone() {
@@ -296,8 +337,9 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 Token::Fn => self.parse_function(None, 0).map(|f| functions.push(f)),
                 Token::Enum => self.parse_enum().map(|e| enums.push(e)),
                 Token::Impl => self.parse_impl().map(|i| impls.push(i)),
+                Token::Trait => self.parse_trait().map(|t| traits.push(t)),
                 _ => Err(LexoraError::UnexpectedToken {
-                    expected: "struct, fn, enum, impl, import".to_string(),
+                    expected: "struct, fn, enum, impl, trait, import".to_string(),
                     found: format!("{:?}", self.current.token),
                     span: self.current.span,
                 }),
@@ -315,6 +357,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             imports,
             enums,
             impls,
+            traits,
         }
     }
     pub fn take_errors(&mut self) -> Vec<LexoraError> {
@@ -328,17 +371,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let start = self.current.span;
         self.expect(Token::Struct)?;
         let name = self.parse_symbol()?;
-        if self.current.token == Token::Less {
-            self.advance();
-            while self.current.token != Token::Greater {
-                let p = self.parse_symbol()?;
-                self.type_params.push(p);
-                if self.current.token == Token::Comma {
-                    self.advance();
-                }
-            }
-            self.expect(Token::Greater)?;
-        }
+        self.parse_type_params(false)?;
         self.expect(Token::LeftBrace)?;
 
         let mut fields: Vec<(Symbol, Type)> = Vec::new();
@@ -369,17 +402,8 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         self.expect(Token::Enum)?;
         let name = self.parse_symbol()?;
         self.enum_names.insert(name);
-        if self.current.token == Token::Less {
-            self.advance();
-            while self.current.token != Token::Greater {
-                let p = self.parse_symbol()?;
-                self.type_params.push(p);
-                if self.current.token == Token::Comma {
-                    self.advance();
-                }
-            }
-            self.expect(Token::Greater)?;
-        }
+
+        self.parse_type_params(false)?;
         self.expect(Token::LeftBrace)?;
         let mut variants = Vec::new();
         let mut variant_field_spans: Vec<Vec<Span>> = Vec::new();
@@ -387,6 +411,8 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             let v = self.parse_symbol()?;
             let mut fields = Vec::new();
             let mut spans: Vec<Span> = Vec::new();
+
+
             if self.current.token == Token::LeftParen {
                 self.advance();
                 while self.current.token != Token::RightParen {
@@ -399,6 +425,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 }
                 self.expect(Token::RightParen)?;
             }
+
             variants.push((v, fields));
             variant_field_spans.push(spans);
             if self.current.token == Token::Comma {
@@ -436,6 +463,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 | Token::Import
                 | Token::Enum
                 | Token::Impl
+                | Token::Trait
         ) {
             let starts_stmt = matches!(
                 self.current.token,
@@ -1221,17 +1249,15 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let start = self.current.span;
         self.expect(Token::Fn)?;
         let name = self.parse_symbol()?;
-        if self.current.token == Token::Less {
-            self.advance();
-            while self.current.token != Token::Greater {
-                let p = self.parse_symbol()?;
-                self.type_params.push(p);
-                if self.current.token == Token::Comma {
-                    self.advance();
-                }
-            }
-            self.expect(Token::Greater)?;
-        }
+       
+        
+        let bounds: Vec<(Symbol, Vec<(Symbol, Span)>)> = self
+            .parse_type_params(true)?
+            .into_iter()
+            .filter(|(_, b)| !b.is_empty())
+            .collect();
+
+
         self.expect(Token::LeftParen)?;
 
         let mut params: Vec<(Symbol, Type)> = Vec::new();
@@ -1280,27 +1306,104 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             body,
             span,
             self_param,
+            bounds,
+        })
+    }
+    fn parse_trait(&mut self) -> Result<TraitDef, LexoraError> {
+        let start = self.current.span;
+        self.expect(Token::Trait)?;
+        let name = self.parse_symbol()?;
+        self.expect(Token::LeftBrace)?;
+        let mut methods: Vec<TraitMethod> = Vec::new();
+        while self.current.token != Token::RightBrace {
+            if matches!(
+                self.current.token,
+                Token::Eof
+                    | Token::Struct
+                    | Token::Import
+                    | Token::Enum
+                    | Token::Impl
+                    | Token::Trait
+            ) {
+                break;
+            }
+            methods.push(self.parse_trait_method()?);
+        }
+        let end = self.current.span;
+        self.expect(Token::RightBrace)?;
+        Ok(TraitDef {
+            name,
+            methods,
+            span: start.merge(end),
         })
     }
 
+    fn parse_trait_method(&mut self) -> Result<TraitMethod, LexoraError> {
+        let start = self.current.span;
+        self.expect(Token::Fn)?;
+        let name = self.parse_symbol()?;
+        self.expect(Token::LeftParen)?;
+        let mut self_param = false;
+        if self.current.token == Token::SelfKw {
+            self.advance();
+            self_param = true;
+            if self.current.token == Token::Comma {
+                self.advance();
+            }
+        }
+        let mut params: Vec<(Symbol, Type)> = Vec::new();
+        let mut param_spans: Vec<Span> = Vec::new();
+        while self.current.token != Token::RightParen {
+            let pname = self.parse_symbol()?;
+            self.expect(Token::Colon)?;
+            let (pty, sp) = self.parse_type_spanned()?;
+            params.push((pname, pty));
+            param_spans.push(sp);
+            if self.current.token == Token::Comma {
+                self.advance();
+            }
+        }
+        self.expect(Token::RightParen)?;
+        self.expect(Token::Arrow)?;
+        let (return_type, ret_span) = self.parse_type_spanned()?;
+        if self.current.token == Token::LeftBrace {
+            let body_span = self.current.span;
+            self.parse_value_block()?;
+            self.errors.push(LexoraError::Custom {
+                message: "trait metodunun govdesi olamaz; varsayilan metotlar henuz yok".to_string(),
+                span: body_span,
+            });
+        } else {
+            self.expect(Token::Semicolon)?;
+        }
+        Ok(TraitMethod {
+            name,
+            self_param,
+            params,
+            param_spans,
+            return_type,
+            ret_span,
+            span: start.merge(self.last_span),
+        })
+    }
     fn parse_impl(&mut self) -> Result<ImplBlock<'arena>, LexoraError> {
         let start = self.current.span;
         self.expect(Token::Impl)?;
-        if self.current.token == Token::Less {
-            self.advance();
-            while self.current.token != Token::Greater {
-                let p = self.parse_symbol()?;
-                self.type_params.push(p);
-                if self.current.token == Token::Comma {
-                    self.advance();
-                }
-            }
-            self.expect(Token::Greater)?;
-        }
+       
+        self.parse_type_params(false)?;
+
         let impl_params: Vec<Symbol> = self.type_params.clone();
-        let type_span = self.current.span;
-        let type_name = self.parse_symbol()?;
+         let first_span = self.current.span;
+        let first = self.parse_symbol()?;
+        let (trait_name, type_span, type_name) = if self.current.token == Token::For {
+            self.advance();
+            let sp = self.current.span;
+            (Some((first, first_span)), sp, self.parse_symbol()?)
+        } else {
+            (None, first_span, first)
+        };
         let type_args = self.parse_type_args()?;
+
         let recv_ty = if self.enum_names.contains(&type_name) {
             Type::Enum(type_name, type_args.clone())
         } else {
@@ -1311,7 +1414,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         while self.current.token != Token::RightBrace {
             if matches!(
                 self.current.token,
-                Token::Eof | Token::Struct | Token::Import | Token::Enum | Token::Impl
+                Token::Eof | Token::Struct | Token::Import | Token::Enum | Token::Impl | Token::Trait
             ) {
                 break;
             }
@@ -1322,12 +1425,14 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         self.expect(Token::RightBrace)?;
         self.type_params.clear();
         Ok(ImplBlock {
+            trait_name,
             type_name,
             type_span,
             params: impl_params,
             type_args,
             methods,
             span: start.merge(end),
+
         })
     }
 }

@@ -1,0 +1,11 @@
+error: trait bound yalnizca fonksiyon tip parametrelerinde yazilabilir
+ --> tests/diagnostics/trait_parse.lx:1:11
+  |
+1 | struct G<T: Alan> { v: T }
+  |           ^
+error: trait metodunun govdesi olamaz; varsayilan metotlar henuz yok
+ --> tests/diagnostics/trait_parse.lx:4:23
+  |
+4 |     fn d(self) -> i32 { 1 }
+  |                       ^
+error: 2 hata yuzunden durduruldu

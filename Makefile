@@ -1,3 +1,6 @@
+LLVM_BIN ?= /usr/lib/llvm22/bin
+export PATH := $(LLVM_BIN):$(PATH)
+
 FILE ?= test.lx
 
 build:

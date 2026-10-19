@@ -1,0 +1,21 @@
+error: tasinmis deger kullanildi
+ --> tests/diagnostics/moved_field_read.lx:9:5
+  |
+9 |     k.n
+  |     ^^^
+error: kosullu tasinmis olabilecek deger kullanildi
+  --> tests/diagnostics/moved_field_read.lx:14:5
+   |
+14 |     k.n + 1
+   |     ^^^
+error: tasinmis deger kullanildi
+  --> tests/diagnostics/moved_field_read.lx:20:5
+   |
+20 |     o.ic.n
+   |     ^^^^^^
+error: tasinmis deger kullanildi
+  --> tests/diagnostics/moved_field_read.lx:26:5
+   |
+26 |     k.n
+   |     ^^^
+error: 4 hata yuzunden durduruldu
